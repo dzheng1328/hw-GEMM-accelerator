@@ -1,0 +1,26 @@
+# Simulation artifacts
+sim_build/
+obj_dir/
+*.vcd
+*.vvp
+*.fst
+*.fst.hier
+*.log
+results.xml
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+
+# Yosys / OpenLane outputs
+*.json
+!config/*.json
+runs/
+
+# Editor / OS
+.DS_Store
+.vscode/
+*.swp
