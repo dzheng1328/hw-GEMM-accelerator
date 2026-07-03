@@ -1,0 +1,6 @@
+# Simulation / verification
+cocotb>=1.8,<2.0   # Makefile.sim-based flow is deprecated in cocotb 2.0
+
+# Reference model (Phase 1 int8 MNIST model + quantization)
+torch>=2.1
+numpy>=1.24
