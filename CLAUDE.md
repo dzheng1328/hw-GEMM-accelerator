@@ -4,23 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Two RTL modules exist, both fully tested: `rtl/pe.v` (a single signed 8-bit MAC processing element, with
-registered `a_out`/`b_out` forwarding ports) and `rtl/systolic_array.v` (an 8x8 output-stationary
-systolic array built from `pe.v`, using a flattened-bus port scheme and a skewed/zero-padded input
-convention — see `docs/decisions.md` for the dataflow and port-representation reasoning). Run the full
-test suite (both `tb/` and `tb/array/`) with:
+**Phase 1 is functionally complete.** Two RTL modules exist, both fully tested: `rtl/pe.v` (a single
+signed 8-bit MAC processing element, with registered `a_out`/`b_out` forwarding ports) and
+`rtl/systolic_array.v` (an 8x8 output-stationary systolic array built from `pe.v`, using a flattened-bus
+port scheme and a skewed/zero-padded input convention — see `docs/decisions.md` for the dataflow and
+port-representation reasoning). `model/` now has a real, trained, quantized MNIST MLP
+(`model/train.py` + `model/quantize.py` → the frozen, committed `model/mnist_quantized.npz`), and
+`tb/mnist/test_mnist.py` drives a batch of 8 real MNIST test images through the hardware tile end-to-end
+— tiling each layer's matmul into repeated 8x8x8 waves (see `docs/decisions.md` for the tiling/
+quantization scheme), checking hardware output against a NumPy reference bit-exactly, and reporting
+classification accuracy against both true labels and the original float model. Run the full test suite
+(`tb/`, `tb/array/`, `tb/mnist/`) with:
 
 ```
 ./test.sh
 ```
 
-(equivalent to `cd tb && make` followed by `cd tb/array && make`, but works from any directory/shell
+(equivalent to running `make` in each of those three directories, but works from any directory/shell
 state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if modifying it).
 
-`model/` doesn't exist yet — `sim/` (simulation build artifacts, gitignored) is created automatically on
-first `make` run. Next up: verifying the array against randomized NumPy-generated matrices, then running
-a real MNIST image through the sim (both tracked on the Notion Task Board). Once those land and/or
-PyTorch training/quantization scripts exist, this section should be updated again.
+`sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
+`model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
+Next up: Phase 2 (multi-tile NoC, Yosys synthesis) — this section should be updated again once that
+starts.
 
 ## What this is
 
