@@ -19,6 +19,62 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-05 — Real MNIST on the hardware tile: tiled GEMM, quantization, and data pipeline
+
+**Context:** The 8x8 tile only computes one 8x8x8 matrix multiply per "wave," but classifying real MNIST
+digits needs much bigger matmuls. Making the tile itself bigger is Phase 2/NoC scope. Also needed:
+a quantization scheme the hardware can actually represent, a model architecture the hardware can compute
+exactly, and a way to get real MNIST data into a frozen, committable test fixture.
+
+**Decision — tiled GEMM via repeated waves, no hardware changes:** each layer's matmul is decomposed into
+8x8 blocks; the K (reduction) dimension is tiled by feeding multiple 22-cycle waves back-to-back
+*without* resetting between them (the accumulator keeps summing), while each N-block (independent group
+of output columns) gets a fresh reset. Proof this can't cross-contaminate between K-chunks: PE(i,j)'s
+operand at absolute cycle `T` is nonzero only when `T-j` falls in some chunk `c1`'s active window
+`[i,i+7]` (mod the per-chunk 22-cycle schedule) and `T-i` falls in some chunk `c2`'s window `[j,j+7]` for
+the other operand. Subtracting the two chunk-index equations forces `22*(c1-c2)` to equal a value bounded
+in `[-7,7]`; since 22 doesn't divide evenly into that range except at 0, `c1=c2` is forced whenever both
+operands are simultaneously nonzero — contamination is algebraically impossible, for any N, precisely
+because `TOTAL_CYCLES=3N-2=22 > 2(N-1)=14`. Verified both by this general argument and by tracing a
+concrete N=2, 2-chunk example by hand, matching the combined expected sum exactly. Also: because the
+accumulation is exact 32-bit integer arithmetic with no realistic overflow risk here (max |sum| per cell
+is ~1M, nowhere near 2^31) and integer addition is associative, the test reference doesn't need to
+simulate chunking at all — an untiled NumPy matmul is bit-exactly equal to the chunked hardware sum, so
+matching it validates the no-contamination claim empirically, not just algebraically.
+
+**Decision — model architecture: 64 (8x8-downsampled) → 32 hidden (ReLU) → 10 classes (padded to 16),
+no bias, no BatchNorm/Dropout.** Downsampling via `adaptive_avg_pool2d` (area-weighted, not a naive
+strided slice, since 28/8=3.5 isn't an integer ratio). Dimensions chosen so both layers tile into a small
+number of waves (32 + 8 = 40 total) — this task's pass criterion is bit-exact hardware/software matching,
+not classification accuracy, so a smaller model loses nothing here (it still reached 94.85% float test
+accuracy, better than expected for such aggressive downsampling). No bias/BatchNorm isn't a simplicity
+choice — `pe.v` has no add-constant datapath, so a trained bias literally cannot be represented in this
+hardware at all.
+
+**Decision — symmetric, per-tensor, zero-point-0 quantization.** Also hardware-forced, not a preference:
+`pe.v` is a pure signed int8×int8→int32 MAC with no zero-point/bias-add datapath, so asymmetric affine
+quantization can't be represented either. `s_X = max(|X|)/127`, `q_X = clip(round(X/s_X), -128, 127)`.
+Exactly one requantization step exists (layer 1's int32 output → int8 input for layer 2):
+`M1 = (s_input*s_W1)/s_hidden`, `q_hidden = clip(round(relu(acc_int32)*M1), 0, 127)` — applying ReLU
+directly on the int32 accumulator before scaling is exact since `M1>0` commutes with ReLU. Layer 2 needs
+*no* requantization: `dequant(logit) = acc_int32 * (s_hidden*s_W2)` is the same positive scalar for every
+output column, so argmax over raw int32 equals argmax over dequantized floats — the final layer's
+hardware output is used as-is.
+
+**Decision — manual MNIST loader (`model/mnist_data.py`), not `torchvision`.** Not primarily a
+compatibility workaround (a compatible `torchvision` wheel exists for this exact torch/Python
+combination) but dependency minimalism (matches this project's `cocotb<2.0`-pinned, no-extra-deps ethos,
+for something used once, at training time only) and reproducibility (torchvision's own MNIST mirror
+logic has a history of breaking; hitting the one confirmed-reachable S3 URL directly via stdlib
+`gzip`+`struct`+`urllib` is a few dozen lines and more predictable).
+
+**Decision — `.npz` (not JSON) for the frozen test fixture (`model/mnist_quantized.npz`).** Two reasons:
+`.gitignore` has a blanket `*.json` rule that would silently swallow a JSON export without an extra
+negation pattern (a real footgun caught during planning, not after committing something invisible to
+git), and `.npz` stores typed numpy arrays (int8, float, int64) natively with no list-conversion/precision
+handling needed, and `numpy` is already a dependency on both the training and cocotb-test sides.
+`tb/mnist/test_mnist.py` only ever imports `numpy`, never `torch`, keeping cocotb test startup fast.
+
 ### 2026-07-05 — 8x8 systolic array: output-stationary, broadcast valid_in, flattened bus ports
 
 **Context:** Building the array out of `rtl/pe.v` required three real design decisions: which systolic
