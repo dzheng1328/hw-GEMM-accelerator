@@ -11,3 +11,6 @@ make "$@"
 
 cd "$REPO_ROOT/tb/array"
 make "$@"
+
+cd "$REPO_ROOT/tb/mnist"
+make "$@"
