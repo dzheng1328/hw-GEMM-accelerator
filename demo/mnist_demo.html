@@ -1,0 +1,479 @@
+<title>MNIST on Silicon</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --surface: #121826;
+    --surface-raised: #19233a;
+    --border: #263049;
+    --text: #e7ecf5;
+    --text-dim: #8792a8;
+    --accent: #4fd8c4;
+    --accent-soft: rgba(79, 216, 196, 0.13);
+    --warn: #f0a860;
+    --warn-soft: rgba(240, 168, 96, 0.14);
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, monospace;
+    --font-body: Charter, "Iowan Old Style", Georgia, serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.045) 1px, transparent 0);
+    background-size: 28px 28px;
+    color: var(--text);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    padding: 3rem 1.5rem 4rem;
+  }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+  }
+
+  header {
+    margin-bottom: 2.75rem;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: var(--accent);
+    box-shadow: 0 0 8px 1px var(--accent);
+    flex-shrink: 0;
+  }
+
+  h1 {
+    font-family: var(--font-mono);
+    font-size: clamp(1.9rem, 4vw, 2.6rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 0.85rem;
+    text-wrap: balance;
+    color: var(--text);
+  }
+
+  .subhead {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  .subhead strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2.5rem;
+  }
+
+  .stat {
+    background: var(--surface);
+    padding: 1.4rem 1.6rem;
+  }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.5rem;
+  }
+
+  .stat-value {
+    font-family: var(--font-mono);
+    font-size: 2.1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat-value .of8 {
+    color: var(--text-dim);
+    font-size: 1.2rem;
+    font-weight: 400;
+  }
+
+  .stat-note {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  .lanes-heading {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 0 0 1rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 2.75rem;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 0.8rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
+    position: relative;
+  }
+
+  .card.match {
+    border-color: rgba(79, 216, 196, 0.35);
+  }
+
+  .card.differ {
+    border-color: rgba(240, 168, 96, 0.4);
+  }
+
+  .lane-index {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    align-self: flex-start;
+  }
+
+  .digit {
+    width: 72px;
+    height: 72px;
+    image-rendering: pixelated;
+    background: #000;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  .readout {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-family: var(--font-mono);
+  }
+
+  .field {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.82rem;
+  }
+
+  .field-label {
+    color: var(--text-dim);
+    letter-spacing: 0.03em;
+  }
+
+  .field-value {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+
+  .field-value.hw {
+    color: var(--accent);
+  }
+
+  .card.differ .field-value.hw {
+    color: var(--warn);
+  }
+
+  .status-chip {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.09em;
+    padding: 0.22rem 0.55rem;
+    border-radius: 99px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .card.differ .status-chip {
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1.4rem;
+  }
+
+  .spec {
+    font-size: 0.85rem;
+  }
+
+  .spec-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 0.35rem;
+  }
+
+  .spec-value {
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .card {
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+    }
+  }
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">Phase 1 &middot; hardware verification</div>
+    <h1>MNIST, classified on simulated silicon</h1>
+    <p class="subhead">
+      Eight real MNIST test digits, fed as one batch into an <strong>8&times;8 output-stationary
+      systolic array</strong> (Verilog, simulated via cocotb + Icarus). Each row of the array
+      classifies one digit simultaneously &mdash; the matrix multiplies are tiled into repeated
+      8&times;8&times;8 hardware passes and the result matches a NumPy reference bit-exactly.
+    </p>
+  </header>
+
+  <section class="stats">
+    <div class="stat">
+      <div class="stat-label">Hardware vs. ground truth</div>
+      <div class="stat-value">7<span class="of8"> / 8</span></div>
+      <div class="stat-note">correct digit classifications</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Hardware vs. float model</div>
+      <div class="stat-value">8<span class="of8"> / 8</span></div>
+      <div class="stat-note">hardware reproduces the trained model exactly</div>
+    </div>
+  </section>
+
+  <h2 class="lanes-heading">Array rows 0&ndash;7 &middot; one MNIST digit per row</h2>
+  <div class="grid">
+    
+        <article class="card match">
+          <div class="lane-index">ROW 0</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAz0lEQVR42mNgGGDAPe3vKXlckqq/f//NxiEnehS3ZN6+30DJlbl22CT//gZJ/v59xxhTbtv/v0Dw6h6QwJCzvwvSOdnXruH370w0OYXnQBPvdHIxMMg/+/25kBXDF3tEwMxcoDJldMmTchCm/AkMSYQzFE79/7sERbLn928YE9PYmzBJUXug057JYZecAPTQXVsGrJLb7gIlt6D589bfv56eT/7+BQcTegAVgoMVQkxGlwSGC0Ty2V5lLoywteuDSOKIT491v9e6e8gNcFIFAHCAkJfhLpDZAAAAAElFTkSuQmCC" alt="MNIST digit, true label 0" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">0</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">0</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">0</span>
+            </div>
+          </div>
+          <div class="status-chip">MATCH</div>
+        </article>
+
+        <article class="card match">
+          <div class="lane-index">ROW 1</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAeklEQVR42mNgGARA7V8ubsnwP0G4Jds/4pbT/TINt2TIP3vckqfuc+OUU/h3A7fG+H+HcUv2/PPFKWf59iwHTsma/0txm7r6XyBOOYkX13FrrPg3H7fk9H99uCWf/HPCKWf7G49k77+zzLjkuK7/q8SpkfXYBq6BT6YAkksmkF4dA10AAAAASUVORK5CYII=" alt="MNIST digit, true label 1" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">1</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">1</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">1</span>
+            </div>
+          </div>
+          <div class="status-chip">MATCH</div>
+        </article>
+
+        <article class="card match">
+          <div class="lane-index">ROW 2</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAxElEQVR42mNgoDUoqV39//+0WKxyK/+CwS05HHJX+zb8/VuFKWfy6+8lBR4GtnN/ezAlfX9fkgRSVT/+OmIxVl4IRF78i1USDEq//z3GhUPO5/vf5/a4NDb8/TsBl9yGb3/n8+CQk3z196UyLo3H/v7txSXn9+PvXlyGCp/Ao7Ht79+1uDQy/Pj7V5IBj6S2CBCwMrCKiKhOmzZtMheKJBis6F8GZVUjJNf9RYCf37+vLC21RDK3rLq6GqRpdnW1JsMgBQA3jnCz6BHpeAAAAABJRU5ErkJggg==" alt="MNIST digit, true label 2" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">2</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">2</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">2</span>
+            </div>
+          </div>
+          <div class="status-chip">MATCH</div>
+        </article>
+
+        <article class="card match">
+          <div class="lane-index">ROW 3</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAABAklEQVR42mNgGDDAozlpkgEuuca/f//+WiyEVbL1Lxg8dcMmmfr3z8S07Ld/vzdwYUpu/bscSNq+/vt3MSuG5P+/2iDK6uDfv0tY0CV3/1UA0+Zv/v4NQ5ecBJRM2RceHj75799qdMm4v34aPyAu/ns/hB9Vki+GR/nDXxj4EonhZu+Fm+HSF7Ux3MwsIKCuJiAw8fPfvzvRwlLECsayuvj373YUOd+73/1hbN7bfz94IEtGff/7xxLGMf39dz+K1pK/f61h7OQ/fyeiemfP37vz1ECs/Mvf/qJJMvDc/fb3908gAHnmhDC6X+K3P4H483CNOJaIlVDt8qqLUGUfuAQLAJOgimoMygL5AAAAAElFTkSuQmCC" alt="MNIST digit, true label 3" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">3</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">3</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">3</span>
+            </div>
+          </div>
+          <div class="status-chip">MATCH</div>
+        </article>
+
+        <article class="card match">
+          <div class="lane-index">ROW 4</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAvklEQVR42mNgGLzA6AGU4SaLKVn5HMqYsgJDjuUwTDLhEje6pOufNiir6I8ompzum5s8UOYBDMkV302hLKH/f9EkQz5dhjF7/+5lRZVc+ScLylJ48csJVY7/4R8Ys+3PZTQbxf4sQZixHE2S88xFIaiyv3+z0X258s/xUCBoXHL4D9x2ONBc9fUPELx4/vvPH07MoDUMAQIGhoV//uCOm/o/f3RxSjb8/YtXJ27J9j9fcEu+eJOPW3KzE83TIwCH/0smcfVimgAAAABJRU5ErkJggg==" alt="MNIST digit, true label 4" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">4</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">4</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">4</span>
+            </div>
+          </div>
+          <div class="status-chip">MATCH</div>
+        </article>
+
+        <article class="card differ">
+          <div class="lane-index">ROW 5</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAyklEQVR42mNgGAxAUF9fX6AxVB+LlPfMm3///r3+7e9fdBnlvi9//sIAuqQ9VPzqKiBAlhBp8WCwfPf43YoaVxFuNE3c5/76MTAoMMgxYbqDbePfFi4czudp/fuSH5ffYv7el8Hp8Wl/1+EOlVd/v9Ub4pL8D/Tc78nRlaFaWqEY5nf/RYAXK9AkmU1v3fsNk/1Tg2m0s8cJqOx6bDZX/P05w3gJDkkjoK49wGiZgk2ScznI0F/rubH6SHzL8793G3CGRuxUsQFOpQANIXgPAEcpUgAAAABJRU5ErkJggg==" alt="MNIST digit, true label 5" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">5</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">4</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">4</span>
+            </div>
+          </div>
+          <div class="status-chip">DIFFERS</div>
+        </article>
+
+        <article class="card match">
+          <div class="lane-index">ROW 6</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAA9ElEQVR42mNgoDVgP/N3A065aX/+1OKSLP2zywKnqb1/ynBbOeu7EU45qb9HcGucBpe0DA1VQ5N8+DcBTE9/9PnPn3eozuZ6+ghIspg9/fv/1fqH/5/II0vm/ZkGtLfhz5/HbTIMDJv+oPhq/p9CkL1/dmlDvIUiuRMoqfb273Q2iJ9PsSFLHvtbxDD572KYn4+iOOgoUOeaP3tgfl6NISn8/HuVMIhz4guKlVL3QA6SPP3nIC+Dz4mfaLGz8+9mLiDloyw76+8X9JiTufj3SJClZfPRP3+vBWKEreSNP3/+/AXiOcJYQl4gvftDT3e3BsMgBgDmmmxY7yukVAAAAABJRU5ErkJggg==" alt="MNIST digit, true label 6" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">6</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">6</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">6</span>
+            </div>
+          </div>
+          <div class="status-chip">MATCH</div>
+        </article>
+
+        <article class="card match">
+          <div class="lane-index">ROW 7</div>
+          <img class="digit" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAcCAAAAABXZoBIAAAAo0lEQVR42mNgGG4gZOf86TYqOCTv/QOCj8egYJUJiqRzkUfR4sf/HgKV/Hr6718PpnZBJz5nZ2dr0Tf/snDaH/z3ohAuObGX/4Nxamz8904Hl5z1z392ODW2/tvNikuO8+wPK5wa6/5twynn/fuDJS454bv/luGSYz7977YyLkm1f/98ccnJP/hXzIjbi/9McMnZfsIjWfnv320N3JLnhUhIWQDoRUgXuTMqowAAAABJRU5ErkJggg==" alt="MNIST digit, true label 7" width="28" height="28" />
+          <div class="readout">
+            <div class="field">
+              <span class="field-label">label</span>
+              <span class="field-value">7</span>
+            </div>
+            <div class="field">
+              <span class="field-label">hw</span>
+              <span class="field-value hw">7</span>
+            </div>
+            <div class="field">
+              <span class="field-label">float</span>
+              <span class="field-value">7</span>
+            </div>
+          </div>
+          <div class="status-chip">MATCH</div>
+        </article>
+  </div>
+
+  <footer>
+    <div class="spec">
+      <div class="spec-label">Model</div>
+      <div class="spec-value">64&rarr;32&rarr;10 MLP, no bias</div>
+    </div>
+    <div class="spec">
+      <div class="spec-label">Input</div>
+      <div class="spec-value">28&times;28 &rarr; 8&times;8 avg-pool</div>
+    </div>
+    <div class="spec">
+      <div class="spec-label">Quantization</div>
+      <div class="spec-value">symmetric int8, per-tensor</div>
+    </div>
+    <div class="spec">
+      <div class="spec-label">Hardware waves</div>
+      <div class="spec-value">40 &times; 22 cycles</div>
+    </div>
+  </footer>
+</div>
