@@ -55,6 +55,18 @@ docs/         learnings log, design decisions
 Know which phase current work belongs to — Phase 1 work should stay scoped to a single tile plus its
 testbench, not anticipate NoC or synthesis concerns.
 
+## Progress tracking
+
+Task/todo tracking for this project lives in Notion, not in this repo:
+
+- [Project Command Center](https://app.notion.com/p/394babf197c281faac5bf1a34edafdfd) — phase roadmap,
+  current status, and "the one thing to do next."
+- [Task Board](https://app.notion.com/p/922728572a194814b639f3c5de984c41) — the live task tracker
+  (Backlog → In progress → Verified → Done), embedded at the bottom of the Command Center page.
+
+Quick/messy notes get captured in Notion first; resolved, polished versions get written into
+`docs/learnings.md` and `docs/decisions.md` in this repo.
+
 ## Docs workflow
 
 Two logs in `docs/` are part of the working process, not just reference material:
