@@ -4,17 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-The cocotb + Icarus Verilog sim environment is up and running: `rtl/pe.v` (a placeholder MAC processing
-element), `tb/test_pe.py` (a cocotb reset-to-zero testbench), and `tb/Makefile` now exist and pass. Run
-the test suite with:
+Two RTL modules exist, both fully tested: `rtl/pe.v` (a single signed 8-bit MAC processing element, with
+registered `a_out`/`b_out` forwarding ports) and `rtl/systolic_array.v` (an 8x8 output-stationary
+systolic array built from `pe.v`, using a flattened-bus port scheme and a skewed/zero-padded input
+convention — see `docs/decisions.md` for the dataflow and port-representation reasoning). Run the full
+test suite (both `tb/` and `tb/array/`) with:
 
 ```
-cd tb && make
+./test.sh
 ```
 
-`model/` and `sim/` (simulation build artifacts, gitignored) don't exist yet — `sim/` is created
-automatically on first `make` run. Once the real 8x8 systolic tile and PyTorch training/quantization
-scripts land, this section should be updated again.
+(equivalent to `cd tb && make` followed by `cd tb/array && make`, but works from any directory/shell
+state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if modifying it).
+
+`model/` doesn't exist yet — `sim/` (simulation build artifacts, gitignored) is created automatically on
+first `make` run. Next up: verifying the array against randomized NumPy-generated matrices, then running
+a real MNIST image through the sim (both tracked on the Notion Task Board). Once those land and/or
+PyTorch training/quantization scripts exist, this section should be updated again.
 
 ## What this is
 
