@@ -1,18 +1,23 @@
 """cocotb testbench for rtl/systolic_array.v -- the 8x8 output-stationary
 systolic array built from rtl/pe.v.
 
-Scoped deliberately narrow for the "Build 8x8 systolic array from the PE"
-task: confirm the grid is wired correctly (reset propagates to every cell,
-and a hand-computable matrix product comes out right). Full randomized
-verification against NumPy is a separate, later task.
+Covers both the "Build 8x8 systolic array from the PE" task (wiring/skew
+correctness via a hand-computable identity-matrix case) and the "Verify
+array vs NumPy reference" task (genuinely random A/B, checked against a
+real NumPy matmul across all 64 output cells).
 """
 
+import random
+
 import cocotb
+import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 N = 8
 TOTAL_CYCLES = 3 * N - 2  # 22 -- see docs/decisions.md for the derivation
+ARRAY_RANDOM_SEED = 0xA55A9E  # distinct from tb/test_pe.py's 0xC0C07B PE-level fuzz seed
+ARRAY_RANDOM_TRIALS = 20
 
 
 def to_signed32(value: int) -> int:
@@ -52,6 +57,23 @@ async def reset_dut(dut, cycles=2):
     for _ in range(cycles):
         await RisingEdge(dut.clk)
     dut.reset.value = 0
+
+
+def numpy_matrix_reference(A, B):
+    """Reference C = A @ B via NumPy's real matmul operator. Both operands
+    are upcast to np.int64 before the multiply so NumPy's own int8/int16
+    default-dtype overflow rules can't silently corrupt the *reference*
+    model -- mirrors numpy_mac_reference in tb/test_pe.py. to_signed32 is
+    applied per-cell only at comparison time, to mirror the RTL's actual
+    32-bit accumulator width. With full int8 operands the max |sum of 8
+    products| per cell is 8*128*128=131072, nowhere near the 2**31
+    wraparound boundary -- to_signed32 here is defensive/consistency-
+    preserving, not something this test exercises the wraparound branch of.
+    """
+    A_np = np.array(A, dtype=np.int64)
+    B_np = np.array(B, dtype=np.int64)
+    C = A_np @ B_np
+    return [[to_signed32(int(C[i][j])) for j in range(N)] for i in range(N)]
 
 
 @cocotb.test()
@@ -100,3 +122,40 @@ async def test_identity_times_matrix(dut):
             f"C[{i}][{j}] = acc_out={got}, expected {expected} (A@B should equal B "
             f"since A is the identity matrix)"
         )
+
+
+@cocotb.test()
+async def test_random_matrices_vs_numpy(dut):
+    """Genuinely random A and B (not just B, unlike test_identity_times_matrix),
+    checked against a real NumPy A@B reference across all 64 output cells
+    (not a sample). Seed is fixed and distinct from tb/test_pe.py's PE-level
+    fuzz seed for reproducible failures."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+
+    rng = random.Random(ARRAY_RANDOM_SEED)
+
+    for trial in range(ARRAY_RANDOM_TRIALS):
+        A = [[rng.randint(-128, 127) for _ in range(N)] for _ in range(N)]
+        B = [[rng.randint(-128, 127) for _ in range(N)] for _ in range(N)]
+        expected = numpy_matrix_reference(A, B)
+
+        await reset_dut(dut)
+        dut.valid_in.value = 1
+        for t in range(TOTAL_CYCLES):
+            a_lanes = [A[i][t - i] if i <= t < i + N else 0 for i in range(N)]
+            b_lanes = [B[t - j][j] if j <= t < j + N else 0 for j in range(N)]
+            dut.a_west.value = pack_lanes(a_lanes)
+            dut.b_north.value = pack_lanes(b_lanes)
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
+        dut.valid_in.value = 0
+
+        raw = dut.acc_out.value.integer
+        for i in range(N):
+            for j in range(N):
+                got = unpack_acc(raw, i, j)
+                assert got == expected[i][j], (
+                    f"trial {trial} (seed={ARRAY_RANDOM_SEED}): "
+                    f"C[{i}][{j}] = acc_out={got}, expected {expected[i][j]}"
+                )
