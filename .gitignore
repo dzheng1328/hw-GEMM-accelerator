@@ -20,6 +20,10 @@ venv/
 !config/*.json
 runs/
 
+# Model training artifacts (frozen model/mnist_quantized.npz IS committed)
+model/checkpoints/
+model/.mnist_cache/
+
 # Editor / OS
 .DS_Store
 .vscode/
