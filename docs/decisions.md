@@ -19,6 +19,38 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-05 — 8x8 systolic array: output-stationary, broadcast valid_in, flattened bus ports
+
+**Context:** Building the array out of `rtl/pe.v` required three real design decisions: which systolic
+dataflow to use, whether `valid_in` needs to be individually skewed per-PE like the data operands, and
+how to represent "N separate 8-bit lanes" at the module port boundary.
+**Options considered:**
+- *Dataflow:* weight-stationary (persistent per-PE weight register, separate load phase, weights reused
+  across many inference passes — what TPUs actually do) vs. output-stationary (stationary local
+  accumulator, operands stream through — what `pe.v` already does today).
+- *valid_in:* thread a skewed `valid_out` pass-through mesh through every PE (mirroring `a_out`/`b_out`)
+  vs. a single broadcast `valid_in` wired identically to every PE.
+- *Port representation:* SystemVerilog unpacked-array ports (`input ... a_west [0:N-1]`) vs. a flattened
+  packed bus (`input [8*N-1:0] a_west`) sliced internally via `generate`/`+:` part-select.
+**Decision:** Output-stationary; broadcast (non-skewed) `valid_in`; flattened packed buses.
+**Why:** Output-stationary needed zero change to the already-tested MAC/accumulate logic — only added
+`a_out`/`b_out` forwarding ports — versus weight-stationary's bigger redesign (persistent weight
+register + load phase). That's a real trade-off, not an oversight: weight-stationary's weight-reuse
+advantage genuinely matters for our eventual fixed-weights/many-images MNIST use case, but that's a
+Phase 2/performance concern, and CLAUDE.md is explicit that Phase 1 shouldn't anticipate later-phase
+concerns. Broadcast `valid_in` is correct (not just simpler) because of a specific timing property: with
+each row/column's input skewed by `i`/`j` cycles and explicitly zero-padded before and after its real
+data window, PE(i,j)'s `a_in` and `b_in` are provably nonzero *only* during the same exact window
+`t ∈ [i+j, i+j+N-1]` — both operands are simultaneously zero everywhere else, so a stray `0*0`
+accumulation outside that window is harmless. Confirmed by simulating a hand-computed 3x3 case
+(`A=[[1,2,3],[4,5,6],[7,8,9]]`, `B=[[9,8,7],[6,5,4],[3,2,1]]`) and getting `A@B` exactly right at all 9
+cells — not just derived on paper. Flattened buses were chosen over SV array ports because every
+construct involved (indexed part-select `+:`, internal 2D wire arrays) is plain Verilog-2001, confirmed
+by a standalone `iverilog -g2012 -tnull` elaboration check, whereas SV unpacked-array *ports* are a
+patchier corner of both cocotb's VPI access and (later) Yosys synthesis support — no reason to take that
+risk when the array only needs 22 cycles (`3N-2` for N=8) to fully compute, and a flattened bus handles
+that with zero ambiguity.
+
 ### 2026-07-05 — always read signed DUT ports via `.signed_integer`
 
 **Context:** Writing the first real MAC-correctness tests (not just reset-to-zero) meant comparing

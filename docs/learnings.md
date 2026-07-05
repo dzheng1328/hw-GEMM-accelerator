@@ -24,6 +24,27 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-05 — `make -C` broke the Makefiles that `cd && make` had proven working
+
+**Phase:** Phase 1
+**Problem:** Rewrote `test.sh` to run both `tb/` and `tb/array/` suites via `make -C tb "$@"` /
+`make -C tb/array "$@"` for brevity. Failed immediately: `No rule to make target
+'.../../sim/sim_build/results.xml'` — a path resolved one directory too high, even though the exact same
+Makefile worked fine moments earlier via plain `cd tb && make`.
+**Cause:** Both `tb/Makefile` and `tb/array/Makefile` build their `SIM_BUILD`/`VERILOG_SOURCES` paths off
+`$(PWD)`, expecting the shell to have already `cd`'d into that directory before invoking `make` (so
+`$(PWD)` reflects the Makefile's own directory). `make -C <dir>` changes directory internally *after*
+already inheriting `PWD` from the invoking shell's environment (the repo root in this case) — on this
+system's `make` (`/Library/Developer/CommandLineTools/usr/bin/make`), `$(PWD)` inside the Makefile still
+resolved to the original caller's directory, not the `-C` target, so every `$(PWD)/../...` path was off
+by one level.
+**Fix:** Replaced `make -C <dir>` with explicit `cd "<dir>" && make` in `test.sh`, matching the exact
+invocation style already proven to work.
+**Takeaway:** Don't assume `make -C <dir>` is interchangeable with `cd <dir> && make` when a Makefile
+relies on `$(PWD)` (as cocotb's own `Makefile.sim` convention does) — verify with the same `cd`-based
+invocation the Makefile was already tested under, especially across different `make` implementations
+(BSD/macOS vs GNU).
+
 ### 2026-07-05 — reading acc_out right after RisingEdge saw stale values
 
 **Phase:** Phase 1
