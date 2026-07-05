@@ -19,6 +19,23 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-05 — always read signed DUT ports via `.signed_integer`
+
+**Context:** Writing the first real MAC-correctness tests (not just reset-to-zero) meant comparing
+`acc_out` (a `reg signed [31:0]`) against negative expected values for the first time.
+**Options considered:** Compare with the default `dut.acc_out.value == expected` (what the existing
+reset test already did); or explicitly use `dut.acc_out.value.signed_integer`.
+**Decision:** Always use `.signed_integer` for any comparison against a signed DUT port; never compare
+`BinaryValue` directly against a (possibly negative) plain int.
+**Why:** Traced cocotb 1.9.2's actual source (`cocotb/handle.py`): `ModifiableObject.value` always
+wraps the raw bits in a `BinaryValue` with `binaryRepresentation=UNSIGNED`, regardless of the HDL port's
+`signed` declaration — it never queries the simulator for signedness. `BinaryValue.__eq__` against a
+plain int then compares via `.integer` (the unsigned reading), so `dut.acc_out.value == -15` is **always
+False even on correct hardware** (it compares against `2**32 - 15`, not `-15`). Only `.signed_integer`
+manually computes the correct two's-complement value from the raw bits, independent of
+`binaryRepresentation`. The existing reset test never caught this because `0` is bit-identical whether
+read as signed or unsigned.
+
 ### 2026-07-02 — cocotb + Icarus Verilog simulation environment
 
 **Context:** Needed a Python-based verification flow set up before writing the first PE module,
