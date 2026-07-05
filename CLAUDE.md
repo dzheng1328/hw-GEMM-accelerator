@@ -4,11 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repo is currently a scaffold: only `README.md`, `docs/decisions.md`, `docs/learnings.md`, and a
-`gitignore` exist. None of the `rtl/`, `tb/`, `model/`, or `sim/` directories described below have been
-created yet. There are no build/lint/test commands to run yet — once RTL, testbenches, or model scripts
-are added, this file should be updated with the actual commands (e.g. `cocotb` test invocation, Icarus/
-Verilator simulation commands, PyTorch training script usage).
+The cocotb + Icarus Verilog sim environment is up and running: `rtl/pe.v` (a placeholder MAC processing
+element), `tb/test_pe.py` (a cocotb reset-to-zero testbench), and `tb/Makefile` now exist and pass. Run
+the test suite with:
+
+```
+cd tb && make
+```
+
+`model/` and `sim/` (simulation build artifacts, gitignored) don't exist yet — `sim/` is created
+automatically on first `make` run. Once the real 8x8 systolic tile and PyTorch training/quantization
+scripts land, this section should be updated again.
 
 ## What this is
 
