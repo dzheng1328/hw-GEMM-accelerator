@@ -73,6 +73,24 @@ Task/todo tracking for this project lives in Notion, not in this repo:
 Quick/messy notes get captured in Notion first; resolved, polished versions get written into
 `docs/learnings.md` and `docs/decisions.md` in this repo.
 
+## Git workflow
+
+Work lands via feature branches + PRs, not direct commits to `main` — adopted 2026-07-05 once the
+project moved past initial scaffolding, to keep the git history reviewable (a real portfolio signal,
+not just process for its own sake).
+
+- **Granularity**: roughly one branch/PR per Notion Task Board card (or other self-contained chunk of
+  work) — matches the size of commits made so far (e.g. the whole "Build 8x8 systolic array" card was
+  one PR-sized change), not one PR per tiny edit.
+- **Branch naming**: short, descriptive, kebab-case (e.g. `feature/systolic-array`, `fix/valid-in-gating`).
+- **Flow**: branch off `main` → implement + commit → push the branch → open a PR (`gh pr create`) with a
+  summary and test plan, same format as any other PR → once the test suite passes, merge it (`gh pr
+  merge`) and delete the branch. Claude Code merges PRs itself once tests pass, without waiting for a
+  separate manual review step each time — the user reviews plans/diffs before implementation happens,
+  not the PR after the fact. Say so explicitly if a specific PR should be held for manual review instead.
+- Docs updates (`docs/decisions.md`, `docs/learnings.md`, `CLAUDE.md` status) ride along in the same
+  branch/PR as the change they document, same as before.
+
 ## Docs workflow
 
 Two logs in `docs/` are part of the working process, not just reference material:
