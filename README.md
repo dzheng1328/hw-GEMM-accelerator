@@ -33,6 +33,12 @@ multiplication directly in hardware.
 | Yosys | synthesis to gate-level netlist |
 | OpenLane | physical design / layout (Phase 3) |
 
+## Demo
+
+[`demo/mnist_demo.html`](demo/mnist_demo.html) — open in a browser to see 8 real MNIST test digits
+classified end-to-end by the simulated hardware, alongside the true labels and the original trained
+model's own predictions.
+
 ## Status
 
 See the [GitHub Project board](../../projects) for live task tracking, and
@@ -45,6 +51,7 @@ how they were solved.
 rtl/          Verilog source
 tb/           cocotb testbenches
 model/        PyTorch training + quantization scripts
+demo/         static HTML demo of hardware results
 sim/          simulation build artifacts (gitignored)
 docs/         learnings log, design decisions
 ```
