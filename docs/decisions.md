@@ -19,6 +19,26 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-05 — Known boundary: the skew/zero-padding feed is Python-side, not RTL
+
+**Context:** `rtl/systolic_array.v` has no logic that generates the skewed, zero-padded input sequence
+itself — every testbench's `feed_wave()` computes `A_block[i][t-i] if i<=t<i+N else 0` (and the mirror
+for B) in Python and drives it onto `a_west`/`b_north` cycle by cycle. The RTL only does the registered
+`a_out`/`b_out` forwarding (Part 3 of the lesson artifact); the actual "edge memory" that knows how to
+stagger and zero-pad each row/column doesn't exist in hardware at all.
+**Options considered:** (1) Leave it exactly as-is and just document it (this entry). (2) Design real
+edge shift-registers/FIFOs in RTL now, so the tile could accept an unskewed, unpadded matrix directly.
+**Decision:** Option 1 — document the boundary, don't build the RTL edge memory in Phase 1.
+**Why:** Phase 1's scope is a single verified tile plus its testbench (per `CLAUDE.md`), and the
+testbench legitimately stands in for "whatever feeds the array" for verification purposes — it doesn't
+change any claim about the tile's own correctness, since the tile's actual job (skewed MAC dataflow) is
+exactly what's being verified. But this is a real, specific gap worth flagging explicitly rather than
+letting it hide: an actual chip synthesizing this design would need real edge shift-registers/FIFOs
+(one small per-row/per-column delay buffer, holding zeros until each row/column's real data window
+opens) to replace what `feed_wave()` currently does in Python. That's in-scope Phase 2 work, once
+Yosys synthesis is on the table and "what actually gets fed into the chip's pins" stops being a Python
+loop and starts being a real question.
+
 ### 2026-07-05 — Reframe README from "CNN" to "GEMM accelerator" (honest naming)
 
 **Context:** The README's original title ("Hardware CNN image classifier") and body ("computes
