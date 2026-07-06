@@ -46,6 +46,20 @@ this can't cross-contaminate between chunks.
 | Yosys | synthesis to gate-level netlist |
 | OpenLane | physical design / layout (Phase 3) |
 
+## Setup
+
+No specific Python version is required — the `.venv` here runs fine on Python 3.14.6. The real constraint
+is `requirements.txt`'s `cocotb>=1.8,<2.0` pin: cocotb 2.0 deprecates the `Makefile.sim`-based flow this
+project's Makefiles use, so installing an unpinned/2.0+ cocotb would break `./test.sh`.
+
+```
+brew install icarus-verilog   # or your platform's equivalent
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+./test.sh
+```
+
 ## Demo
 
 [`demo/mnist_demo.html`](demo/mnist_demo.html) — open in a browser to see 8 real MNIST test digits
