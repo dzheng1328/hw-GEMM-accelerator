@@ -15,6 +15,16 @@ around — convolutions get lowered to matrix multiplies (e.g. via im2col) befor
 hitting hardware like this. The network currently running on this array is a
 bias-free MLP, not a CNN; there's no convolution op implemented (yet).
 
+## Architecture
+
+<img src="docs/architecture.svg" alt="Systolic-array GEMM tile: dataflow + Python-orchestrated tiling">
+
+The 8x8 tile (`rtl/systolic_array.v`) only computes one 8x8x8 matrix multiply per pass. Real classification
+needs bigger matmuls, so `tb/mnist/test_mnist.py` tiles each MLP layer into repeated passes through that
+same tile: K-chunks (the reduction dimension) accumulate back-to-back with no reset between them, while
+N-blocks (independent output columns) get a fresh reset — see `docs/decisions.md` for the full proof that
+this can't cross-contaminate between chunks.
+
 ## Phases
 
 - **Phase 1 — core deliverable**: a single verified 8x8 systolic array tile,
