@@ -42,6 +42,12 @@ bias-free MLP, not a CNN; there's no convolution op implemented (yet).
 classified end-to-end by the simulated hardware, alongside the true labels and the original trained
 model's own predictions.
 
+The quantized model reaches **94.82% accuracy on the full 10,000-image MNIST test set** (vs. 94.85% for
+the original float model, before quantization) — see [`model/evaluate_quantized.py`](model/evaluate_quantized.py),
+which replicates the exact int8 datapath already proven bit-exact against the hardware tile in
+[`tb/mnist/test_mnist.py`](tb/mnist/test_mnist.py). (No throughput/clock-speed number yet — that requires
+real Phase 2 synthesis timing, not simulation.)
+
 ## Status
 
 See the [GitHub Project board](../../projects) for live task tracking, and
