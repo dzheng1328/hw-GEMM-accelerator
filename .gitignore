@@ -5,6 +5,7 @@ obj_dir/
 *.vvp
 *.fst
 *.fst.hier
+!docs/waveforms/*.fst
 *.log
 results.xml
 
