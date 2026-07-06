@@ -1,4 +1,4 @@
-# Hardware CNN image classifier
+# Hardware GEMM accelerator for neural network inference
 
 A systolic array-based hardware accelerator, designed in Verilog and verified in
 simulation, that runs a real trained neural network to classify handwritten
@@ -7,10 +7,13 @@ recruiting.
 
 ## What this is
 
-Instead of running image classification as software on a CPU/GPU, this project
-designs the actual circuitry that performs it: a grid of multiply-accumulate
-processing elements (a systolic array) that computes convolution and matrix
-multiplication directly in hardware.
+Instead of running inference as software on a CPU/GPU, this project designs the
+actual circuitry that performs it: a grid of multiply-accumulate processing
+elements (a systolic array) that computes matrix multiplication (GEMM) directly
+in hardware. GEMM is the compute core real CNN/TPU-style accelerators are built
+around — convolutions get lowered to matrix multiplies (e.g. via im2col) before
+hitting hardware like this. The network currently running on this array is a
+bias-free MLP, not a CNN; there's no convolution op implemented (yet).
 
 ## Phases
 
