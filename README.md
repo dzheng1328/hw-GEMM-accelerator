@@ -31,7 +31,7 @@ bias-free MLP, not a CNN; there's no convolution op implemented (yet).
 | Verilog | hardware description language — the design itself |
 | Icarus Verilog / Verilator | simulate the design |
 | cocotb | Python-based testbenches |
-| GTKWave | waveform viewing / debugging |
+| Surfer | waveform viewing / debugging |
 | PyTorch | train + quantize the reference model |
 | Yosys | synthesis to gate-level netlist |
 | OpenLane | physical design / layout (Phase 3) |
@@ -47,6 +47,25 @@ the original float model, before quantization) — see [`model/evaluate_quantize
 which replicates the exact int8 datapath already proven bit-exact against the hardware tile in
 [`tb/mnist/test_mnist.py`](tb/mnist/test_mnist.py). (No throughput/clock-speed number yet — that requires
 real Phase 2 synthesis timing, not simulation.)
+
+## Waveforms
+
+[`docs/waveforms/test_mnist.fst`](docs/waveforms/test_mnist.fst) is a real waveform dump from
+`tb/mnist/test_mnist.py` (via cocotb/Icarus's built-in `make WAVES=1`, no RTL changes needed), and
+[`docs/waveforms/test_mnist.surf.ron`](docs/waveforms/test_mnist.surf.ron) is a saved
+[Surfer](https://surfer-project.org/) session pre-selecting a sensible signal set: `clk`, `reset`,
+`valid_in`, the `a_west`/`b_north` buses, and three individual PE accumulator registers (corner cells
+`row[0].col[0]` and `row[7].col[7]`, plus center cell `row[3].col[3]`) out of the 64 available. Open it
+with:
+
+```
+brew install surfer
+surfer docs/waveforms/test_mnist.fst -s docs/waveforms/test_mnist.surf.ron
+```
+
+(GTKWave is the more commonly-cited waveform viewer, but its macOS cask is currently broken on macOS 14+
+— Gatekeeper refuses to open it. Surfer is an actively-maintained, native-Apple-Silicon alternative that
+opens `.fst` files directly, no VCD conversion needed.)
 
 ## Status
 
