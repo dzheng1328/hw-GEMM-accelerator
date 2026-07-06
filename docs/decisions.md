@@ -19,6 +19,32 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-05 — Reframe README from "CNN" to "GEMM accelerator" (honest naming)
+
+**Context:** The README's original title ("Hardware CNN image classifier") and body ("computes
+convolution and matrix multiplication directly in hardware") claimed a convolutional network. A
+self-review of the finished Phase 1 work caught that this is false — `model/train.py` trains a bias-free
+2-layer MLP (`Linear(64→32) → ReLU → Linear(32→10)`); there is no conv layer anywhere in this repo. The
+8x8 downsampling is preprocessing, not convolution. The false claim was caught by review, not flagged by
+a user first — worth logging as a decision in its own right, not just a silent wording fix.
+**Options considered:** (1) Leave the CNN framing and just build a real conv layer to make it true: a
+bigger scope change, and not necessary for Phase 1's actual goal (verified GEMM hardware + a working
+classifier). (2) Rename the GitHub repo itself away from `hw-cnn-accelerator`: rejected — breaks the
+existing clone URL and every link already shared (demo artifact, lesson artifact) for no correctness
+gain, since the repo name is just a label, not a claim about contents the way README prose is. (3) Keep
+the repo name, rewrite only the README's wording to describe what's actually built.
+**Decision:** Option 3. Title changed to "Hardware GEMM accelerator for neural network inference";
+body now states plainly that this is a systolic-array matrix-multiply engine currently running an
+MLP, with convolution explicitly named as the honest future path (real CNN accelerators lower
+convolutions to GEMM via im2col before hitting hardware exactly like this one) rather than something
+already implemented.
+**Why:** A systolic array *is* the right compute core for real CNN accelerators — that relevance is true
+and worth keeping in the framing — but the specific model running today is an MLP, and a portfolio repo
+whose README overclaims what its own code does undermines the credibility the verification work (bit-exact
+hardware-vs-NumPy checks at every layer) actually earned. Honesty costs nothing here; the im2col path
+to a literal conv layer is a legitimate, well-scoped future task (the array itself needs no changes,
+only a data-layout step ahead of it) if it's ever wanted, but isn't committed to as part of this decision.
+
 ### 2026-07-05 — Real MNIST on the hardware tile: tiled GEMM, quantization, and data pipeline
 
 **Context:** The 8x8 tile only computes one 8x8x8 matrix multiply per "wave," but classifying real MNIST
