@@ -93,9 +93,10 @@ opens `.fst` files directly, no VCD conversion needed.)
 
 ## Status
 
-See the [GitHub Project board](../../projects) for live task tracking, and
-[`docs/learnings.md`](docs/learnings.md) for a running log of problems hit and
-how they were solved.
+Phase 1 is complete — see [closed pull requests](../../pulls?q=is%3Apr+is%3Aclosed) for a reviewable,
+one-PR-per-task history of how this was built, and [`docs/learnings.md`](docs/learnings.md) /
+[`docs/decisions.md`](docs/decisions.md) for a running log of problems hit and decisions made. (Task
+tracking itself lives in a private Notion board, not a public GitHub Project.)
 
 ## Repo layout
 
