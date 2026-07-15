@@ -25,8 +25,13 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
 `model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
-Next up: Phase 2 (multi-tile NoC, Yosys synthesis) — this section should be updated again once that
-starts.
+
+**Phase 2 has started (2026-07-15), two tracks in parallel:** generic Yosys synthesis of the existing
+Phase 1 tile is done — `synth/synth.ys` / `synth/synth_pe.ys` synthesize `pe.v`/`systolic_array.v` to
+generic gates with zero errors; real gate-count numbers are in `synth/reports/`, real PDK-based
+area/timing stays Phase 3 scope (see `docs/decisions.md`, 2026-07-15 entry). The multi-tile NoC track
+(topology, arbitration/routing logic, and replacing the testbench's Python `feed_wave`/`compute_nblock`
+orchestration with a real RTL controller) is still at the design-decision stage — not started yet.
 
 ## What this is
 
