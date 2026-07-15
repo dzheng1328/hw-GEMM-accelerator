@@ -1,0 +1,12 @@
+# synth/synth_pe.ys -- same generic synthesis pass, but for pe.v standalone.
+# Gives a per-cell baseline to compare against the full 8x8 array in
+# systolic_array_synth.log (64 PEs should cost ~64x this, since Yosys's
+# generic synth here does no cross-instance sharing/optimization).
+#
+# Run: yosys -s synth/synth_pe.ys   (from the repo root)
+
+read_verilog -sv rtl/pe.v
+hierarchy -check -top pe
+proc; opt
+synth -top pe
+tee -o synth/reports/pe_synth.log stat

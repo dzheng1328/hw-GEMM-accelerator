@@ -19,6 +19,27 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-15 — First Yosys pass: generic synthesis only, real timing deferred to Phase 3
+
+**Context:** Phase 2 kickoff. The Task Board's "Yosys synthesis — area/timing report" card asks for real
+area and timing numbers. Yosys 0.66 was already installed and confirmed working.
+**Options considered:** (1) Generic synthesis (`synth -top`, Yosys's own internal `$_AND_`/`$_XOR_`/etc.
+cell library, no `abc -liberty`) — gives gate/cell counts and confirms the design elaborates cleanly, but
+no physical area (um^2) or real delay numbers. (2) Map onto an actual standard-cell library (e.g. sky130)
+now, to get real area/timing immediately.
+**Decision:** Option 1 for this pass. Real PDK-based timing closure stays Phase 3 scope, per the
+existing "Timing closure pass" card (tagged Phase 3, `OpenLane`) — that card already anticipated needing
+a real critical-path diagnosis, not a repeat of a past trial-and-error fix, which only makes sense once
+there's a real standard-cell library and STA tool in the loop.
+**Why:** Doing this in two passes keeps each one honest about what it actually proves. `synth/synth.ys`
+and `synth/synth_pe.ys` confirm the design synthesizes with zero errors using pure generic gates — a real
+validation of the Phase 1 decision to use flattened bus ports over SystemVerilog unpacked-array ports
+specifically because the latter were flagged as "a patchier corner of ... Yosys synthesis support." Real
+numbers from this pass: one `pe` costs 901 generic cells standalone (900 when synthesized as a submodule
+of the array — ABC's local optimization differs slightly by context, both are real Yosys output, not
+rounded); the full 8x8 `systolic_array` costs exactly 64x that, 57,600 cells, because this generic pass
+does no cross-instance sharing. Reports: `synth/reports/pe_synth.log`, `synth/reports/systolic_array_synth.log`.
+
 ### 2026-07-05 — Known boundary: the skew/zero-padding feed is Python-side, not RTL
 
 **Context:** `rtl/systolic_array.v` has no logic that generates the skewed, zero-padded input sequence
