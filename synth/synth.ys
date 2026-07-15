@@ -1,0 +1,17 @@
+# synth/synth.ys -- generic (technology-independent) synthesis of the Phase 1
+# tile, to confirm it's synthesizable and get real gate/cell-count numbers.
+#
+# Deliberately generic (Yosys's internal $_AND_/$_XOR_/etc. cell library, no
+# `abc -liberty`): real physical area (um^2) and timing (delay/Fmax) require
+# mapping onto an actual standard-cell library, which is Phase 3 (OpenLane +
+# sky130) scope -- see the "Timing closure pass" Task Board card. This pass
+# answers a narrower, still-real question: does the design elaborate and
+# synthesize cleanly, and how many gates does it cost.
+#
+# Run: yosys -s synth/synth.ys   (from the repo root)
+
+read_verilog -sv rtl/pe.v rtl/systolic_array.v
+hierarchy -check -top systolic_array
+proc; opt
+synth -top systolic_array
+tee -o synth/reports/systolic_array_synth.log stat
