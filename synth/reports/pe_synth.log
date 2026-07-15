@@ -1,0 +1,27 @@
+
+6. Printing statistics.
+
+=== pe ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      835 wires
+     1080 wire bits
+        8 public wires
+       67 public wire bits
+        8 ports
+       67 port bits
+      901 cells
+       17   $_ANDNOT_
+      112   $_AND_
+        3   $_MUX_
+      355   $_NAND_
+        2   $_NOR_
+        1   $_NOT_
+       31   $_ORNOT_
+       23   $_OR_
+       32   $_SDFFE_PP0P_
+       16   $_SDFF_PP0_
+       98   $_XNOR_
+      211   $_XOR_
+

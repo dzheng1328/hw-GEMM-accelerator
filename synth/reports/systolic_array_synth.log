@@ -1,0 +1,74 @@
+
+7. Printing statistics.
+
+=== systolic_array ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      150 wires
+     3331 wire bits
+      150 public wires
+     3331 public wire bits
+        6 ports
+     2179 port bits
+       64 submodules
+       64   pe
+
+=== pe ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      834 wires
+     1079 wire bits
+        8 public wires
+       67 public wire bits
+        8 ports
+       67 port bits
+      900 cells
+       14   $_ANDNOT_
+      106   $_AND_
+        3   $_MUX_
+      362   $_NAND_
+        4   $_NOR_
+        1   $_NOT_
+       31   $_ORNOT_
+       23   $_OR_
+       32   $_SDFFE_PP0P_
+       16   $_SDFF_PP0_
+       99   $_XNOR_
+      209   $_XOR_
+
+=== design hierarchy ===
+
+        +----------Count including submodules.
+        | 
+    57600 systolic_array
+      900 pe
+
+        +----------Count including submodules.
+        | 
+    53526 wires
+    72387 wire bits
+      662 public wires
+     7619 public wire bits
+      518 ports
+     6467 port bits
+        - memories
+        - memory bits
+        - processes
+    57600 cells
+      896   $_ANDNOT_
+     6784   $_AND_
+      192   $_MUX_
+    23168   $_NAND_
+      256   $_NOR_
+       64   $_NOT_
+     1984   $_ORNOT_
+     1472   $_OR_
+     2048   $_SDFFE_PP0P_
+     1024   $_SDFF_PP0_
+     6336   $_XNOR_
+    13376   $_XOR_
+       64 submodules
+       64   pe
+
