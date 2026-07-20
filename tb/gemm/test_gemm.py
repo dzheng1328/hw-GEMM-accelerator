@@ -35,31 +35,35 @@ def unpack_acc(raw: int, i: int, j: int) -> int:
     return to_signed32(field)
 
 
-def pack_operands(A_full, B_full, k_chunks):
-    """Pack an (8 x 8K) A and an (8K x 8) B into the flattened a_buf / b_buf the
-    FSM indexes. For chunk k: A_chunk = A_full[:, 8k:8k+8], B_chunk =
-    B_full[8k:8k+8, :]. Layout mirrors the RTL: a_buf elem (k,i,c) at bit
-    8*((k*N+i)*N+c), b_buf elem (k,c,j) at 8*((k*N+c)*N+j). Unused chunks
-    (k >= k_chunks, up to KMAX) are left zero."""
-    a_buf = 0
-    b_buf = 0
+def pack_lanes(values):
+    """Pack N int8 lane values into a flattened bus int (lane i in bits
+    [8*i+7 : 8*i])."""
+    packed = 0
+    for lane, v in enumerate(values):
+        packed |= (int(v) & 0xFF) << (8 * lane)
+    return packed
+
+
+async def load_operands(dut, A_full, B_full, k_chunks):
+    """Load the operand memory slot-by-slot via the write port. Slot addr =
+    k*N + c holds A_chunk's column c (A_full[:, 8k+c]) and B_chunk's row c
+    (B_full[8k+c, :]), matching the sequencer's rd_addr = chunk*N + col."""
     for k in range(k_chunks):
-        for i in range(N):
-            for c in range(N):
-                a_off = 8 * ((k * N + i) * N + c)
-                a_buf |= (int(A_full[i][8 * k + c]) & 0xFF) << a_off
         for c in range(N):
-            for j in range(N):
-                b_off = 8 * ((k * N + c) * N + j)
-                b_buf |= (int(B_full[8 * k + c][j]) & 0xFF) << b_off
-    return a_buf, b_buf
+            a_col = pack_lanes([A_full[i][8 * k + c] for i in range(N)])
+            b_row = pack_lanes([B_full[8 * k + c][j] for j in range(N)])
+            dut.wr_en.value = 1
+            dut.wr_addr.value = k * N + c
+            dut.wr_a_col.value = a_col
+            dut.wr_b_row.value = b_row
+            await RisingEdge(dut.clk)
+    dut.wr_en.value = 0
 
 
 async def run_nblock(dut, A_full, B_full, k_chunks):
-    """Preload operands, pulse start, wait for done, return the 8x8 result."""
-    a_buf, b_buf = pack_operands(A_full, B_full, k_chunks)
-    dut.a_buf.value = a_buf
-    dut.b_buf.value = b_buf
+    """Load operands through the write port, pulse start, wait for done, return
+    the 8x8 result."""
+    await load_operands(dut, A_full, B_full, k_chunks)
     dut.k_chunks.value = k_chunks
 
     # One-cycle start pulse.
@@ -83,8 +87,10 @@ async def reset_dut(dut, cycles=2):
     dut.rst.value = 1
     dut.start.value = 0
     dut.k_chunks.value = 0
-    dut.a_buf.value = 0
-    dut.b_buf.value = 0
+    dut.wr_en.value = 0
+    dut.wr_addr.value = 0
+    dut.wr_a_col.value = 0
+    dut.wr_b_row.value = 0
     for _ in range(cycles):
         await RisingEdge(dut.clk)
     dut.rst.value = 0
