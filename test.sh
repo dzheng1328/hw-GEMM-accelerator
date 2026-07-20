@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Run the cocotb + Icarus test suites (rtl/pe.v and rtl/systolic_array.v),
+# Run the cocotb + Icarus test suites (rtl/pe.v, rtl/systolic_array.v,
+# rtl/skew_feeder.v via rtl/tile.v),
 # from any directory, in any fresh shell (no need to `source .venv` or `cd`
 # yourself first).
 set -e
@@ -10,6 +11,9 @@ cd "$REPO_ROOT/tb"
 make "$@"
 
 cd "$REPO_ROOT/tb/array"
+make "$@"
+
+cd "$REPO_ROOT/tb/tile"
 make "$@"
 
 cd "$REPO_ROOT/tb/mnist"
