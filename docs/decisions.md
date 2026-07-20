@@ -19,6 +19,33 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — First NoC router (`router.v`): 2D mesh, XY routing, round-robin, combinational crossbar
+
+**Context:** First NoC increment, unblocked once `operand_mem` fixed the tile's message interface. The
+"Design a simple NoC router" card: build the block that, replicated per tile, moves operand payloads
+between tiles. This is control/steering logic, a different discipline from the datapath work so far.
+**Options considered:** *Topology:* 2D mesh (each router talks to N/E/S/W neighbours + local tile) vs ring
+vs crossbar. *Routing:* XY dimension-order vs adaptive/table-based. *Arbitration:* round-robin vs fixed
+priority. *Microarchitecture:* combinational single-cycle crossbar vs input-buffered / virtual-channel.
+*Router coordinates:* Verilog parameters vs input ports.
+**Decision:** 2D mesh, XY dimension-order routing (route in X, then Y — the textbook deadlock-free choice),
+one round-robin arbiter per output port (no input can starve), valid/ready backpressure, and a
+**combinational single-cycle crossbar** (no internal buffering) — the simplest correct form. Router
+position is exposed as **input ports** `my_x`/`my_y`, tied off per instance, not parameters. Flit =
+`{payload, dest_y, dest_x}`, single-flit packets; `payload` opaque here, will carry an addressed
+`operand_mem` write later.
+**Why:** Mesh + XY + round-robin is the standard teaching stack precisely because it's simple and provably
+deadlock/starvation-free — right for a "simple router." Combinational crossbar keeps the first block
+verifiable in isolation; the known cost is that wiring `out` ports straight to neighbours' `in` ports in a
+mesh would form combinational cycles, so the *mesh-integration* card must register flits at inputs (skid
+buffer) to break them — noted in the RTL, deferred with that card. Coordinates as ports (not parameters)
+was a deliberate, debugged choice: the cocotb Makefile flow can't cleanly override Verilog parameters, so a
+parameterised `MY_X`/`MY_Y` silently stayed at its default in simulation (see learnings.md, same date) —
+input ports the testbench drives are unambiguous and match how a real mesh ties off per-instance coords
+anyway. `tb/router/test_router.py` verifies all three jobs: XY routing to each of the 5 ports, round-robin
+alternation under two-input contention (neither starves), and backpressure (an un-ready output holds its
+input off while still offering the flit). That also covers most of the "Verify routing + arbitration" card.
+
 ### 2026-07-19 — Operand memory (`operand_mem.v`): the wide-bus placeholder becomes a real load/read port
 
 **Context:** The sequencer FSM (below) indexed operands off wide preloaded `a_buf`/`b_buf` buses, flagged in
