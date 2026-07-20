@@ -19,25 +19,23 @@
 // reset. rtl/skew_feeder.v does the actual skew/zero-pad; this FSM only decides
 // *which* operands to present *when*.
 //
-// Operands live on wide preloaded buses (a_buf/b_buf), indexed by the FSM. That
-// is a deliberate placeholder for a real operand-memory read port -- the natural
-// thing a NoC/DMA feeds later. The outer loop over N-blocks (and the fresh reset
-// each N-block gets, via a new `start` pulse) stays with the caller, the same
-// way a DMA engine issues one descriptor per block.
+// Operands live in rtl/operand_mem.v; the FSM addresses it via rd_addr =
+// chunk*N + col, one slot per (chunk, column). The memory returns the unskewed
+// A-column / B-row combinationally, which the top wires straight to the tile.
+// The outer loop over N-blocks (and the fresh reset each N-block gets, via a new
+// `start` pulse) stays with the caller, the same way a DMA engine issues one
+// descriptor per block.
 module gemm_sequencer #(
     parameter N    = 8,
-    parameter KMAX = 8   // max K-chunks the operand buffers can hold (layer 1 needs 8)
+    parameter KMAX = 8   // max K-chunks the operand memory can hold (layer 1 needs 8)
 ) (
     input  wire                          clk,
     input  wire                          rst,        // sync system reset -> force IDLE
     input  wire                          start,      // pulse to run one N-block
     input  wire [3:0]                    k_chunks,   // K-chunks in this N-block (1..KMAX)
-    input  wire signed [8*N*N*KMAX-1:0]  a_buf,      // A chunks: elem (k,i,c) at 8*((k*N+i)*N+c)
-    input  wire signed [8*N*N*KMAX-1:0]  b_buf,      // B chunks: elem (k,c,j) at 8*((k*N+c)*N+j)
+    output reg  [$clog2(N*KMAX)-1:0]     rd_addr,    // -> operand_mem read address (chunk*N + col)
     output reg                           tile_reset, // -> tile.reset (pulsed once per N-block)
     output reg                           feed_valid, // -> tile.in_valid
-    output reg  signed [8*N-1:0]         a_col,      // -> tile.a_col (unskewed column of A_chunk)
-    output reg  signed [8*N-1:0]         b_row,      // -> tile.b_row (unskewed row of B_chunk)
     output reg                           busy,
     output reg                           done        // latches high once the result is valid
 );
@@ -58,21 +56,15 @@ module gemm_sequencer #(
     reg [3:0] k_chunks_r;  // latched k_chunks for this run
     reg [4:0] aux_cnt;     // shared reset/drain counter
 
-    // ---- Combinational operand selection ----
-    // a_col lane i = A_chunk[i][col], b_row lane j = B_chunk[col][j], where the
-    // active column index is c_cyc during the feed window (clamped otherwise so
-    // the dynamic part-select base stays in range; feed_valid gates it anyway).
+    // ---- Combinational operand addressing ----
+    // Read slot addr = chunk_idx*N + col, where the active column index is c_cyc
+    // during the feed window (clamped otherwise so the address stays in range;
+    // feed_valid gates whether the tile actually consumes the read).
     reg  [4:0] col_idx;
-    integer li;
     always @* begin
-        a_col = {8*N{1'b0}};
-        b_row = {8*N{1'b0}};
         col_idx    = (c_cyc < N) ? c_cyc : 5'd0;
         feed_valid = (state == S_RUN) && (c_cyc < N);
-        for (li = 0; li < N; li = li + 1) begin
-            a_col[8*li +: 8] = a_buf[ 8*((chunk_idx*N + li)*N + col_idx) +: 8 ];
-            b_row[8*li +: 8] = b_buf[ 8*((chunk_idx*N + col_idx)*N + li) +: 8 ];
-        end
+        rd_addr    = chunk_idx * N + col_idx;
     end
 
     // ---- Sequential control ----

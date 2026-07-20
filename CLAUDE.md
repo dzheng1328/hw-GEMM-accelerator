@@ -36,14 +36,17 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
   registers that skews/zero-pads an UNSKEWED operand block (A column-by-column, B row-by-row), wired to
   the array in `rtl/tile.v` (`tb/tile/`). `rtl/gemm_sequencer.v` is the control FSM replacing
   `compute_nblock()` — one `start` pulse computes one N-block (reset → `k_chunks` back-to-back 22-cycle
-  waves, no reset between → `done`), driving `rtl/tile.v` in `rtl/gemm_tile.v` (`tb/gemm/`: tiled GEMM for
-  K=1,2,3,4,8 vs NumPy, plus a back-to-back-N-block reset test). Still caller-side / out of scope:
-  requantization (no datapath in `pe.v`) and the operand *memory* (operands are preloaded on wide buses —
-  a placeholder for a real read port). See `docs/decisions.md`, both 2026-07-19 entries.
-- *NoC (not started):* the router/arbitration/routing cards were blocked on the tile's message interface,
-  which the sequencer FSM now defines (the `a_buf`/`b_buf` read port + `start`/`done` handshake). Next
-  natural step before the NoC proper: a real operand memory behind that read port. A router should
-  transport the tile's real messages, not dummy payloads (decided 2026-07-19).
+  waves, no reset between → `done`). `rtl/operand_mem.v` is the tile's operand buffer: a write/load port
+  (addressed `chunk*N+col` slots, each an A-column + B-row) and a combinational read port the sequencer
+  addresses via `rd_addr`. `rtl/gemm_tile.v` ties memory + FSM + tile together, so a tile now
+  loads→computes→reads a full tiled GEMM through realistic ports (`tb/gemm/`: tiled GEMM for K=1,2,3,4,8 vs
+  NumPy loaded through the write port, plus a back-to-back-N-block reset test). Still caller-side / out of
+  scope: requantization (no datapath in `pe.v`). See `docs/decisions.md`, the three 2026-07-19 entries.
+- *NoC (next up):* the router/arbitration/routing cards were blocked on the tile's message interface, which
+  now exists concretely: `operand_mem`'s write port `{wr_addr, wr_a_col, wr_b_row}` is exactly the
+  addressed operand payload a router delivers. A router that writes operand slots into a tile replaces the
+  testbench's load loop — a router should transport the tile's real messages, not dummy payloads (decided
+  2026-07-19).
 
 ## What this is
 
