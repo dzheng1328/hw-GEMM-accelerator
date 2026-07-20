@@ -14,13 +14,13 @@ port-representation reasoning). `model/` now has a real, trained, quantized MNIS
 — tiling each layer's matmul into repeated 8x8x8 waves (see `docs/decisions.md` for the tiling/
 quantization scheme), checking hardware output against a NumPy reference bit-exactly, and reporting
 classification accuracy against both true labels and the original float model. Run the full test suite
-(`tb/`, `tb/array/`, `tb/tile/`, `tb/mnist/`) with:
+(`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`, `tb/mnist/`) with:
 
 ```
 ./test.sh
 ```
 
-(equivalent to running `make` in each of those four directories, but works from any directory/shell
+(equivalent to running `make` in each of those five directories, but works from any directory/shell
 state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if modifying it).
 
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
@@ -31,15 +31,19 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 - *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
   `pe.v`/`systolic_array.v` to generic gates with zero errors; gate counts in `synth/reports/`. Real
   PDK-based area/timing stays Phase 3 scope (see `docs/decisions.md`, 2026-07-15 entry).
-- *Self-feeding tile (in progress, 2026-07-19):* `rtl/skew_feeder.v` is the RTL "edge memory" that
-  replaces the testbench's Python `feed_wave()` — a triangular bank of shift registers that skews and
-  zero-pads an UNSKEWED operand block (A fed column-by-column, B row-by-row). `rtl/tile.v` wires it to
-  the array, and `tb/tile/test_tile.py` proves it bit-exact (identity + 20 random full-8x8 trials vs
-  NumPy `A@B`). Still Python-side: the K-chunk/N-block sequencing across matmuls (the next card, a tile
-  sequencer FSM replacing `compute_nblock()`) and requantization. See `docs/decisions.md`, 2026-07-19.
-- *NoC (not started, deliberately blocked):* the router/arbitration/routing cards wait until the tile
-  sequencer FSM fixes the tile's message interface — a NoC should transport the tile's real messages,
-  not dummy payloads (decided 2026-07-19).
+- *Self-feeding tile (2026-07-19):* the tile now runs a full tiled matmul with no Python orchestration.
+  `rtl/skew_feeder.v` is the RTL "edge memory" replacing `feed_wave()` — a triangular bank of shift
+  registers that skews/zero-pads an UNSKEWED operand block (A column-by-column, B row-by-row), wired to
+  the array in `rtl/tile.v` (`tb/tile/`). `rtl/gemm_sequencer.v` is the control FSM replacing
+  `compute_nblock()` — one `start` pulse computes one N-block (reset → `k_chunks` back-to-back 22-cycle
+  waves, no reset between → `done`), driving `rtl/tile.v` in `rtl/gemm_tile.v` (`tb/gemm/`: tiled GEMM for
+  K=1,2,3,4,8 vs NumPy, plus a back-to-back-N-block reset test). Still caller-side / out of scope:
+  requantization (no datapath in `pe.v`) and the operand *memory* (operands are preloaded on wide buses —
+  a placeholder for a real read port). See `docs/decisions.md`, both 2026-07-19 entries.
+- *NoC (not started):* the router/arbitration/routing cards were blocked on the tile's message interface,
+  which the sequencer FSM now defines (the `a_buf`/`b_buf` read port + `start`/`done` handshake). Next
+  natural step before the NoC proper: a real operand memory behind that read port. A router should
+  transport the tile's real messages, not dummy payloads (decided 2026-07-19).
 
 ## What this is
 
