@@ -24,6 +24,27 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — The skew shift-register's delay lined up "for free" because of non-blocking semantics
+
+**Phase:** Phase 2
+**Problem:** Building `rtl/skew_feeder.v`, I expected an off-by-one fight: lane 0 is a combinational
+pass-through (delay 0) while lane i>=1 is an i-deep shift register, and the array samples `a_west`/`b_north`
+on the same clock edge the feeder's own registers update on. It seemed like mixing a combinational lane
+with registered lanes should shift the diagonal by a cycle and corrupt `A@B`. I budgeted time to
+trial-and-error the alignment.
+**Cause:** No fight — the timing is exact by construction. Both the feeder's shift-register stages and the
+downstream PE input registers update with non-blocking assignments (`<=`) on the same `posedge`. Under
+Verilog NBA semantics the PE reads the *old* (pre-edge) value of the feeder's last stage, so a depth-i
+shift register presents, at the edge ending step t, the value fed at step (t-i) — exactly the old
+`a_lanes[i] = A[i][t-i]` convention. Lane 0 combinational (delay 0) and lane i registered (delay i) compose
+into precisely the right diagonal with zero base-latency offset.
+**Fix:** Nothing to fix — `tb/tile/test_tile.py` passed on the first run (identity + 20 random full-matrix
+trials, all 64 cells bit-exact vs NumPy `A@B`).
+**Takeaway:** When a producer register and a consumer register share a clock edge and both use `<=`, the
+consumer sees the producer's pre-edge value — so a depth-N shift register is exactly N cycles of delay at
+the consumer, and combinational + registered lanes compose cleanly. Reason it through with NBA old-value
+semantics before assuming an off-by-one.
+
 ### 2026-07-05 — `make -C` broke the Makefiles that `cd && make` had proven working
 
 **Phase:** Phase 1
