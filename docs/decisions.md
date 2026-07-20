@@ -19,6 +19,36 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — Two tiles over the NoC (`noc_pair.v`): registered link buffers, operands as routed packets
+
+**Context:** The "Connect multiple tiles via the NoC" card. The standalone router (below) was verified in
+isolation, with two known integration gaps: a raw mesh of combinational crossbars would form combinational
+cycles, and the router had never delivered a *real* payload into a *real* tile.
+**Options considered:** *Loop-breaking:* register flits at each router's inputs (a skid FIFO per link) vs
+registering router outputs vs making the whole router a pipelined multi-stage design. *Buffer depth:* 1
+(halves link throughput or reintroduces a combinational ready path) vs 2 (full throughput, ready depends
+only on registered occupancy). *First topology:* a 1x2 two-node link vs going straight to a 2x2 mesh.
+*What travels over the network first:* operand writes only, vs also packetizing start/GO commands and
+result return.
+**Decision:** `rtl/flit_buf.v` — a 2-entry registered FIFO on every mesh-side router input; `in_ready`
+depends only on the registered `count` and `out_valid`/`out_flit` come from register state, so both
+directions of every link handshake terminate in registers and no combinational cycle can form.
+`rtl/noc_node.v` = router + four input buffers + `gemm_tile`, with the router's LOCAL output wired
+directly into the tile's `operand_mem` write port (the flit payload *is* `{wr_addr, wr_a_col, wr_b_row}`,
+the interface built for exactly this in the operand-memory entry). `rtl/noc_pair.v` = two nodes, (0,0)
+and (1,0), one east-west link. Start/`k_chunks`/`done`/`acc_out` stay direct wires — GO flits and
+result-return flits deliberately deferred, as is the 2x2 widening (`noc_node` is already four-direction
+mesh-ready, so that's wiring + testbench, not new design).
+**Why:** Input buffering with depth 2 is the textbook minimal element that gives loop-free links at full
+throughput; anything deeper is capacity tuning, not correctness. The 1x2-first choice repeats the
+project's staging discipline (prove the genuinely new element — registered multi-hop delivery into a live
+tile — before multiplying instances). `tb/noc/test_noc.py` makes the integration claim end-to-end:
+operand flits for both tiles injected interleaved at one port, self-delivery (LOCAL→LOCAL) and multi-hop
+(east over the registered link) both landing in the right operand memories, garbage flits overwritten by
+later real ones (in-order delivery), and both tiles' matmuls checked bit-exact against NumPy — plus a
+second test doing two full reload+recompute rounds with no reset between. A lost, reordered, misrouted,
+or corrupted flit anywhere would break the accumulator comparison.
+
 ### 2026-07-19 — First NoC router (`router.v`): 2D mesh, XY routing, round-robin, combinational crossbar
 
 **Context:** First NoC increment, unblocked once `operand_mem` fixed the tile's message interface. The
