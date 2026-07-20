@@ -19,6 +19,35 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — Tile sequencer FSM (`gemm_sequencer.v`): the K-chunk tiling moves into hardware
+
+**Context:** Second self-feeding-tile increment. `skew_feeder.v` (below) replaced the Python `feed_wave()`;
+this replaces `compute_nblock()` — the other half of the testbench orchestration. `compute_nblock` resets
+the array, drives `k_chunks` skewed waves back-to-back with no reset between (K-dimension accumulation),
+then reads the 8x8 result. That control (per-N-block reset, K-chunk loop, `valid_in`/feed timing) was all
+Python.
+**Options considered:** (1) Full-layer FSM with its own operand SRAM — sequences every N-block and the
+layer's requant in one block. (2) One-N-block FSM reading operands from a wide preloaded bus, with the
+outer N-block/layer loop left to the caller. (3) Keep operands per-cycle-fed by the caller, FSM does only
+the strobe/counter logic.
+**Decision:** Option 2. `rtl/gemm_sequencer.v` is an IDLE→RESET→RUN→DRAIN→DONE FSM: one `start` pulse ==
+one N-block == one `compute_nblock()` call. It resets the tile once, then feeds `k_chunks` waves, each on
+the proven `3N-2 = 22`-cycle schedule (N feed cycles presenting the chunk's unskewed columns/rows, then
+pad) with **no reset between chunks**, then raises a level-held `done`. `rtl/gemm_tile.v` wires it to
+`rtl/tile.v`. Operands sit on wide preloaded buses (`a_buf`/`b_buf`) the FSM indexes with a dynamic
+part-select.
+**Why:** Build the control logic (the genuinely new, uncertain part) now; defer the operand *memory*, the
+same staging discipline that split `skew_feeder` from this FSM. The wide preloaded bus is an explicit
+placeholder for a real operand-memory read port — which is exactly what a NoC/DMA feeds later, so it
+doubles as the interface-definition work the NoC is blocked on. Leaving the outer N-block loop to the
+caller is honest, not a shortcut: a real DMA issues one descriptor (one `start`) per block, which is what
+`test_back_to_back_nblocks` exercises. Keeping the 22-cycle spacing verbatim means the 2026-07-05
+no-contamination proof carries over unchanged; `tb/gemm/test_gemm.py` confirms it empirically — tiled
+matmuls for K = 1,2,3,4,8 all match an untiled NumPy `A@B` bit-exactly (by integer-add associativity a
+match *is* proof the K-chunks don't cross-contaminate), plus a back-to-back-N-block test that would fail
+if the per-block reset leaked. Still out of scope, still caller-side: requantization (no datapath in
+`pe.v`) and the operand memory.
+
 ### 2026-07-19 — Skew/zero-padding moved into RTL (`skew_feeder.v`); NoC deferred behind it
 
 **Context:** Phase 2 planning. The Notion board jumped straight from the Phase 1 tile to "Design a simple
