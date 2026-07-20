@@ -14,13 +14,13 @@ port-representation reasoning). `model/` now has a real, trained, quantized MNIS
 — tiling each layer's matmul into repeated 8x8x8 waves (see `docs/decisions.md` for the tiling/
 quantization scheme), checking hardware output against a NumPy reference bit-exactly, and reporting
 classification accuracy against both true labels and the original float model. Run the full test suite
-(`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`, `tb/mnist/`) with:
+(`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`, `tb/router/`, `tb/mnist/`) with:
 
 ```
 ./test.sh
 ```
 
-(equivalent to running `make` in each of those five directories, but works from any directory/shell
+(equivalent to running `make` in each of those six directories, but works from any directory/shell
 state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if modifying it).
 
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
@@ -42,11 +42,14 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
   loads→computes→reads a full tiled GEMM through realistic ports (`tb/gemm/`: tiled GEMM for K=1,2,3,4,8 vs
   NumPy loaded through the write port, plus a back-to-back-N-block reset test). Still caller-side / out of
   scope: requantization (no datapath in `pe.v`). See `docs/decisions.md`, the three 2026-07-19 entries.
-- *NoC (next up):* the router/arbitration/routing cards were blocked on the tile's message interface, which
-  now exists concretely: `operand_mem`'s write port `{wr_addr, wr_a_col, wr_b_row}` is exactly the
-  addressed operand payload a router delivers. A router that writes operand slots into a tile replaces the
-  testbench's load loop — a router should transport the tile's real messages, not dummy payloads (decided
-  2026-07-19).
+- *NoC (in progress, 2026-07-19):* `rtl/router.v` is a single 2D-mesh router — 5 ports (Local/N/E/S/W), XY
+  dimension-order routing, per-output round-robin arbitration, valid/ready backpressure, combinational
+  single-cycle crossbar. Verified standalone (`tb/router/`: routing to all ports, round-robin fairness,
+  backpressure). Coordinates are input ports (`my_x`/`my_y`), not parameters — see the parameter-vs-cocotb
+  gotcha in `docs/learnings.md`. Its flit payload will carry an addressed `operand_mem` write
+  (`{wr_addr, wr_a_col, wr_b_row}`). Still to do: wire a mesh of routers to real tiles (that step must
+  register flits at router inputs to break the combinational cycles the standalone crossbar would form).
+  See `docs/decisions.md`, 2026-07-19.
 
 ## What this is
 
