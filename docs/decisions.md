@@ -19,6 +19,28 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — Operand memory (`operand_mem.v`): the wide-bus placeholder becomes a real load/read port
+
+**Context:** The sequencer FSM (below) indexed operands off wide preloaded `a_buf`/`b_buf` buses, flagged in
+that entry as a placeholder for a real operand-memory read port. Building that port makes the tile a genuine
+load→compute→read block and — the real motivation — fixes the concrete interface a NoC/DMA writes into.
+**Options considered:** (1) A separate operand memory with a write/load port + a read port the sequencer
+addresses. (2) Keep the wide buses and just wrap them in a module with a bulk load. (3) A synchronous SRAM
+(registered read) for realism now.
+**Decision:** Option 1 with a combinational (register-file) read. `rtl/operand_mem.v` stores one
+`(chunk, column)` slot per address — an unskewed A-column + matching B-row — addressed `chunk*N + col`. The
+sequencer lost its `a_buf`/`b_buf`/`a_col`/`b_row` ports and now just drives `rd_addr`; `rtl/gemm_tile.v`
+wires the memory's combinational read straight to the tile. The write port `{wr_addr, wr_a_col, wr_b_row}`
+is shaped like an addressed operand payload — i.e. like a NoC delivery.
+**Why:** This is the same defer-then-build staging used for `skew_feeder` → `gemm_sequencer`: the wide bus
+was always meant to become this. Combinational read keeps the sequencer's timing bit-identical to the
+wide-bus version (no FSM change), so `tb/gemm/test_gemm.py` still passes unchanged in behavior — now loading
+via the write port instead of setting buses (identity, tiled GEMM K=1,2,3,4,8, back-to-back N-blocks, all
+bit-exact vs NumPy). A synchronous SRAM is a documented drop-in for synthesis (it needs the FSM to issue
+`rd_addr` a cycle ahead — Phase 3, not needed for behavioral verification). Crucially, the write port is now
+the exact interface the NoC router will drive: a router delivering addressed operand slots here replaces the
+testbench's load loop, which is the next card.
+
 ### 2026-07-19 — Tile sequencer FSM (`gemm_sequencer.v`): the K-chunk tiling moves into hardware
 
 **Context:** Second self-feeding-tile increment. `skew_feeder.v` (below) replaced the Python `feed_wave()`;
