@@ -9,6 +9,7 @@ VERILOG_SOURCES = $(PWD)/../../rtl/pe.v \
                   $(PWD)/../../rtl/systolic_array.v \
                   $(PWD)/../../rtl/skew_feeder.v \
                   $(PWD)/../../rtl/tile.v \
+                  $(PWD)/../../rtl/operand_mem.v \
                   $(PWD)/../../rtl/gemm_sequencer.v \
                   $(PWD)/../../rtl/gemm_tile.v
 
