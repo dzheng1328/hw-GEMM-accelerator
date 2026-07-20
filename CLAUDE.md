@@ -14,24 +14,32 @@ port-representation reasoning). `model/` now has a real, trained, quantized MNIS
 — tiling each layer's matmul into repeated 8x8x8 waves (see `docs/decisions.md` for the tiling/
 quantization scheme), checking hardware output against a NumPy reference bit-exactly, and reporting
 classification accuracy against both true labels and the original float model. Run the full test suite
-(`tb/`, `tb/array/`, `tb/mnist/`) with:
+(`tb/`, `tb/array/`, `tb/tile/`, `tb/mnist/`) with:
 
 ```
 ./test.sh
 ```
 
-(equivalent to running `make` in each of those three directories, but works from any directory/shell
+(equivalent to running `make` in each of those four directories, but works from any directory/shell
 state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if modifying it).
 
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
 `model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
 
-**Phase 2 has started (2026-07-15), two tracks in parallel:** generic Yosys synthesis of the existing
-Phase 1 tile is done — `synth/synth.ys` / `synth/synth_pe.ys` synthesize `pe.v`/`systolic_array.v` to
-generic gates with zero errors; real gate-count numbers are in `synth/reports/`, real PDK-based
-area/timing stays Phase 3 scope (see `docs/decisions.md`, 2026-07-15 entry). The multi-tile NoC track
-(topology, arbitration/routing logic, and replacing the testbench's Python `feed_wave`/`compute_nblock`
-orchestration with a real RTL controller) is still at the design-decision stage — not started yet.
+**Phase 2 is in progress (started 2026-07-15).** Three strands:
+
+- *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
+  `pe.v`/`systolic_array.v` to generic gates with zero errors; gate counts in `synth/reports/`. Real
+  PDK-based area/timing stays Phase 3 scope (see `docs/decisions.md`, 2026-07-15 entry).
+- *Self-feeding tile (in progress, 2026-07-19):* `rtl/skew_feeder.v` is the RTL "edge memory" that
+  replaces the testbench's Python `feed_wave()` — a triangular bank of shift registers that skews and
+  zero-pads an UNSKEWED operand block (A fed column-by-column, B row-by-row). `rtl/tile.v` wires it to
+  the array, and `tb/tile/test_tile.py` proves it bit-exact (identity + 20 random full-8x8 trials vs
+  NumPy `A@B`). Still Python-side: the K-chunk/N-block sequencing across matmuls (the next card, a tile
+  sequencer FSM replacing `compute_nblock()`) and requantization. See `docs/decisions.md`, 2026-07-19.
+- *NoC (not started, deliberately blocked):* the router/arbitration/routing cards wait until the tile
+  sequencer FSM fixes the tile's message interface — a NoC should transport the tile's real messages,
+  not dummy payloads (decided 2026-07-19).
 
 ## What this is
 

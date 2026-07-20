@@ -19,6 +19,34 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — Skew/zero-padding moved into RTL (`skew_feeder.v`); NoC deferred behind it
+
+**Context:** Phase 2 planning. The Notion board jumped straight from the Phase 1 tile to "Design a simple
+NoC router." But the 2026-07-05 entry below already flagged that the tile has no hardware that produces
+its skewed, zero-padded feed — every testbench's Python `feed_wave()` does it. A NoC transports *messages
+between tiles*, and the message format (flit width, addressing, what a packet even carries) is dictated by
+the tile's real port interface — which didn't exist while Python was still driving the array's pins.
+**Options considered:** (1) Follow the board literally — build the NoC router first against dummy payloads,
+defer the feed hardware. (2) Build the RTL feed/controller first, so the tile becomes self-feeding and its
+real interface is fixed before any NoC is designed against it.
+**Decision:** Option 2, first increment: `rtl/skew_feeder.v` — a triangular bank of 8-bit shift registers
+(lane i delayed by i cycles) that takes an UNSKEWED NxN block (A presented column-by-column, B row-by-row)
+and emits the skewed, zero-padded `a_west`/`b_north` stream the array expects. `in_valid` gates each lane's
+input to zero, which *is* the zero-padding `feed_wave()` did before/after each data window. Wired to the
+array in `rtl/tile.v` (array `valid_in` tied high — harmless outside each PE's window by the same
+zero-operand argument as the 2026-07-05 broadcast-valid decision). The board was reconciled: two controller
+cards added (this one, plus a sequencer-FSM card for the `compute_nblock()` peer), and the NoC-router card
+annotated to wait until the tile's message interface is defined.
+**Why:** Build infrastructure *after* its requirements exist, not before — a router designed against dummy
+payloads gets reworked once the real tile interface lands. Front-loading the feed hardware also front-loads
+the genuinely uncertain RTL (real shift-register skew timing) and produces an independently demoable result:
+a tile that runs a matmul with the testbench presenting plain unskewed operands, no Python skewing.
+`tb/tile/test_tile.py` proves it bit-exact — identity plus 20 random full-8x8 trials, all 64 cells matching
+a NumPy `A@B`, which (since the array is already trusted) is a direct proof the feeder's skew reproduces
+the old `feed_wave()` convention exactly. Still Python-side for now, explicitly out of this card's scope:
+the K-chunk/N-block sequencing across matmuls (the sequencer-FSM card) and requantization (no datapath in
+`pe.v`).
+
 ### 2026-07-15 — First Yosys pass: generic synthesis only, real timing deferred to Phase 3
 
 **Context:** Phase 2 kickoff. The Task Board's "Yosys synthesis — area/timing report" card asks for real
