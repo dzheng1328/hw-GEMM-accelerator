@@ -24,6 +24,29 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — A Verilog parameter default silently diverged from the cocotb testbench (router all-routed-to-LOCAL)
+
+**Phase:** Phase 2
+**Problem:** The new `router.v` tests failed with every flit routing to the wrong port — first everything to
+LOCAL, then to WEST — even though a standalone Icarus probe of the exact same scenario routed correctly.
+Confusingly, one of the three tests *passed*, for the wrong reason.
+**Cause:** Two compounding issues, both about values that live in the RTL defaults, not the testbench. (1)
+`MY_X`/`MY_Y` were Verilog *parameters* defaulting to 0; the cocotb Makefile flow has no clean way to
+override a parameter, so the DUT sat at coordinate (0,0) while the testbench assumed (1,1). (2) After
+converting those to input ports, the flit width still diverged: `router.v`'s `PW` (payload width) defaults
+to **64**, but the testbench hard-coded `PW=32`, so `FW = PW+2*AW` was 68 in RTL vs 36 in Python — every
+`in_flit[port*FW +: FW]` slice was misaligned, and `dst_x` read as 0. The standalone probe worked only
+because it explicitly instantiated the router with `PW=32`, masking the mismatch. `abc6` in the flit dump
+sitting at the wrong bit offset (144 vs the RTL's 272) was the tell.
+**Fix:** Made `my_x`/`my_y` input ports the testbench drives (also more realistic — a mesh ties off
+per-instance coords), and aligned the testbench's `PW` to the RTL default (64). Both `router.v` and
+`test_router.py` now carry a "must match" comment on the width.
+**Takeaway:** Any RTL parameter that a cocotb testbench also encodes as a Python constant is a silent
+divergence waiting to happen — the Makefile flow won't override it, so the default wins in simulation. Keep
+such values in exactly one place (drive them as ports, or pass `-P`/`COMPILE_ARGS` explicitly) and comment
+the coupling. When a DUT behaves impossibly, dump its *inputs as the DUT sees them* early — the misplaced
+`abc6` offset pointed straight at the width mismatch.
+
 ### 2026-07-19 — The skew shift-register's delay lined up "for free" because of non-blocking semantics
 
 **Phase:** Phase 2
