@@ -19,6 +19,33 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — Phase 3 kickoff: real sky130 area numbers (and what they revealed)
+
+**Context:** Phase 2's Yosys card was parked "In progress" pending real physical numbers. Phase 3 starts
+by turning the generic gate counts into sky130 standard-cell area.
+**Options considered:** *Library source:* Google/SkyWater's official repo turned out to hold only
+per-cell `.lib.json` fragments (404 on the assembled liberty — a real dead end hit, not hypothetical);
+the OpenROAD-flow-scripts repo vendors the assembled `sky130_fd_sc_hd__tt_025C_1v80.lib` (~12 MB), so
+`synth/fetch_sky130.sh` pulls from there into gitignored `synth/lib/` (third-party PDK data is fetched,
+never committed). *Timing now vs later:* yosys/abc maps against a 10 ns (100 MHz) target (`-D 10000`)
+but doesn't print a slack/critical-path summary at normal verbosity — real timing is OpenSTA's job in
+the OpenLane step, so this pass reports **area only**, honestly.
+**Decision:** Three mapping scripts (`synth/synth_sky130_{pe,gemm_tile,router}.ys`), typical corner
+(tt, 25C, 1.80V), reports in `synth/reports/*_sky130.log`. Real numbers:
+- **`pe`: 6,209.7 um^2** standalone (6,328.6 in-tile context — same ABC context effect as the generic
+  pass), 48 DFFs / 15.5% sequential.
+- **`gemm_tile` (full self-sequencing tile): 727,844.3 um^2 ~= 0.73 mm^2**, mapped in 4.5 s. Breakdown:
+  64 PEs = 405,028 (55.6%); **`operand_mem` = 309,457 (42.5%)**; `skew_feeder` = 12,152 (1.7%);
+  `gemm_sequencer` = 1,207 (0.17%).
+- **`router` (PW=136): 19,846.5 um^2** — ~2.7% of a tile. The NoC's per-node area overhead is nearly
+  free; control (the sequencer FSM) is essentially free.
+**Why it matters:** The numbers quantify a boundary that was previously only documented qualitatively:
+the flop-array `operand_mem` (8,192 enable-DFFs) costs almost as much as the entire 64-PE compute array.
+The operand-memory entry already flagged "a synchronous SRAM is a drop-in for synthesis" — this is the
+measured justification: an SRAM macro would collapse that 42.5% dramatically. That swap (plus real
+OpenSTA timing) is exactly the OpenLane-step agenda. A 2x2 mesh comes out around ~3 mm^2 in sky130 HD
+at this stage — comfortably plausible silicon.
+
 ### 2026-07-19 — GO + RESULT flits: the tile's whole life cycle rides the network
 
 **Context:** After the 2x2 mesh, the one remaining direct-wire boundary: compute kickoff

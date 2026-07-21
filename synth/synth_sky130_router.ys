@@ -1,0 +1,14 @@
+# synth/synth_sky130_router.ys -- map rtl/router.v (single 2D-mesh NoC router,
+# at the noc_node flit width PW = 136 = type+operand payload) onto
+# sky130_fd_sc_hd for the NoC's per-node area overhead. Run from the repo
+# root after ./synth/fetch_sky130.sh:
+#
+#   yosys synth/synth_sky130_router.ys
+read_liberty -lib synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+read_verilog rtl/router.v
+chparam -set PW 136 router
+synth -top router
+dfflibmap -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+abc -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib -D 10000
+clean
+tee -o synth/reports/router_sky130.log stat -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
