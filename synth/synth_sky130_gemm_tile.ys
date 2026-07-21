@@ -1,0 +1,22 @@
+# synth/synth_sky130_gemm_tile.ys -- map the full self-sequencing tile
+# (rtl/gemm_tile.v: operand_mem + gemm_sequencer + skew_feeder + 8x8 array)
+# onto real sky130_fd_sc_hd standard cells for real area/timing numbers.
+# Run from the repo root after ./synth/fetch_sky130.sh:
+#
+#   yosys synth/synth_sky130_gemm_tile.ys
+#
+# Expect this to take a while (the generic pass already showed ~58k cells for
+# the bare array; the tile adds memory + control). abc -D 10000 targets 10 ns.
+read_liberty -lib synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+read_verilog rtl/pe.v
+read_verilog rtl/systolic_array.v
+read_verilog rtl/skew_feeder.v
+read_verilog rtl/tile.v
+read_verilog rtl/operand_mem.v
+read_verilog rtl/gemm_sequencer.v
+read_verilog rtl/gemm_tile.v
+synth -top gemm_tile
+dfflibmap -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+abc -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib -D 10000
+clean
+tee -o synth/reports/gemm_tile_sky130.log stat -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib

@@ -1,0 +1,17 @@
+# synth/synth_sky130_pe.ys -- map rtl/pe.v onto real sky130_fd_sc_hd standard
+# cells (typical corner, 25C, 1.80V) for real area (um^2) and a first-order
+# delay estimate. Run from the repo root after ./synth/fetch_sky130.sh:
+#
+#   yosys synth/synth_sky130_pe.ys
+#
+# abc's -D 10000 sets a 10 ns (100 MHz) mapping target in ps; abc prints its
+# achieved delay estimate. Proper multi-corner STA (OpenSTA) comes with the
+# OpenLane flow -- this pass turns the Phase 2 generic gate counts into
+# physical numbers.
+read_liberty -lib synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+read_verilog rtl/pe.v
+synth -top pe
+dfflibmap -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+abc -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib -D 10000
+clean
+tee -o synth/reports/pe_sky130.log stat -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
