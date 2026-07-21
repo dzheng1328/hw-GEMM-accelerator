@@ -19,6 +19,36 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — GO + RESULT flits: the tile's whole life cycle rides the network
+
+**Context:** After the 2x2 mesh, the one remaining direct-wire boundary: compute kickoff
+(`start`/`k_chunks`) and result readout (`acc_out`) bypassed the NoC. Real accelerators send commands and
+results over the fabric too.
+**Options considered:** *Typing:* add a 2-bit flit type field ({type, payload, dest}) vs separate
+physical channels per traffic class. *Result granularity:* one accumulator cell per flit (64 flits/tile,
+42 payload bits used) vs packing 3-4 cells per flit. *Return addressing:* bake the host address into the
+GO payload (a descriptor with a return address) vs a global "host" parameter. *Compatibility:* replace
+the direct wires vs keep both paths.
+**Decision:** 2-bit type field (OPERAND=0 keeps old operand flits numerically identical — `tb/noc/`
+passed unchanged), one cell per RESULT flit, return address in the GO descriptor
+(`payload[7:0] = {ret_y, ret_x, k_chunks}`), direct wires kept functional alongside. In `noc_node.v`: a
+GO delivery pulses the tile's start (registered) and arms a result-return engine
+(idle→wait-fall→wait-rise→stream) that, when the level-held `done` next rises, streams all 64
+accumulator cells as RESULT flits (`{src_y, src_x, idx, acc32}`) to the return address, muxed into the
+router's LOCAL input with priority over external injection (injection held off via ready — bounded, ~64
+cycles). RESULT deliveries surface on host-side `res_*` ports (`res00_*` on the mesh).
+**Why:** The type field costs 2 bits and lets one network carry all three traffic classes — separate
+channels are a virtual-channel-scale complication nothing here needs. One-cell RESULT flits keep the
+engine a counter instead of a packer. The GO-as-descriptor mirrors how DMA engines actually work and
+makes the return path self-describing. The ordering guarantee that makes load-then-GO safe is structural,
+not lucky: XY routing is single-path per source-destination pair and every link is a FIFO, so a GO sent
+after its operands can never overtake them. `tb/mesh/test_fully_packetized_load_go_result` proves the
+whole loop with zero direct control wires: node (0,0) injects operands + GO descriptors for all three
+remote tiles and just listens; each tile self-starts, computes, and streams results back — three 64-flit
+streams converging on the host corner — and all three 8x8 results, reassembled purely from delivered
+flits, match NumPy bit-exactly. The wait-fall-then-wait-rise arming handles `done` being level-held from
+a previous run (a rising-edge-only design would fire early on an already-done tile).
+
 ### 2026-07-19 — 2x2 mesh (`noc_mesh2x2.v`): the Phase 2 NoC deliverable complete
 
 **Context:** The 1x2 pair (below) proved registered multi-hop delivery into live tiles, but two mesh-level

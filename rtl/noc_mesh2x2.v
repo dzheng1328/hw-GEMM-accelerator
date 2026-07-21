@@ -31,7 +31,8 @@ module noc_mesh2x2 #(
     parameter AW   = 2,
     parameter ADDRW = 6,
     parameter PW    = ADDRW + 16*N,
-    parameter FW    = PW + 2*AW
+    parameter TW    = 2,               // flit type field (see noc_node.v)
+    parameter FW    = TW + PW + 2*AW
 ) (
     input  wire                     clk,
     input  wire                     rst,
@@ -43,6 +44,14 @@ module noc_mesh2x2 #(
     input  wire                     inj11_valid,
     input  wire [FW-1:0]            inj11_flit,
     output wire                     inj11_ready,
+
+    // RESULT flits delivered at node (0,0) -- the "host" corner. One flit per
+    // cycle: {source tile coords, accumulator index, 32-bit value}.
+    output wire                     res00_valid,
+    output wire [AW-1:0]            res00_src_x,
+    output wire [AW-1:0]            res00_src_y,
+    output wire [5:0]               res00_idx,
+    output wire [31:0]              res00_acc,
 
     // Per-tile compute handshake + results.
     input  wire                     start_00, start_10, start_01, start_11,
@@ -73,6 +82,8 @@ module noc_mesh2x2 #(
         .s_out_valid(), .s_out_flit(), .s_out_ready(1'b1),
         .w_in_valid(1'b0), .w_in_flit({FW{1'b0}}), .w_in_ready(),
         .w_out_valid(), .w_out_flit(), .w_out_ready(1'b1),
+        .res_valid(res00_valid), .res_src_x(res00_src_x), .res_src_y(res00_src_y),
+        .res_idx(res00_idx), .res_acc(res00_acc),
         .start(start_00), .k_chunks(k_chunks_00),
         .busy(busy_00), .done(done_00), .acc_out(acc_out_00)
     );

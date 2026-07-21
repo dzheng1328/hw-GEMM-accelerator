@@ -51,9 +51,12 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
   straight into `operand_mem`'s write port), `rtl/noc_pair.v` (two nodes over one east-west link,
   `tb/noc/`), and `rtl/noc_mesh2x2.v` (the full deliverable: four tiles in a 2x2 mesh, `tb/mesh/` —
   X-then-Y corner turns, concurrent cross-traffic from two corner injectors, converging-stream arbitration
-  at a shared LOCAL port, all proven by bit-exact matmuls on every tile). Deliberately unpacketized
-  (possible future card): GO-command and result-return flits (start/`done`/`acc_out` are direct wires).
-  See `docs/decisions.md`, 2026-07-19.
+  at a shared LOCAL port, all proven by bit-exact matmuls on every tile). Fully packetized: flits carry a
+  2-bit type (OPERAND / GO / RESULT) — a GO descriptor (`{ret_y, ret_x, k_chunks}`) self-starts the tile,
+  and a result-return engine in `noc_node` streams all 64 accumulator cells back to the GO's return
+  address as RESULT flits (host-side `res00_*` ports on the mesh). The whole load→compute→collect loop
+  runs with zero direct control wires (`tb/mesh/test_fully_packetized_load_go_result`); the direct
+  start/`done`/`acc_out` ports remain functional alongside. See `docs/decisions.md`, 2026-07-19.
 
 ## What this is
 
