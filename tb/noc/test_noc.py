@@ -29,7 +29,8 @@ KMAX = 8
 AW = 2
 ADDRW = 6
 PW = ADDRW + 16 * N          # {wr_addr, wr_a_col, wr_b_row} = 134
-FW = PW + 2 * AW             # 138
+TW = 2                       # flit type field; OPERAND=0, so these flits' numeric values are unchanged
+FW = TW + PW + 2 * AW        # 140
 NOC_RANDOM_SEED = 0x0C1128
 DONE_TIMEOUT_CYCLES = 8 * (3 * N - 2) * KMAX
 DRAIN_CYCLES = 40            # generous: 32 flits + 2 hops + buffering
