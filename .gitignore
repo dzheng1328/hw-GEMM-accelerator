@@ -30,3 +30,6 @@ model/.mnist_cache/
 .DS_Store
 .vscode/
 *.swp
+
+# Third-party PDK data (fetched by synth/fetch_sky130.sh, never committed)
+synth/lib/
