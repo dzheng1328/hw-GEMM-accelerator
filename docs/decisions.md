@@ -19,6 +19,30 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-07-19 — 2x2 mesh (`noc_mesh2x2.v`): the Phase 2 NoC deliverable complete
+
+**Context:** The 1x2 pair (below) proved registered multi-hop delivery into live tiles, but two mesh-level
+claims only exist once there's an actual mesh: XY routing's X-then-Y corner turn (a line has no turns), and
+arbitration/deadlock behaviour under *crossing* and *converging* traffic from multiple sources.
+**Options considered:** (1) Wire 4 `noc_node`s into a 2x2 with two diagonal injection points. (2) A
+generic parameterized NxM mesh generator. (3) Single injector at one corner only.
+**Decision:** Option 1. `rtl/noc_mesh2x2.v` instantiates four unmodified `noc_node`s — (0,0), (1,0),
+(0,1), (1,1) — with eight directed link channels, injection at the (0,0) and (1,1) corners, and the same
+direct-wire compute handshake boundary as the pair. No new leaf RTL: the node was already four-direction
+mesh-ready, so the mesh is instantiation + wiring, exactly as predicted in the pair entry.
+**Why:** 2x2 is the smallest topology where the remaining claims are testable, and two diagonal injectors
+are what make the interesting traffic patterns possible. `tb/mesh/test_mesh.py`: (1) one injector reaches
+all four tiles — self, east, north, and the (1,1) corner via the X-then-Y turn at router (1,0) — all four
+matmuls bit-exact; (2) both corners inject concurrently, streams crossing the mesh in opposite directions,
+with tile (1,1)'s operand set deliberately split across the two sources (chunk 0 from (0,0) via the turn
+path, chunk 1 self-injected at (1,1)) so router (1,1)'s LOCAL output arbitrates two converging streams —
+round-robin at mesh level. Both tests end in bit-exact compute, so a lost/duplicated/stalled/misrouted
+flit anywhere fails. Deadlock-freedom rests on XY routing's provable cycle-freedom + the registered
+`flit_buf` links, backed empirically by the concurrent-traffic test. A generic NxM generator was rejected
+as speculative generality — no card asks for >2x2, and the 2x2 is the honest deliverable. This closes both
+the "Connect multiple tiles via the NoC" and "Verify routing + arbitration" cards; still deliberately
+unpacketized (possible future card): GO-command and result-return flits.
+
 ### 2026-07-19 — Two tiles over the NoC (`noc_pair.v`): registered link buffers, operands as routed packets
 
 **Context:** The "Connect multiple tiles via the NoC" card. The standalone router (below) was verified in
