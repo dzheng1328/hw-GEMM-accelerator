@@ -26,7 +26,8 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
 `model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
 
-**Phase 2 is in progress (started 2026-07-15).** Three strands:
+**Phase 2 is complete (2026-07-19); Phase 3 has started (sky130 synthesis first, then OpenLane).**
+Phase 2's three strands, all landed:
 
 - *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
   `pe.v`/`systolic_array.v` to generic gates with zero errors; gate counts in `synth/reports/`. Real
