@@ -95,6 +95,13 @@ pip install -r requirements.txt
 classified end-to-end by the simulated hardware, alongside the true labels and the original trained
 model's own predictions.
 
+[`demo/draw_demo.html`](demo/draw_demo.html) — **draw a digit yourself** and watch the network classify
+it live, with per-digit confidence. Fully standalone (double-click to open, no server): it replicates the
+exact int8 datapath proven bit-exact against the RTL — same frozen weights, same quantization math, same
+round-half-to-even — and self-tests on load against the 8 hardware-verified reference predictions
+(reproducing the model's known 5→4 miss, faithfully). Weights are baked in by
+[`model/export_demo_weights.py`](model/export_demo_weights.py).
+
 The quantized model reaches **94.82% accuracy on the full 10,000-image MNIST test set** (vs. 94.85% for
 the original float model, before quantization) — see [`model/evaluate_quantized.py`](model/evaluate_quantized.py),
 which replicates the exact int8 datapath already proven bit-exact against the hardware tile in
