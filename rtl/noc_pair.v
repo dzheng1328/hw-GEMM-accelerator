@@ -19,7 +19,8 @@ module noc_pair #(
     parameter AW   = 2,
     parameter ADDRW = 6,
     parameter PW    = ADDRW + 16*N,
-    parameter FW    = PW + 2*AW
+    parameter TW    = 2,               // flit type field (see noc_node.v)
+    parameter FW    = TW + PW + 2*AW
 ) (
     input  wire                     clk,
     input  wire                     rst,
