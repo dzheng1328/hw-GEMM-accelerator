@@ -14,13 +14,13 @@ port-representation reasoning). `model/` now has a real, trained, quantized MNIS
 — tiling each layer's matmul into repeated 8x8x8 waves (see `docs/decisions.md` for the tiling/
 quantization scheme), checking hardware output against a NumPy reference bit-exactly, and reporting
 classification accuracy against both true labels and the original float model. Run the full test suite
-(`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`, `tb/router/`, `tb/noc/`, `tb/mnist/`) with:
+(`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`, `tb/router/`, `tb/noc/`, `tb/mesh/`, `tb/mnist/`) with:
 
 ```
 ./test.sh
 ```
 
-(equivalent to running `make` in each of those seven directories, but works from any directory/shell
+(equivalent to running `make` in each of those eight directories, but works from any directory/shell
 state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if modifying it).
 
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
@@ -42,17 +42,18 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
   loads→computes→reads a full tiled GEMM through realistic ports (`tb/gemm/`: tiled GEMM for K=1,2,3,4,8 vs
   NumPy loaded through the write port, plus a back-to-back-N-block reset test). Still caller-side / out of
   scope: requantization (no datapath in `pe.v`). See `docs/decisions.md`, the three 2026-07-19 entries.
-- *NoC (in progress, 2026-07-19):* `rtl/router.v` is a single 2D-mesh router — 5 ports (Local/N/E/S/W), XY
+- *NoC (complete, 2026-07-19):* `rtl/router.v` is a single 2D-mesh router — 5 ports (Local/N/E/S/W), XY
   dimension-order routing, per-output round-robin arbitration, valid/ready backpressure, combinational
   single-cycle crossbar (`tb/router/`). Coordinates are input ports (`my_x`/`my_y`), not parameters — see
-  the parameter-vs-cocotb gotcha in `docs/learnings.md`. Multi-tile integration now exists too:
-  `rtl/flit_buf.v` (2-deep registered skid FIFO per mesh-side router input — breaks the combinational
-  cycles a raw crossbar mesh would form), `rtl/noc_node.v` (router + buffers + `gemm_tile`, LOCAL port
-  delivering flit payloads straight into `operand_mem`'s write port), and `rtl/noc_pair.v` (two nodes over
-  one east-west link). `tb/noc/` proves routed multi-hop operand delivery end-to-end: flits injected at one
-  node fill both tiles' memories (self + multi-hop), both matmuls bit-exact vs NumPy. Deferred: GO-command
-  and result-return flits (start/`done`/`acc_out` are direct wires), and widening 1x2 → 2x2 (`noc_node` is
-  already four-direction mesh-ready). See `docs/decisions.md`, 2026-07-19.
+  the parameter-vs-cocotb gotcha in `docs/learnings.md`. Multi-tile integration: `rtl/flit_buf.v` (2-deep
+  registered skid FIFO per mesh-side router input — breaks the combinational cycles a raw crossbar mesh
+  would form), `rtl/noc_node.v` (router + buffers + `gemm_tile`, LOCAL port delivering flit payloads
+  straight into `operand_mem`'s write port), `rtl/noc_pair.v` (two nodes over one east-west link,
+  `tb/noc/`), and `rtl/noc_mesh2x2.v` (the full deliverable: four tiles in a 2x2 mesh, `tb/mesh/` —
+  X-then-Y corner turns, concurrent cross-traffic from two corner injectors, converging-stream arbitration
+  at a shared LOCAL port, all proven by bit-exact matmuls on every tile). Deliberately unpacketized
+  (possible future card): GO-command and result-return flits (start/`done`/`acc_out` are direct wires).
+  See `docs/decisions.md`, 2026-07-19.
 
 ## What this is
 
