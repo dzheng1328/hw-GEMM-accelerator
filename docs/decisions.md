@@ -35,15 +35,18 @@ tt/25C/1.80V corner, 100MHz / 10ns target -- same corner and clock as the Yosys 
 numbers). Real results (`openlane/pe/reports/summary.md`):
 - **DRC: 0 violations** (Magic + KLayout), **LVS: 0 mismatches** ("Circuits match uniquely"), **0 antenna
   violations**. Clean GDSII streamout (`pe.gds`).
-- **Timing MET at the target tt/25C/1.80V corner** (WNS = 0 ns). Across the full multi-corner PVT
-  sign-off sweep, worst-case setup slack is **-3.20 ns** at the pessimistic `max_ss_100C_1v60` corner
-  (slow process / 100C / 1.60V) -- hold timing is clean at every corner.
+- **Timing MET at the target tt/25C/1.80V corner with +2.19 ns of real setup margin** (worst of the
+  three tt corners; +2.25 ns nom, +2.32 ns min) on the 10 ns period -- taken from OpenSTA's per-corner
+  slack, not OpenLane's `timing__setup__wns` metric, which clamps to 0 ns whenever nothing violates.
+  Across the full multi-corner PVT sign-off sweep, worst-case setup slack is **-3.20 ns** at the
+  pessimistic `max_ss_100C_1v60` corner (slow process / 100C / 1.60V), with 7 max-slew violations at each
+  slow corner -- hold timing and max-cap are clean at every corner.
 - **Area: 10,681.5 um^2** instance (standalone-cell) area, in a 21,620.7 um^2 core / 26,787 um^2 die --
   larger than the Yosys pass's 6,209.7 um^2 pre-P&R estimate, as expected: real placement/routing
   overhead, clock tree buffering, and the resizer's automatic timing-repair cell insertions aren't visible
   to a synthesis-only pass.
 **Why it matters:** This is the first real GDSII and the first real STA number in the repo -- the
-Yosys area estimate is now backed by an actual sign-off-quality P&R run. The tt/25C/1.80V corner (the
+Yosys area estimate is now backed by an actual full-flow P&R run. The tt/25C/1.80V corner (the
 one the Command Center's numbers should be compared against) meets timing cleanly; the negative slack
 only shows up at the deliberately pessimistic slow/hot/low-voltage corner, which is exactly what a real
 multi-corner sign-off is supposed to surface and is not a red flag for the nominal-condition design intent.

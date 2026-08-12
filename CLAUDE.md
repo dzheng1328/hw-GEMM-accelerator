@@ -67,9 +67,10 @@ Phase 3's first physical-design strands, both landed:
 - *OpenLane 2 place & route for `pe.v` (2026-08-12, done):* the first real GDSII and real OpenSTA slack
   number in the repo. `openlane/pe/config.json` + `openlane/run_pe.sh` drive OpenLane 2.3.10 via its
   Docker backend against sky130A/`sky130_fd_sc_hd`, same tt/25C/1.80V corner and 100MHz/10ns target as the
-  Yosys pass. Clean DRC (0) and LVS (0 mismatches), timing MET at the target corner (worst-case setup
-  slack -3.20ns only at the deliberately pessimistic `max_ss_100C_1v60` sign-off corner). Real numbers and
-  the two tooling snags hit along the way are in `openlane/pe/reports/summary.md`, `docs/decisions.md`,
+  Yosys pass. Clean DRC (0) and LVS (0 mismatches), timing MET at the target corner with +2.19ns of real
+  setup margin (worst-case across the full multi-corner sign-off sweep is -3.20ns, only at the
+  deliberately pessimistic `max_ss_100C_1v60` corner). Real numbers and the two tooling snags hit along
+  the way are in `openlane/pe/reports/summary.md`, `docs/decisions.md`,
   and `docs/learnings.md`. `gemm_tile`/`router` P&R stays a separate future card.
 
 ## What this is
