@@ -20,6 +20,7 @@ venv/
 # Yosys / OpenLane outputs
 *.json
 !config/*.json
+!openlane/**/config.json
 runs/
 
 # Model training artifacts (frozen model/mnist_quantized.npz IS committed)

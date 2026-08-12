@@ -1,0 +1,6 @@
+{
+  "DESIGN_NAME": "pe",
+  "VERILOG_FILES": "dir::../../rtl/pe.v",
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 10
+}
