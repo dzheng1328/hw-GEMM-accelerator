@@ -26,7 +26,8 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
 `model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
 
-**Phase 2 is complete (2026-07-19); Phase 3 has started (sky130 synthesis first, then OpenLane).**
+**Phase 2 is complete (2026-07-19); Phase 3 is in progress (sky130 Yosys synthesis done, OpenLane 2
+P&R for `pe.v` done, `gemm_tile`/`router` P&R still to come).**
 Phase 2's three strands, all landed:
 
 - *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
@@ -58,6 +59,18 @@ Phase 2's three strands, all landed:
   address as RESULT flits (host-side `res00_*` ports on the mesh). The whole load→compute→collect loop
   runs with zero direct control wires (`tb/mesh/test_fully_packetized_load_go_result`); the direct
   start/`done`/`acc_out` ports remain functional alongside. See `docs/decisions.md`, 2026-07-19.
+
+Phase 3's first physical-design strands, both landed:
+
+- *sky130 Yosys synthesis (2026-07-19):* area-only real numbers for `pe`, `gemm_tile`, and `router`
+  against the sky130hd standard-cell library — see `synth/reports/`, `docs/decisions.md`.
+- *OpenLane 2 place & route for `pe.v` (2026-08-12, done):* the first real GDSII and real OpenSTA slack
+  number in the repo. `openlane/pe/config.json` + `openlane/run_pe.sh` drive OpenLane 2.3.10 via its
+  Docker backend against sky130A/`sky130_fd_sc_hd`, same tt/25C/1.80V corner and 100MHz/10ns target as the
+  Yosys pass. Clean DRC (0) and LVS (0 mismatches), timing MET at the target corner (worst-case setup
+  slack -3.20ns only at the deliberately pessimistic `max_ss_100C_1v60` sign-off corner). Real numbers and
+  the two tooling snags hit along the way are in `openlane/pe/reports/summary.md`, `docs/decisions.md`,
+  and `docs/learnings.md`. `gemm_tile`/`router` P&R stays a separate future card.
 
 ## What this is
 

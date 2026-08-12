@@ -19,6 +19,39 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-08-12 — First OpenLane 2 run: real P&R numbers for `pe.v`
+
+**Context:** The Yosys sky130 pass (2026-07-19) was honestly area-only -- no real STA. This card runs
+`rtl/pe.v` through OpenLane 2's full place-and-route flow to get a real GDSII and a real OpenSTA slack
+number, the "Timing closure pass" Task Board card.
+**Options considered:** *Flow version:* OpenLane 2 (Python-based, actively maintained, the flow Tiny
+Tapeout points submitters toward) vs classic OpenLane. *Install method:* OpenLane 2's `--dockerized` mode
+(pulls `ghcr.io/efabless/openlane2:2.3.10`) vs a native Nix install -- Docker keeps the existing Docker
+Desktop dependency the Command Center already anticipated and avoids adding a second toolchain manager
+alongside the project's existing Python venv convention. *Scope:* `rtl/pe.v` only this pass --
+`gemm_tile`/`router` P&R stays a separate future card, same reasoning as the Yosys pass.
+**Decision:** OpenLane 2.3.10, Docker backend, `openlane/pe/config.json` (sky130A / `sky130_fd_sc_hd`,
+tt/25C/1.80V corner, 100MHz / 10ns target -- same corner and clock as the Yosys pass, for comparable
+numbers). Real results (`openlane/pe/reports/summary.md`):
+- **DRC: 0 violations** (Magic + KLayout), **LVS: 0 mismatches** ("Circuits match uniquely"), **0 antenna
+  violations**. Clean GDSII streamout (`pe.gds`).
+- **Timing MET at the target tt/25C/1.80V corner** (WNS = 0 ns). Across the full multi-corner PVT
+  sign-off sweep, worst-case setup slack is **-3.20 ns** at the pessimistic `max_ss_100C_1v60` corner
+  (slow process / 100C / 1.60V) -- hold timing is clean at every corner.
+- **Area: 10,681.5 um^2** instance (standalone-cell) area, in a 21,620.7 um^2 core / 26,787 um^2 die --
+  larger than the Yosys pass's 6,209.7 um^2 pre-P&R estimate, as expected: real placement/routing
+  overhead, clock tree buffering, and the resizer's automatic timing-repair cell insertions aren't visible
+  to a synthesis-only pass.
+**Why it matters:** This is the first real GDSII and the first real STA number in the repo -- the
+Yosys area estimate is now backed by an actual sign-off-quality P&R run. The tt/25C/1.80V corner (the
+one the Command Center's numbers should be compared against) meets timing cleanly; the negative slack
+only shows up at the deliberately pessimistic slow/hot/low-voltage corner, which is exactly what a real
+multi-corner sign-off is supposed to surface and is not a red flag for the nominal-condition design intent.
+Two real tooling snags were hit and fixed along the way (see `docs/learnings.md`): the project's `.venv`
+had to move from Python 3.14 (which can't build `cocotb`) to Python 3.12 so `cocotb` and `openlane`
+coexist, and OpenLane's `--dockerized` mode needed `--docker-no-tty` to run without a controlling
+terminal (e.g. under `nohup`/background execution).
+
 ### 2026-07-19 — Phase 3 kickoff: real sky130 area numbers (and what they revealed)
 
 **Context:** Phase 2's Yosys card was parked "In progress" pending real physical numbers. Phase 3 starts
