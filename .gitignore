@@ -20,6 +20,7 @@ venv/
 # Yosys / OpenLane outputs
 *.json
 !config/*.json
+!openlane/**/config.json
 runs/
 
 # Model training artifacts (frozen model/mnist_quantized.npz IS committed)
@@ -33,3 +34,6 @@ model/.mnist_cache/
 
 # Third-party PDK data (fetched by synth/fetch_sky130.sh, never committed)
 synth/lib/
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/

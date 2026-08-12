@@ -24,6 +24,35 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-08-12 — First OpenLane run: two real environment/tooling failures before a clean flow
+
+**Phase:** Phase 3
+**Problem:** Two separate failures before `./openlane/run_pe.sh` completed. (1) After installing
+`openlane`, the project's `.venv` was silently missing `cocotb` -- the entire existing test suite
+(`./test.sh`) was broken. (2) The first two attempts to actually run the flow died with no error in the
+log at all -- processes just vanished partway through a Docker image pull.
+**Cause:** (1) The only Python available via Homebrew on this machine was 3.14; `cocotb` (pinned
+`cocotb>=1.8,<2.0`) can't build its C extension on Python 3.14, so `pip install -r requirements.txt`
+silently left it uninstalled while `openlane`/`torch`/`numpy` installed fine -- nothing errored, so the
+gap was easy to miss. (2) Both dead runs were launched from inside a dispatched subagent's own background
+shell; when that subagent's session ended (its own "no progress" watchdog fired once, after it had armed
+a Monitor and returned control), the harness tore down its whole process group -- silently killing the
+detached `docker pull`/`openlane` processes it had spawned, with no error surfaced anywhere. Separately,
+once run directly (not through a subagent), a *third* failure surfaced: OpenLane's `--dockerized` mode
+defaults `docker_tty=True`, passing `-t` to `docker run`, which fails immediately ("the input device is
+not a TTY") when there's no controlling terminal -- true for any background/`nohup` run -- so the earlier
+subagent-launched attempts may have died for this reason too, independent of the process-teardown issue.
+**Fix:** (1) Installed `python@3.12` via Homebrew and recreated `.venv` on it -- both `cocotb` (1.9.2) and
+`openlane` (2.3.10) install cleanly with prebuilt wheels, no from-source workarounds needed. (2) Launched
+the actual flow directly from the controlling session's own `run_in_background` Bash call instead of
+through a subagent, so it isn't tied to a subagent's lifecycle. (3) Added `--docker-no-tty` before
+`--dockerized` in `openlane/run_pe.sh` (confirmed via `openlane/__main__.py` source: the flag must precede
+`--dockerized` and controls exactly this).
+**Takeaway:** A `pip install` that "succeeds" can still silently drop a package that fails to build on the
+active Python version -- always verify every expected import after a dependency install, not just the new
+one. And any long-running process you need to outlive a single turn belongs in the controlling session's
+own background job, not inside a dispatched subagent whose own lifecycle (and watchdog) you don't control.
+
 ### 2026-07-19 — A Verilog parameter default silently diverged from the cocotb testbench (router all-routed-to-LOCAL)
 
 **Phase:** Phase 2
