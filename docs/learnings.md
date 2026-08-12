@@ -24,6 +24,31 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-08-12 -- A negative timing slack wasn't fixed by guessing SDC knobs -- it took reading the actual critical path
+
+**Phase:** Phase 3
+**Problem:** `pe.v` failed setup timing (-3.20ns worst-case) at the pessimistic `max_ss_100C_1v60`
+sign-off corner. It would have been easy to try random OpenLane config knobs (`IO_DELAY_CONSTRAINT`,
+`PL_RESIZER_*`, `SYNTH_STRATEGY`, etc.) until a metric looked better -- exactly the "Connect-4
+trial-and-error" pattern the Task Board card explicitly warned against repeating.
+**Cause:** Reading `openlane/pe/runs/.../54-openroad-stapostpnr/max_ss_100C_1v60/max.rpt` (the actual
+OpenSTA critical-path report, not just the aggregate `metrics.json` slack number) showed every violating
+path starts at `b_in` (specifically bits 1 and 3) and runs through ~25 combinational standard-cell stages
+-- the PE's multiply-accumulate logic itself, not routing or placement. That immediately ruled out an
+entire class of P&R-level fixes (placement tuning, routing congestion relief) and pointed at two specific,
+testable causes: the SDC's generic input-delay assumption, and the RTL's single-cycle datapath length.
+**Fix:** Tested each cause as an isolated, single-variable hypothesis rather than changing several things
+at once. Halving `IO_DELAY_CONSTRAINT` (20% -> 10%) recovered slack by almost exactly the 1ns of margin
+that change should mathematically free up (-3.20ns -> -2.21ns, 0.99ns actually recovered) -- close enough
+to confirm it wasn't a coincidence. Pushing that same knob to its logical extreme (0%) only recovered to
+-1.38ns and was still a violation, which is what proved the remaining gap is a real RTL/microarchitecture
+limit (the unpipelined MAC), not something any SDC tuning could hide.
+**Takeaway:** When a metric is bad, read the tool's own root-cause report (the critical path, the actual
+error, the actual log line) before touching any config -- it usually tells you which category of fix even
+applies. Then test config hypotheses one variable at a time and push to a boundary case when unsure: a
+boundary test that still fails is often the cleanest possible proof that further tuning is a dead end and
+the real fix is elsewhere (here, in the RTL, not the flow).
+
 ### 2026-08-12 — First OpenLane run: two real environment/tooling failures before a clean flow
 
 **Phase:** Phase 3
