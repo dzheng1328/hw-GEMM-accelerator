@@ -19,6 +19,38 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-08-12 -- Timing closure pass: real root cause, partial fix, honest limit
+
+**Context:** The pe.v OpenLane P&R run closed timing at the target tt/25C/1.80V corner (+2.19ns) but
+left -3.20ns of worst-case setup slack at the pessimistic `max_ss_100C_1v60` sign-off corner -- the
+Task Board's "Timing closure pass" card, whose own note said to "diagnose the critical path properly
+this time" rather than trial-and-error.
+**Options considered:** *Where to look:* trust the aggregate metric vs read the actual OpenSTA
+critical-path report. Reading `54-openroad-stapostpnr/max_ss_100C_1v60/max.rpt` showed every violating
+path starts at `a_in`/`b_in` and runs through ~20 standard-cell stages of the PE's combinational
+multiply-accumulate logic (the 8x8 multiplier tree + 16-bit adder) -- not a placement or routing
+artifact. *Two competing hypotheses for the -3.20ns gap:* (1) OpenLane's default SDC
+`IO_DELAY_CONSTRAINT` (20% of the clock period, 2ns) is a generic macro-boundary assumption that doesn't
+match `pe.v`'s real usage -- its inputs are driven directly by a neighbor PE's own registered forwarding
+outputs in the array, not some worst-case external driver. (2) The single-cycle, unpipelined MAC
+datapath is simply too long for 100MHz at the worst-case PVT corner, independent of SDC tuning.
+**Decision:** Tested both by changing one variable at a time. Halving `IO_DELAY_CONSTRAINT` to 10%
+recovered slack from -3.20ns to -2.21ns -- an exact 1:1 match confirming hypothesis (1) is real. Testing
+the extreme boundary (`IO_DELAY_CONSTRAINT: 0`, the most optimistic assumption possible) only recovered
+to -1.38ns -- still violating, confirming hypothesis (2) is also real and is the harder limit: roughly
+1.2-1.4ns of the shortfall cannot be tuned away by any SDC change. Landed `IO_DELAY_CONSTRAINT: 10` as a
+real, justified fix (not an arbitrary knob-turn -- it reflects the design's actual usage context) and
+documented the remaining gap rather than force-closing it with an unrealistic 0% assumption. Full closure
+requires pipelining `pe.v`'s multiply-accumulate datapath, a genuine RTL/architecture change that ripples
+into `systolic_array.v`'s single-cycle dataflow model project-wide -- scoped as a separate future card, a
+decision made with the user rather than unilaterally rewriting the RTL.
+**Why it matters:** This is what "diagnose the critical path properly" means in practice: read the actual
+timing report, form a specific hypothesis, test it with a single-variable change, and let the evidence
+say when a config fix is exhausted and an architecture change is the only path left, rather than guessing
+at knobs until a number looks better. -2.21ns worst-case setup slack (down from -3.20ns) is now the
+honest, documented state of `pe.v` at the pessimistic sign-off corner. See
+`openlane/pe/reports/summary.md` for full numbers.
+
 ### 2026-08-12 — First OpenLane 2 run: real P&R numbers for `pe.v`
 
 **Context:** The Yosys sky130 pass (2026-07-19) was honestly area-only -- no real STA. This card runs
