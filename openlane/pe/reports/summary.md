@@ -33,11 +33,14 @@ The first P&R run (`RUN_2026-08-12_13-56-15`, superseded above) closed timing at
 corner (+2.19 ns) but left -3.20 ns of worst-case setup slack at the pessimistic `max_ss_100C_1v60`
 sign-off corner. Root-cause investigation (reading the actual OpenSTA critical-path report, not guessing):
 
-- **Every violating path starts at `a_in`/`b_in` and runs straight through the PE's combinational
-  multiply-accumulate logic** (~20 standard-cell stages: the 8x8 signed multiplier tree feeding the
-  16-bit accumulate adder) to the accumulator flops. This is inherent to `pe.v`'s architecture: a
-  single-cycle, unpipelined MAC. The path already nearly fills the clock period at typical conditions and
-  overflows it under slow/hot/low-voltage derating.
+- **Every violating path in the original run starts at `b_in` (bits 1 and 3 specifically) and runs
+  straight through the PE's combinational multiply-accumulate logic** (~25 standard-cell stages: the 8x8
+  signed multiplier tree feeding the 16-bit accumulate adder) to the accumulator flops. (After the
+  IO_DELAY_CONSTRAINT fix below, the resizer re-optimizes the design and the remaining violating paths
+  shift to start at `a_in[7]`/`b_in[0]` instead -- different specific bits, same underlying combinational
+  MAC logic.) This is inherent to `pe.v`'s architecture: a single-cycle, unpipelined MAC. The path already
+  nearly fills the clock period at typical conditions and overflows it under slow/hot/low-voltage
+  derating.
 - **A real, fixable contributing factor**: OpenLane's default SDC reserves `IO_DELAY_CONSTRAINT` = 20% of
   the clock period (2 ns on this 10ns clock) as a generic input/output timing margin on every port. That
   default models a macro with unknown external drivers -- but `pe.v`'s `a_in`/`b_in` are actually driven
@@ -45,12 +48,14 @@ sign-off corner. Root-cause investigation (reading the actual OpenSTA critical-p
   so the generic 20% assumption is unrealistically conservative for this design's real usage context.
 
 **Hypothesis testing** (one variable at a time, per the project's debugging process): halving
-`IO_DELAY_CONSTRAINT` to 10% recovered the worst-case slack from -3.20 ns to **-2.21 ns** -- a clean 1:1
-match with the 1 ns of margin reclaimed, confirming the diagnosis. Testing the extreme boundary
-(`IO_DELAY_CONSTRAINT: 0`, the most optimistic assumption possible) recovered further to -1.38 ns --
-**still violating**. This proves the I/O-delay assumption, while a real and worthwhile fix, cannot fully
-close the gap on its own: roughly 1.2-1.4 ns of the shortfall at the pessimistic corner is a genuine
-microarchitectural limit of the current single-cycle PE, independent of any SDC/P&R tuning.
+`IO_DELAY_CONSTRAINT` to 10% recovered the worst-case slack from -3.20 ns to **-2.21 ns** (0.99 ns
+recovered against the 1 ns of margin freed -- close enough to confirm the diagnosis; the small residual is
+P&R re-optimization noise, since the resizer inserts a slightly different number of repair cells per run).
+Testing the extreme boundary (`IO_DELAY_CONSTRAINT: 0`, the most optimistic assumption possible) recovered
+further to -1.38 ns -- **still violating**. This proves the I/O-delay assumption, while a real and
+worthwhile fix, cannot fully close the gap on its own: roughly 1.2-1.4 ns of the shortfall at the
+pessimistic corner is a genuine microarchitectural limit of the current single-cycle PE, independent of
+any SDC/P&R tuning.
 
 **Decision**: kept `IO_DELAY_CONSTRAINT: 10` (a real, justified improvement, not an arbitrary knob-turn)
 and documented the remaining gap as a known limitation rather than pursue the more aggressive/unrealistic

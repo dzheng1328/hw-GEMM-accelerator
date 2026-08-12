@@ -27,18 +27,20 @@ Task Board's "Timing closure pass" card, whose own note said to "diagnose the cr
 this time" rather than trial-and-error.
 **Options considered:** *Where to look:* trust the aggregate metric vs read the actual OpenSTA
 critical-path report. Reading `54-openroad-stapostpnr/max_ss_100C_1v60/max.rpt` showed every violating
-path starts at `a_in`/`b_in` and runs through ~20 standard-cell stages of the PE's combinational
-multiply-accumulate logic (the 8x8 multiplier tree + 16-bit adder) -- not a placement or routing
-artifact. *Two competing hypotheses for the -3.20ns gap:* (1) OpenLane's default SDC
+path in the original run starts at `b_in` (specifically bits 1 and 3) and runs through ~25 standard-cell
+stages of the PE's combinational multiply-accumulate logic (the 8x8 multiplier tree + 16-bit adder) --
+not a placement or routing artifact. *Two competing hypotheses for the -3.20ns gap:* (1) OpenLane's default SDC
 `IO_DELAY_CONSTRAINT` (20% of the clock period, 2ns) is a generic macro-boundary assumption that doesn't
 match `pe.v`'s real usage -- its inputs are driven directly by a neighbor PE's own registered forwarding
 outputs in the array, not some worst-case external driver. (2) The single-cycle, unpipelined MAC
 datapath is simply too long for 100MHz at the worst-case PVT corner, independent of SDC tuning.
 **Decision:** Tested both by changing one variable at a time. Halving `IO_DELAY_CONSTRAINT` to 10%
-recovered slack from -3.20ns to -2.21ns -- an exact 1:1 match confirming hypothesis (1) is real. Testing
-the extreme boundary (`IO_DELAY_CONSTRAINT: 0`, the most optimistic assumption possible) only recovered
-to -1.38ns -- still violating, confirming hypothesis (2) is also real and is the harder limit: roughly
-1.2-1.4ns of the shortfall cannot be tuned away by any SDC change. Landed `IO_DELAY_CONSTRAINT: 10` as a
+recovered slack from -3.20ns to -2.21ns -- a clean match (0.99ns recovered against the 1ns of margin
+freed) confirming hypothesis (1) is real. Testing the extreme boundary (`IO_DELAY_CONSTRAINT: 0`, the
+most optimistic assumption possible) only recovered to -1.38ns -- still violating, confirming hypothesis
+(2) is also real and is the harder limit: roughly 1.2-1.4ns of the shortfall cannot be tuned away by any
+SDC change. (After the fix, the resizer re-optimizes and the specific violating startpoints shift to
+`a_in[7]`/`b_in[0]` -- different bits, same underlying MAC logic.) Landed `IO_DELAY_CONSTRAINT: 10` as a
 real, justified fix (not an arbitrary knob-turn -- it reflects the design's actual usage context) and
 documented the remaining gap rather than force-closing it with an unrealistic 0% assumption. Full closure
 requires pipelining `pe.v`'s multiply-accumulate datapath, a genuine RTL/architecture change that ripples
