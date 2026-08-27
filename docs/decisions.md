@@ -19,6 +19,46 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-08-27 -- Pipeline `pe.v`'s MAC datapath into 2 stages
+
+**Context:** The 2026-08-12 timing closure pass root-caused the remaining -2.21ns of worst-case setup
+slack at the `max_ss_100C_1v60` corner to `pe.v`'s single-cycle, unpipelined multiply-accumulate
+(~25 combinational stages: the 8x8 signed multiplier tree + 32-bit adder) -- not SDC-tunable, an
+architecture change. Design doc:
+`docs/superpowers/specs/2026-08-27-pipeline-pe-mac-design.md` (issue #25).
+**Options considered:** *A -- 2-stage MAC pipeline, latency expressed as a named constant.* Register the
+multiply result; add into the accumulator on the next cycle. Root-cause data says the multiplier tree is
+most of the 25-stage path, so this recovers the bulk of the slack, and the latency is expressed as one
+constant the sequencer reads to size its drain window, so a deeper future pipeline is a localized change
+rather than a redesign. *B -- pipeline the multiplier tree itself now (3+ stages).* More margin today,
+but real hand-pipelining risk with no concrete future clock target driving the extra work yet. *C --
+pipeline `a_out`/`b_out` forwarding in lockstep with the accumulate pipeline.* Not needed: the critical
+path traced in the 2026-08-12 report never touched the forwarding registers, which are already a separate,
+already-registered always-block structurally independent of the MAC.
+**Decision:** Approach A. Added `ACC_LATENCY = 2` as `pe.v`'s explicit latency contract: `valid_in` to
+that cycle's product landing in `acc_out` now takes 2 cycles (was 1) -- one register stage holds the
+multiply result (`prod_reg`/`pipe_valid`), the accumulate add happens the following cycle. Threaded as
+`parameter PE_ACC_LATENCY = 2` into `gemm_sequencer.v`, which replaced its `DRAIN_CYCLES = 2*N` literal
+with `DRAIN_CYCLES = 2*N + PE_ACC_LATENCY` (provable minimum is `(N-1) + PE_ACC_LATENCY`; `2*N +
+PE_ACC_LATENCY` keeps the same generous slack the original `2*N` had over that minimum) and `gemm_tile.v`
+now passes `PE_ACC_LATENCY` explicitly at instantiation so the dependency between `pe.v`'s real latency and
+the sequencer's drain-window sizing is visible in the code rather than an implicit coincidence between two
+numbers. `rtl/systolic_array.v` and `rtl/skew_feeder.v` needed zero changes -- their skew depths and
+forwarding timing never depended on accumulate latency, confirming the design doc's read that the MAC could
+be pipelined without an array-level ripple. `tb/test_pe.py`, `tb/array/`, `tb/tile/` (which drive the
+hardware directly and wait a fixed cycle count) each needed +1 cycle of drain margin; `tb/gemm/` and
+`tb/mnist/` (which wait on `gemm_sequencer.v`'s `done` handshake rather than a fixed count) needed zero
+changes and passed unchanged -- exactly the regression check the design doc called for, and the actual
+proof that `DRAIN_CYCLES`'s new sizing is correct rather than merely plausible. `tb/router/`, `tb/noc/`,
+`tb/mesh/` also passed unchanged, as expected: they read `acc_out` only after `done`, so they never
+depended on `pe.v`'s internal accumulate latency.
+**Why it matters:** This closes the milestone's design half (issue #25) with the blast radius the design
+doc predicted -- `pe.v` plus one parameter in `gemm_sequencer.v`, not the array/skew_feeder ripple
+originally feared when issue #26 was first scoped. The real ripple turned out to be in cocotb (issue #28),
+and `tb/gemm/`/`tb/mnist/` passing with zero changes is the strongest evidence the drain-window math is
+actually right, not just numerically lucky. Real before/after OpenLane slack numbers at
+`max_ss_100C_1v60` are separate follow-on work, tracked as issue #30 -- not yet run as part of this change.
+
 ### 2026-08-12 -- Timing closure pass: real root cause, partial fix, honest limit
 
 **Context:** The pe.v OpenLane P&R run closed timing at the target tt/25C/1.80V corner (+2.19ns) but
