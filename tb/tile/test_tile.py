@@ -23,11 +23,13 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 N = 8
+ACC_LATENCY = 2  # matches rtl/pe.v's pipelined accumulate latency
 # Feed N real columns/rows, then drain long enough for the deepest lane
-# (delay N-1) plus the array's own 3N-2 latency to fully settle. Generous on
-# purpose -- the accumulators are stationary, so reading late never hurts.
+# (delay N-1) plus the array's own 3N-2 latency plus pe.v's ACC_LATENCY to
+# fully settle. Generous on purpose -- the accumulators are stationary, so
+# reading late never hurts.
 FEED_CYCLES = N
-TOTAL_CYCLES = 4 * N
+TOTAL_CYCLES = 4 * N + (ACC_LATENCY - 1)
 TILE_RANDOM_SEED = 0x715E  # distinct from the PE (0xC0C07B) and array (0xA55A9E) seeds
 TILE_RANDOM_TRIALS = 20
 
