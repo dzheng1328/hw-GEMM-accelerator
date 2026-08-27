@@ -82,6 +82,7 @@ ACCUMULATION_TERMS = [
 
 RANDOM_SEED = 0xC0C07B  # fixed, independent of cocotb's own ambient seed
 RANDOM_ITERATIONS = 200
+ACC_LATENCY = 2
 
 
 @cocotb.test()
@@ -110,9 +111,11 @@ async def test_mac_directed_products(dut):
         dut.valid_in.value = 1
         dut.a_in.value = a
         dut.b_in.value = b
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")  # settle past the NBA update, still allows writes after
+        await RisingEdge(dut.clk)          # pipe_valid<=1, prod_reg<=a*b
+        await Timer(1, units="ns")
         dut.valid_in.value = 0
+        await RisingEdge(dut.clk)          # acc_out <= acc_out + prod_reg (ACC_LATENCY=2)
+        await Timer(1, units="ns")
 
         expected = a * b
         got = dut.acc_out.value.signed_integer
@@ -125,28 +128,42 @@ async def test_mac_directed_products(dut):
 @cocotb.test()
 async def test_mac_running_accumulation(dut):
     """Drive a sequence of terms over consecutive cycles (no reset between
-    them) and check the running acc_out after every single cycle against a
-    NumPy reference model, per the Notion card's 'drive over several cycles'
-    requirement."""
+    them) and check the running acc_out, offset by the pipeline's 2-cycle
+    ACC_LATENCY, against a NumPy reference model."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset_dut(dut)
 
     expected_running = numpy_mac_reference(ACCUMULATION_TERMS)
+    observed = []
+
+    # Prime the pipeline with a reset-settle cycle so observed[k+ACC_LATENCY]
+    # aligns correctly: the k-th input appears at observed[k+ACC_LATENCY].
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    observed.append(dut.acc_out.value.signed_integer)
 
     dut.valid_in.value = 1
-    for (a, b), expected in zip(ACCUMULATION_TERMS, expected_running):
+    for a, b in ACCUMULATION_TERMS:
         dut.a_in.value = a
         dut.b_in.value = b
         await RisingEdge(dut.clk)
-        await Timer(1, units="ns")  # settle past the NBA update, still allows writes after
+        await Timer(1, units="ns")
+        observed.append(dut.acc_out.value.signed_integer)
 
-        got = dut.acc_out.value.signed_integer
-        assert got == expected, (
-            f"after term (a_in={a}, b_in={b}): acc_out={got}, "
-            f"expected {expected} (running total diverged mid-sequence)"
-        )
     dut.valid_in.value = 0
+    for _ in range(ACC_LATENCY):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        observed.append(dut.acc_out.value.signed_integer)
+
+    # acc_out reflects term k only ACC_LATENCY cycles after it's fed.
+    for k, expected in enumerate(expected_running):
+        got = observed[k + ACC_LATENCY]
+        assert got == expected, (
+            f"after term {k} (lagged by ACC_LATENCY={ACC_LATENCY} cycles): "
+            f"acc_out={got}, expected {expected} (running total diverged mid-sequence)"
+        )
 
 
 @cocotb.test()
@@ -160,11 +177,13 @@ async def test_valid_in_gates_accumulation(dut):
     dut.a_in.value = 6
     dut.b_in.value = 7
     await RisingEdge(dut.clk)
-    await Timer(1, units="ns")  # settle past the NBA update, still allows writes after
+    await Timer(1, units="ns")
+    dut.valid_in.value = 0
+    for _ in range(ACC_LATENCY - 1):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
     held_value = dut.acc_out.value.signed_integer
     assert held_value == 42, f"setup MAC failed: got {held_value}"
-
-    dut.valid_in.value = 0
     for a, b in [(1, 1), (-128, 127), (100, 100)]:
         dut.a_in.value = a
         dut.b_in.value = b
@@ -196,9 +215,11 @@ async def test_mac_random_products(dut):
         dut.valid_in.value = 1
         dut.a_in.value = a
         dut.b_in.value = b
-        await RisingEdge(dut.clk)
-        await Timer(1, units="ns")  # settle past the NBA update, still allows writes after
+        await RisingEdge(dut.clk)          # pipe_valid<=1, prod_reg<=a*b
+        await Timer(1, units="ns")
         dut.valid_in.value = 0
+        await RisingEdge(dut.clk)          # acc_out <= acc_out + prod_reg (ACC_LATENCY=2)
+        await Timer(1, units="ns")
 
         expected = a * b
         got = dut.acc_out.value.signed_integer
