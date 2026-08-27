@@ -4,6 +4,9 @@
 // Fundamental building block of the Phase 1 8x8 systolic array tile.
 // Reset is synchronous and active-high.
 //
+// The MAC datapath is 2-cycle pipelined (ACC_LATENCY = 2 below): a
+// valid_in=1 cycle's product lands in acc_out 2 cycles later, not 1.
+//
 // a_out/b_out are registered one-cycle pass-through copies of a_in/b_in,
 // forwarded to the east/south neighbor in the array. They update every
 // non-reset cycle unconditionally (not gated by valid_in) so the array's
@@ -24,6 +27,15 @@ module pe (
     // (a_out/b_out) stays a separate, unconditional 1-cycle passthrough --
     // independent of accumulate latency, so the array's skew geometry is
     // unaffected by this change. See docs/superpowers/specs/2026-08-27-pipeline-pe-mac-design.md.
+    //
+    // Named as a real Verilog constant (not just this comment) so it's
+    // findable at its source. Every site that must stay in sync with this
+    // value if pe.v's pipeline ever changes: rtl/gemm_sequencer.v's
+    // PE_ACC_LATENCY default, rtl/gemm_tile.v's PE_ACC_LATENCY default, and
+    // rtl/noc_node.v's PE_ACC_LATENCY default (threaded into its gemm_tile
+    // instantiation).
+    localparam ACC_LATENCY = 2;
+
     reg signed [15:0] prod_reg;
     reg               pipe_valid;
 

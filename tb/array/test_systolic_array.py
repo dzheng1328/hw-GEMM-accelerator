@@ -115,12 +115,12 @@ async def test_identity_times_matrix(dut):
         await Timer(1, units="ns")
     # Drain: every PE needs ACC_LATENCY cycles after its last real input
     # before its final product has landed in acc_out.
+    dut.valid_in.value = 0
     for _ in range(ACC_LATENCY - 1):
         dut.a_west.value = 0
         dut.b_north.value = 0
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
-    dut.valid_in.value = 0
 
     raw = dut.acc_out.value.integer
     for i, j in [(0, 0), (0, N - 1), (N - 1, 0), (N - 1, N - 1), (3, 3), (4, 4)]:
@@ -159,12 +159,12 @@ async def test_random_matrices_vs_numpy(dut):
             await Timer(1, units="ns")
         # Drain: every PE needs ACC_LATENCY cycles after its last real input
         # before its final product has landed in acc_out.
+        dut.valid_in.value = 0
         for _ in range(ACC_LATENCY - 1):
             dut.a_west.value = 0
             dut.b_north.value = 0
             await RisingEdge(dut.clk)
             await Timer(1, units="ns")
-        dut.valid_in.value = 0
 
         raw = dut.acc_out.value.integer
         for i in range(N):
