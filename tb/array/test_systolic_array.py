@@ -16,6 +16,7 @@ from cocotb.triggers import RisingEdge, Timer
 
 N = 8
 TOTAL_CYCLES = 3 * N - 2  # 22 -- see docs/decisions.md for the derivation
+ACC_LATENCY = 2  # matches rtl/pe.v's pipelined accumulate latency
 ARRAY_RANDOM_SEED = 0xA55A9E  # distinct from tb/test_pe.py's 0xC0C07B PE-level fuzz seed
 ARRAY_RANDOM_TRIALS = 20
 
@@ -112,7 +113,14 @@ async def test_identity_times_matrix(dut):
         dut.b_north.value = pack_lanes(b_lanes)
         await RisingEdge(dut.clk)
         await Timer(1, units="ns")
+    # Drain: every PE needs ACC_LATENCY cycles after its last real input
+    # before its final product has landed in acc_out.
     dut.valid_in.value = 0
+    for _ in range(ACC_LATENCY - 1):
+        dut.a_west.value = 0
+        dut.b_north.value = 0
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
 
     raw = dut.acc_out.value.integer
     for i, j in [(0, 0), (0, N - 1), (N - 1, 0), (N - 1, N - 1), (3, 3), (4, 4)]:
@@ -149,7 +157,14 @@ async def test_random_matrices_vs_numpy(dut):
             dut.b_north.value = pack_lanes(b_lanes)
             await RisingEdge(dut.clk)
             await Timer(1, units="ns")
+        # Drain: every PE needs ACC_LATENCY cycles after its last real input
+        # before its final product has landed in acc_out.
         dut.valid_in.value = 0
+        for _ in range(ACC_LATENCY - 1):
+            dut.a_west.value = 0
+            dut.b_north.value = 0
+            await RisingEdge(dut.clk)
+            await Timer(1, units="ns")
 
         raw = dut.acc_out.value.integer
         for i in range(N):
