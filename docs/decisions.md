@@ -35,29 +35,47 @@ but real hand-pipelining risk with no concrete future clock target driving the e
 pipeline `a_out`/`b_out` forwarding in lockstep with the accumulate pipeline.* Not needed: the critical
 path traced in the 2026-08-12 report never touched the forwarding registers, which are already a separate,
 already-registered always-block structurally independent of the MAC.
-**Decision:** Approach A. Added `ACC_LATENCY = 2` as `pe.v`'s explicit latency contract: `valid_in` to
-that cycle's product landing in `acc_out` now takes 2 cycles (was 1) -- one register stage holds the
-multiply result (`prod_reg`/`pipe_valid`), the accumulate add happens the following cycle. Threaded as
-`parameter PE_ACC_LATENCY = 2` into `gemm_sequencer.v`, which replaced its `DRAIN_CYCLES = 2*N` literal
-with `DRAIN_CYCLES = 2*N + PE_ACC_LATENCY` (provable minimum is `(N-1) + PE_ACC_LATENCY`; `2*N +
-PE_ACC_LATENCY` keeps the same generous slack the original `2*N` had over that minimum) and `gemm_tile.v`
-now passes `PE_ACC_LATENCY` explicitly at instantiation so the dependency between `pe.v`'s real latency and
-the sequencer's drain-window sizing is visible in the code rather than an implicit coincidence between two
-numbers. `rtl/systolic_array.v` and `rtl/skew_feeder.v` needed zero changes -- their skew depths and
-forwarding timing never depended on accumulate latency, confirming the design doc's read that the MAC could
-be pipelined without an array-level ripple. `tb/test_pe.py`, `tb/array/`, `tb/tile/` (which drive the
-hardware directly and wait a fixed cycle count) each needed +1 cycle of drain margin; `tb/gemm/` and
-`tb/mnist/` (which wait on `gemm_sequencer.v`'s `done` handshake rather than a fixed count) needed zero
-changes and passed unchanged -- exactly the regression check the design doc called for, and the actual
-proof that `DRAIN_CYCLES`'s new sizing is correct rather than merely plausible. `tb/router/`, `tb/noc/`,
-`tb/mesh/` also passed unchanged, as expected: they read `acc_out` only after `done`, so they never
-depended on `pe.v`'s internal accumulate latency.
+**Decision:** Approach A. Added `ACC_LATENCY = 2` as `pe.v`'s explicit latency contract, now a real
+`localparam` in `pe.v` itself (not just a comment): `valid_in` to that cycle's product landing in
+`acc_out` now takes 2 cycles (was 1) -- one register stage holds the multiply result (`prod_reg`/
+`pipe_valid`), the accumulate add happens the following cycle. Threaded as `parameter PE_ACC_LATENCY = 2`
+into `gemm_sequencer.v`, which replaced its `DRAIN_CYCLES = 2*N` literal with `DRAIN_CYCLES = 2*N +
+PE_ACC_LATENCY` (provable minimum is `2*(N-1) + PE_ACC_LATENCY`: `(N-1)` cycles of skew in
+`rtl/skew_feeder.v` ahead of the array, plus `(N-1)` cycles of skew inside the array itself, plus
+`PE_ACC_LATENCY` cycles to accumulate -- two separate skew stages, not one; `2*N + PE_ACC_LATENCY` keeps
+the same generous slack the original `2*N` had over that minimum) and `gemm_tile.v` now passes
+`PE_ACC_LATENCY` explicitly at instantiation so the dependency between `pe.v`'s real latency and the
+sequencer's drain-window sizing is visible in the code rather than an implicit coincidence between two
+numbers; `rtl/noc_node.v`'s own `PE_ACC_LATENCY` parameter (default 2, following the same pattern it
+already uses for `N`/`KMAX`) threads the value the rest of the way into the NoC layer's `gemm_tile`
+instantiation. All four sites -- `pe.v`'s `ACC_LATENCY` localparam, and the `PE_ACC_LATENCY` defaults in
+`gemm_sequencer.v`, `gemm_tile.v`, and `noc_node.v` -- carry cross-reference comments pointing at each
+other, since Verilog has no shared-constant mechanism across separately-elaborated modules here. `rtl/
+systolic_array.v` and `rtl/skew_feeder.v` needed zero changes -- their skew depths and forwarding timing
+never depended on accumulate latency, confirming the design doc's read that the MAC could be pipelined
+without an array-level ripple. `tb/test_pe.py` and `tb/array/` (which drive the hardware directly and
+wait a fixed cycle count) each needed +1 cycle of drain margin; `tb/tile/`'s existing margin
+(`TOTAL_CYCLES = 4*N`, ~24 cycles of headroom over the real ~16-cycle requirement) already covered it, so
+its `TOTAL_CYCLES` was extended by `ACC_LATENCY-1` for explicitness/provable-sufficiency rather than
+because it was failing. `tb/gemm/` and `tb/mnist/` (which wait on `gemm_sequencer.v`'s `done` handshake
+rather than a fixed count) needed zero changes and passed unchanged -- this confirms the pipelined MAC is
+functionally transparent end-to-end through the sequencer, genuinely valuable evidence, but it is not a
+tested boundary for the `+PE_ACC_LATENCY` margin specifically: in the final wave, `feed_valid` is high
+only while `c_cyc < N`, so most of the 22-cycle window is already idle before `S_DRAIN` even begins, and
+the pre-existing `2*N` slack alone (far more than the `2*(N-1)` minimum) would have been enough for these
+suites to pass even without the `+PE_ACC_LATENCY` addition. `tb/router/`, `tb/noc/`, `tb/mesh/` also
+passed unchanged, as expected: they read `acc_out` only after `done`, so they never depended on `pe.v`'s
+internal accumulate latency.
 **Why it matters:** This closes the milestone's design half (issue #25) with the blast radius the design
-doc predicted -- `pe.v` plus one parameter in `gemm_sequencer.v`, not the array/skew_feeder ripple
-originally feared when issue #26 was first scoped. The real ripple turned out to be in cocotb (issue #28),
-and `tb/gemm/`/`tb/mnist/` passing with zero changes is the strongest evidence the drain-window math is
-actually right, not just numerically lucky. Real before/after OpenLane slack numbers at
-`max_ss_100C_1v60` are separate follow-on work, tracked as issue #30 -- not yet run as part of this change.
+doc predicted -- `pe.v` plus one parameter apiece in `gemm_sequencer.v`/`gemm_tile.v`/`noc_node.v`, not
+the array/skew_feeder ripple originally feared when issue #26 was first scoped. The real ripple turned out
+to be in cocotb (issue #28), and `tb/gemm/`/`tb/mnist/` passing with zero changes is solid evidence the
+pipelined MAC behaves correctly end-to-end through the sequencer -- it is not, on its own, proof that the
+`+PE_ACC_LATENCY` margin was necessary or sufficient, since those suites' pre-existing slack would have
+masked an undersized drain window either way. Real before/after OpenLane slack numbers at
+`max_ss_100C_1v60` are separate follow-on work, tracked as issue #30 -- not yet run as part of this change,
+and the committed `synth/reports/` sky130 area numbers are now stale too (pe.v gained `prod_reg[15:0]` +
+`pipe_valid` flops this change), pending a re-run under the same issue.
 
 ### 2026-08-12 -- Timing closure pass: real root cause, partial fix, honest limit
 

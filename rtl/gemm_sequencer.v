@@ -28,7 +28,12 @@
 module gemm_sequencer #(
     parameter N              = 8,
     parameter KMAX           = 8,   // max K-chunks the operand memory can hold (layer 1 needs 8)
-    parameter PE_ACC_LATENCY = 2    // must match pe.v's real accumulate latency (rtl/pe.v)
+    // Must match pe.v's real accumulate latency (rtl/pe.v's ACC_LATENCY
+    // localparam). Sites that must stay in sync if that value ever changes:
+    // rtl/pe.v's ACC_LATENCY localparam (the source of truth), this default,
+    // rtl/gemm_tile.v's PE_ACC_LATENCY default, and rtl/noc_node.v's
+    // PE_ACC_LATENCY default (threaded into its gemm_tile instantiation).
+    parameter PE_ACC_LATENCY = 2
 ) (
     input  wire                          clk,
     input  wire                          rst,        // sync system reset -> force IDLE
@@ -43,8 +48,11 @@ module gemm_sequencer #(
 
     localparam P            = 3*N - 2;  // 22 -- one wave's cycle budget (matches feed_wave)
     localparam RST_CYCLES   = 2;        // cycles to hold tile_reset at N-block start
-    // Provable minimum is (N-1) + PE_ACC_LATENCY (max skew depth + accumulate
-    // latency); +N on top keeps the same generous slack the original 2*N had.
+    // Provable minimum is 2*(N-1) + PE_ACC_LATENCY: (N-1) cycles of skew in
+    // rtl/skew_feeder.v ahead of the array, PLUS (N-1) cycles of skew inside
+    // the array itself (rtl/systolic_array.v), PLUS PE_ACC_LATENCY cycles to
+    // accumulate -- two separate skew stages, not one. (2*N + PE_ACC_LATENCY)
+    // keeps the same generous slack the original 2*N had over that minimum.
     localparam DRAIN_CYCLES = 2*N + PE_ACC_LATENCY;
 
     localparam S_IDLE  = 3'd0,

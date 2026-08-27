@@ -36,6 +36,13 @@ module noc_node #(
     parameter N    = 8,
     parameter KMAX = 8,
     parameter AW   = 2,
+    // Must match pe.v's real accumulate latency (rtl/pe.v's ACC_LATENCY
+    // localparam). Sites that must stay in sync if that value ever changes:
+    // rtl/pe.v's ACC_LATENCY localparam (the source of truth),
+    // rtl/gemm_sequencer.v's PE_ACC_LATENCY default, rtl/gemm_tile.v's
+    // PE_ACC_LATENCY default, and this default (threaded into the
+    // gemm_tile instantiation below, following the same pattern as N/KMAX).
+    parameter PE_ACC_LATENCY = 2,
     // Derived -- do not override.
     parameter ADDRW = 6,               // $clog2(N*KMAX) for the defaults
     parameter PW    = ADDRW + 16*N,    // operand payload = 134 bits (widest)
@@ -217,7 +224,7 @@ module noc_node #(
     wire       start_eff = start | go_pulse;
     wire [3:0] k_eff     = go_pulse ? go_k : k_chunks;
 
-    gemm_tile #(.N(N), .KMAX(KMAX)) tile_i (
+    gemm_tile #(.N(N), .KMAX(KMAX), .PE_ACC_LATENCY(PE_ACC_LATENCY)) tile_i (
         .clk      (clk),
         .rst      (rst),
         .wr_en    (wr_en),

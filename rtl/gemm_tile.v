@@ -19,7 +19,13 @@
 module gemm_tile #(
     parameter N              = 8,
     parameter KMAX           = 8,
-    parameter PE_ACC_LATENCY = 2   // must match pe.v's real accumulate latency (rtl/pe.v)
+    // Must match pe.v's real accumulate latency (rtl/pe.v's ACC_LATENCY
+    // localparam). Sites that must stay in sync if that value ever changes:
+    // rtl/pe.v's ACC_LATENCY localparam (the source of truth),
+    // rtl/gemm_sequencer.v's PE_ACC_LATENCY default, this default, and
+    // rtl/noc_node.v's PE_ACC_LATENCY default (threaded into its gemm_tile
+    // instantiation below).
+    parameter PE_ACC_LATENCY = 2
 ) (
     input  wire                          clk,
     input  wire                          rst,
