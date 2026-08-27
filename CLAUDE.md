@@ -76,6 +76,11 @@ Phase 3's first physical-design strands, both landed:
   MAC datapath, a separate future architecture card, not a P&R tuning fix. Real numbers, the diagnosis,
   and the two tooling snags hit along the way are in `openlane/pe/reports/summary.md`,
   `docs/decisions.md`, and `docs/learnings.md`. `gemm_tile`/`router` P&R stays a separate future card.
+- *MAC pipelining (2026-08-27, done):* `pe.v`'s multiply-accumulate datapath is now pipelined
+  (`ACC_LATENCY=2`) to address the closure gap above, with `PE_ACC_LATENCY` threaded into
+  `gemm_sequencer.v`'s drain-window sizing; all cocotb suites (`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`,
+  `tb/router/`, `tb/noc/`, `tb/mesh/`, `tb/mnist/`) pass. Real OpenLane re-verification of the timing
+  closure against the pipelined RTL is tracked separately as issue #30, not part of this change.
 
 ## What this is
 
