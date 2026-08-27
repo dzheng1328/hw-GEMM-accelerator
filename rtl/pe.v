@@ -19,17 +19,39 @@ module pe (
     output reg  signed [7:0]   b_out      // registered forward to south neighbor
 );
 
+    // ACC_LATENCY = 2: a valid_in=1 cycle's product lands in acc_out 2 cycles
+    // later (1 cycle to register the multiply, 1 more to add it in). Forwarding
+    // (a_out/b_out) stays a separate, unconditional 1-cycle passthrough --
+    // independent of accumulate latency, so the array's skew geometry is
+    // unaffected by this change. See docs/superpowers/specs/2026-08-27-pipeline-pe-mac-design.md.
+    reg signed [15:0] prod_reg;
+    reg               pipe_valid;
+
     always @(posedge clk) begin
         if (reset) begin
-            acc_out <= 32'sd0;
-            a_out   <= 8'sd0;
-            b_out   <= 8'sd0;
+            a_out <= 8'sd0;
+            b_out <= 8'sd0;
         end else begin
             a_out <= a_in;
             b_out <= b_in;
-            if (valid_in) begin
-                acc_out <= acc_out + (a_in * b_in);
-            end
+        end
+    end
+
+    always @(posedge clk) begin
+        if (reset) begin
+            prod_reg   <= 16'sd0;
+            pipe_valid <= 1'b0;
+        end else begin
+            prod_reg   <= a_in * b_in;
+            pipe_valid <= valid_in;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (reset) begin
+            acc_out <= 32'sd0;
+        end else if (pipe_valid) begin
+            acc_out <= acc_out + prod_reg;
         end
     end
 
