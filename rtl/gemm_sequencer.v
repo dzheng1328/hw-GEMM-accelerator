@@ -26,8 +26,9 @@
 // `start` pulse) stays with the caller, the same way a DMA engine issues one
 // descriptor per block.
 module gemm_sequencer #(
-    parameter N    = 8,
-    parameter KMAX = 8   // max K-chunks the operand memory can hold (layer 1 needs 8)
+    parameter N              = 8,
+    parameter KMAX           = 8,   // max K-chunks the operand memory can hold (layer 1 needs 8)
+    parameter PE_ACC_LATENCY = 2    // must match pe.v's real accumulate latency (rtl/pe.v)
 ) (
     input  wire                          clk,
     input  wire                          rst,        // sync system reset -> force IDLE
@@ -42,7 +43,9 @@ module gemm_sequencer #(
 
     localparam P            = 3*N - 2;  // 22 -- one wave's cycle budget (matches feed_wave)
     localparam RST_CYCLES   = 2;        // cycles to hold tile_reset at N-block start
-    localparam DRAIN_CYCLES = 2*N;      // slack for the final wave to flush feeder+array
+    // Provable minimum is (N-1) + PE_ACC_LATENCY (max skew depth + accumulate
+    // latency); +N on top keeps the same generous slack the original 2*N had.
+    localparam DRAIN_CYCLES = 2*N + PE_ACC_LATENCY;
 
     localparam S_IDLE  = 3'd0,
                S_RESET = 3'd1,

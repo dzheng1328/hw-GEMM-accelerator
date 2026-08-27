@@ -17,8 +17,9 @@
 // (M1 scale + ReLU between layers) has no datapath in pe.v and stays a
 // documented boundary, still done by the caller.
 module gemm_tile #(
-    parameter N    = 8,
-    parameter KMAX = 8
+    parameter N              = 8,
+    parameter KMAX           = 8,
+    parameter PE_ACC_LATENCY = 2   // must match pe.v's real accumulate latency (rtl/pe.v)
 ) (
     input  wire                          clk,
     input  wire                          rst,
@@ -52,7 +53,7 @@ module gemm_tile #(
         .rd_b_row (b_row)
     );
 
-    gemm_sequencer #(.N(N), .KMAX(KMAX)) seq (
+    gemm_sequencer #(.N(N), .KMAX(KMAX), .PE_ACC_LATENCY(PE_ACC_LATENCY)) seq (
         .clk        (clk),
         .rst        (rst),
         .start      (start),
