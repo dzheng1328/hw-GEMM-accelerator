@@ -27,7 +27,8 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 `model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
 
 **Phase 2 is complete (2026-07-19); Phase 3 is in progress (sky130 Yosys synthesis done, OpenLane 2
-P&R for `pe.v` done, `gemm_tile`/`router` P&R still to come).**
+P&R for `pe.v` done with full timing closure confirmed on the pipelined MAC datapath (2026-08-29, closes
+Phase 3.1), `gemm_tile`/`router` P&R still to come).**
 Phase 2's three strands, all landed:
 
 - *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
@@ -79,8 +80,16 @@ Phase 3's first physical-design strands, both landed:
 - *MAC pipelining (2026-08-27, done):* `pe.v`'s multiply-accumulate datapath is now pipelined
   (`ACC_LATENCY=2`) to address the closure gap above, with `PE_ACC_LATENCY` threaded into
   `gemm_sequencer.v`'s drain-window sizing; all cocotb suites (`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`,
-  `tb/router/`, `tb/noc/`, `tb/mesh/`, `tb/mnist/`) pass. Real OpenLane re-verification of the timing
-  closure against the pipelined RTL is tracked separately as issue #30, not part of this change.
+  `tb/router/`, `tb/noc/`, `tb/mesh/`, `tb/mnist/`) pass.
+- *OpenLane re-verification on the pipelined `pe.v` (2026-08-29, done -- closes Phase 3.1/issue #30):*
+  re-ran the same OpenLane 2 flow against the pipelined RTL. Full multi-corner PVT sign-off sweep now
+  closes with positive setup slack everywhere -- the previously-violating `max_ss_100C_1v60` corner
+  recovered from -2.21ns to +0.4510ns, and the target tt/25C/1.80V corner improved from +3.11ns to
+  +4.8612ns. DRC/LVS/antenna clean (0/0/0), the 3 prior max-fanout violations are gone, and post-P&R area
+  shrank (6,865.33/14,313.7/18,523.1 um^2 instance/core/die, down from 10,312.4/21,620.7/26,787 um^2) since
+  the pipeline needs far less resizer timing-repair buffering. Real numbers in
+  `openlane/pe/reports/summary.md` and `docs/decisions.md` (2026-08-29 entry). `synth/reports/`'s pre-P&R
+  Yosys area numbers are still stale from before the pipeline change (separate scope, issue #29).
 
 ## What this is
 
