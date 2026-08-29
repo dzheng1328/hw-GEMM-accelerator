@@ -19,6 +19,34 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-08-29 -- Re-synthesize pipelined `pe.v` with Yosys, record the area delta (issue #29)
+
+**Context:** `synth/reports/pe_synth.log` and `synth/reports/pe_sky130.log` were still the pre-pipeline
+baseline (6,209.7 um^2 generic-synth chip area) -- last regenerated before the 2026-08-27 MAC pipelining
+(commit 3777878) and the 2026-08-29 OpenLane re-verification (issue #30). Issue #29 closes that gap: re-run
+the same two Yosys passes (`synth/synth_pe.ys` generic, `synth/synth_sky130_pe.ys` against
+`sky130_fd_sc_hd__tt_025C_1v80`) on the now-pipelined `rtl/pe.v` and log the area delta.
+**Options considered:** None -- mechanical re-run of the existing scripts, unchanged, against the new RTL.
+**Decision:** Ran `yosys -s synth/synth_pe.ys` and `yosys synth/synth_sky130_pe.ys` from the repo root;
+both `tee` their `stat` output back into `synth/reports/pe_synth.log` / `pe_sky130.log` as before.
+Sky130-mapped chip area went from **6,209.7 um^2 (pre-pipeline)** to **4,996.0 um^2 (pipelined)** -- a
+**1,213.7 um^2 / 19.5% decrease** -- despite the pipeline adding 17 more flip-flops (48 -> 65
+`dfxtp_1` cells, sequential area 960.9 -> 1,301.2 um^2, +340.3 um^2). Combinational area dropped from
+5,248.8 to 3,694.8 um^2 (-1,554.0 um^2), more than offsetting the added registers. Generic-synth cell
+count tells the same story: 901 cells (48 FF) pre-pipeline -> 644 cells (65 FF) pipelined -- fewer total
+cells despite more flops.
+**Why:** This is the same effect the 2026-08-29 OpenLane pass (issue #30, entry below) already found
+post-P&R, now confirmed at the pre-P&R Yosys level: `abc -D 10000`'s delay-driven technology mapping was
+straining to build a single-cycle 8x8-multiply-plus-16-bit-add cone that fits within one 10ns period, and
+paid for that with larger/more-parallel gates (bigger `xnor2`/`xor2`/`maj3` trees) to hit the delay target.
+Splitting the MAC into two pipeline stages roughly halves the combinational depth per stage, so abc no
+longer needs to reach for area-expensive fast cells to close timing -- it can pick smaller, slower ones
+and still meet the per-stage budget. The lesson generalizes: pipelining a hardware datapath is not a pure
+area-for-timing tradeoff the way it often is in software (more state = more storage); when the
+unpipelined version was already fighting a delay-driven synthesis tool for area, breaking up the critical
+path can *shrink* silicon rather than grow it, because the tool no longer needs to pay an area premium to
+hit an aggressive delay target on a single deep cone.
+
 ### 2026-08-29 -- Re-run OpenLane P&R on the pipelined `pe.v`: timing closure confirmed (issue #30)
 
 **Context:** The 2026-08-12 timing-closure pass root-caused -2.21ns of worst-case setup slack at the

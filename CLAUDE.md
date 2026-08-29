@@ -26,9 +26,10 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
 `model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
 
-**Phase 2 is complete (2026-07-19); Phase 3 is in progress (sky130 Yosys synthesis done, OpenLane 2
-P&R for `pe.v` done with full timing closure confirmed on the pipelined MAC datapath (2026-08-29, closes
-Phase 3.1), `gemm_tile`/`router` P&R still to come).**
+**Phase 2 is complete (2026-07-19); Phase 3 is in progress (Phase 3.1 -- pipeline `pe.v`'s MAC datapath --
+is complete as of 2026-08-29: OpenLane 2 P&R confirms full timing closure on the pipelined design, and
+Yosys area numbers are re-synthesized and up to date. Phase 3.2 -- SRAM-macro `operand_mem` -- and
+`gemm_tile`/`router` P&R are still to come).**
 Phase 2's three strands, all landed:
 
 - *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
@@ -81,15 +82,22 @@ Phase 3's first physical-design strands, both landed:
   (`ACC_LATENCY=2`) to address the closure gap above, with `PE_ACC_LATENCY` threaded into
   `gemm_sequencer.v`'s drain-window sizing; all cocotb suites (`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`,
   `tb/router/`, `tb/noc/`, `tb/mesh/`, `tb/mnist/`) pass.
-- *OpenLane re-verification on the pipelined `pe.v` (2026-08-29, done -- closes Phase 3.1/issue #30):*
+- *OpenLane re-verification on the pipelined `pe.v` (2026-08-29, done -- issue #30):*
   re-ran the same OpenLane 2 flow against the pipelined RTL. Full multi-corner PVT sign-off sweep now
   closes with positive setup slack everywhere -- the previously-violating `max_ss_100C_1v60` corner
   recovered from -2.21ns to +0.4510ns, and the target tt/25C/1.80V corner improved from +3.11ns to
   +4.8612ns. DRC/LVS/antenna clean (0/0/0), the 3 prior max-fanout violations are gone, and post-P&R area
   shrank (6,865.33/14,313.7/18,523.1 um^2 instance/core/die, down from 10,312.4/21,620.7/26,787 um^2) since
   the pipeline needs far less resizer timing-repair buffering. Real numbers in
-  `openlane/pe/reports/summary.md` and `docs/decisions.md` (2026-08-29 entry). `synth/reports/`'s pre-P&R
-  Yosys area numbers are still stale from before the pipeline change (separate scope, issue #29).
+  `openlane/pe/reports/summary.md` and `docs/decisions.md` (2026-08-29 entry).
+- *Yosys re-synth on the pipelined `pe.v` (2026-08-29, done -- closes Phase 3.1/issue #29):* re-ran
+  `synth/synth_pe.ys` and `synth/synth_sky130_pe.ys` against the pipelined RTL. Sky130-mapped chip area
+  went *down* despite the added pipeline registers: 6,209.7 um^2 (pre-pipeline) -> 4,996.0 um^2
+  (pipelined), a 19.5% decrease, because the shorter per-stage combinational depth lets `abc`'s
+  delay-driven mapping pick smaller/slower cells instead of paying an area premium to close a single
+  deep multiply-accumulate cone -- same effect the OpenLane pass above found post-P&R, now confirmed
+  pre-P&R too. Real numbers in `synth/reports/pe_synth.log`, `synth/reports/pe_sky130.log`, and
+  `docs/decisions.md` (2026-08-29 entry). This closes out Phase 3.1 end to end.
 
 ## What this is
 
