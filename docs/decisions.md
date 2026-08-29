@@ -19,6 +19,38 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-08-29 -- Re-run OpenLane P&R on the pipelined `pe.v`: timing closure confirmed (issue #30)
+
+**Context:** The 2026-08-12 timing-closure pass root-caused -2.21ns of worst-case setup slack at the
+pessimistic `max_ss_100C_1v60` sign-off corner to `pe.v`'s single-cycle, unpipelined MAC datapath, and
+concluded that full closure required pipelining it -- a separate future card rather than an SDC/P&R
+tuning fix. The 2026-08-27 entry above pipelined `pe.v` into 2 stages (`ACC_LATENCY = 2`) on that basis,
+but explicitly deferred the real OpenLane re-verification to issue #30, since the design change was
+validated only in cocotb simulation at that point, not against real place-and-route timing.
+**Options considered:** None -- this is a verification run, not a design decision. The goal was simply to
+re-run the exact same OpenLane 2 flow (`openlane/pe/config.json`, unchanged: same sky130A/
+`sky130_fd_sc_hd`, same `IO_DELAY_CONSTRAINT: 10`, same tt/25C/1.80V primary corner and 10ns period) with
+`rtl/pe.v`'s only change being the pipelined MAC datapath, so the before/after comparison isolates that
+one variable.
+**Decision:** Ran `openlane/run_pe.sh` end to end (OpenLane 2.3.10, Docker backend) against the pipelined
+`rtl/pe.v`. Result: DRC (Magic + KLayout) and LVS both clean (0/0, same as before), antenna violations 0,
+and the 3 small max-fanout violations present at every corner in the unpipelined run are now gone (0
+everywhere). The full multi-corner PVT sign-off sweep now closes with **positive setup slack at every
+corner** -- the previously-violating `max_ss_100C_1v60` corner recovered from -2.21ns to **+0.4510ns** (a
+2.66ns swing), and the target tt/25C/1.80V corner improved too, from +3.11ns to +4.8612ns. Hold timing
+stayed clean everywhere (worst +0.1176ns, 0 violations). Final post-P&R area *shrank* despite the added
+pipeline register (6,865.33 / 14,313.7 / 18,523.1 um^2 instance/core/die, down from 10,312.4 / 21,620.7 /
+26,787 um^2) -- the unpipelined run's larger area was mostly the resizer inserting timing-repair buffer
+cells trying and failing to close the single-cycle MAC's critical path; splitting that path across 2
+cycles needs far less repair, and the saved buffering outweighs the new register. Full corner table and
+run directory in `openlane/pe/reports/summary.md`.
+**Why it matters:** This is the milestone's finish line (Phase 3.1) -- it closes the loop the 2026-08-12
+pass opened: the diagnosis (unpipelined MAC is the root cause), the fix (2-stage pipeline, 2026-08-27),
+and now real physical-design proof the fix actually works, not just a cocotb-level latency-contract check.
+`synth/reports/`'s pre-P&R Yosys area numbers are still stale from before the pipeline change (tracked
+separately as issue #29) -- this entry's area numbers are the real post-P&R placed/routed figures, not a
+substitute for that re-synthesis.
+
 ### 2026-08-27 -- Pipeline `pe.v`'s MAC datapath into 2 stages
 
 **Context:** The 2026-08-12 timing closure pass root-caused the remaining -2.21ns of worst-case setup
