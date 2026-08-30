@@ -35,6 +35,9 @@ model/.mnist_cache/
 # Third-party PDK data (fetched by synth/fetch_sky130.sh, never committed)
 synth/lib/
 
+# Third-party OpenRAM source clone (fetched by openram/run_operand_sram.sh, never committed)
+openram/.openram-src/
+
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
 
