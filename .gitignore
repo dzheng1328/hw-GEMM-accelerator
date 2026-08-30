@@ -37,3 +37,6 @@ synth/lib/
 
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
+
+# Git worktrees for isolated implementation work
+.worktrees/
