@@ -38,6 +38,10 @@ synth/lib/
 # Third-party OpenRAM source clone (fetched by openram/run_operand_sram.sh, never committed)
 openram/.openram-src/
 
+# Local PDK_ROOT for OpenRAM's sky130 SRAM bitcell setup (symlink + third-party
+# clones, fetched by openram/run_operand_sram.sh, never committed)
+openram/.pdk-root/
+
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
 

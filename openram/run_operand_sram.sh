@@ -35,13 +35,51 @@ fi
 
 # --- Step 2: resolve the local sky130 PDK_ROOT dynamically (volare-managed) ---
 VOLARE_SKY130_VERSIONS="$HOME/.volare/volare/sky130/versions"
-PDK_ROOT="$(find "$VOLARE_SKY130_VERSIONS" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)"
-if [ -z "$PDK_ROOT" ]; then
+VOLARE_PDK_ROOT="$(find "$VOLARE_SKY130_VERSIONS" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)"
+if [ -z "$VOLARE_PDK_ROOT" ]; then
   echo "ERROR: no sky130 PDK found under $VOLARE_SKY130_VERSIONS" >&2
   echo "openlane/run_pe.sh is what originally fetched this PDK via volare -- run it (or its PDK-fetch step) first." >&2
   exit 1
 fi
-echo "Using PDK_ROOT=$PDK_ROOT"
+echo "Using volare sky130A at $VOLARE_PDK_ROOT"
+
+# --- Step 2b: assemble a local PDK_ROOT-shaped dir for OpenRAM's sky130-install ---
+#
+# OpenRAM's own bitcell library (sky130_fd_bd_sram) has no matching SPICE
+# model out of the box -- its `make sky130-install` target (see
+# .openram-src/Makefile at v1.2.48, and this task's ruling) populates
+# technology/sky130/{gds_lib,mag_lib,sp_lib,...} inside the OpenRAM checkout
+# from three PDK_ROOT-sibling dirs: sky130A (already have it via volare, just
+# symlinked in -- not re-fetched), skywater-pdk (two submodules only), and
+# sky130_fd_bd_sram (OpenRAM's own pinned bitcell mirror). This is a one-time
+# setup per host; each step below is skipped if already present.
+PDK_ROOT="$(pwd)/.pdk-root"
+mkdir -p "$PDK_ROOT"
+
+if [ ! -e "$PDK_ROOT/sky130A" ]; then
+  echo "Symlinking sky130A into local PDK_ROOT ($PDK_ROOT/sky130A -> $VOLARE_PDK_ROOT/sky130A)"
+  ln -s "$VOLARE_PDK_ROOT/sky130A" "$PDK_ROOT/sky130A"
+fi
+
+SKYWATER_PDK_COMMIT="f70d8ca46961ff92719d8870a18a076370b85f6c"
+if [ ! -d "$PDK_ROOT/skywater-pdk/.git" ]; then
+  echo "Cloning skywater-pdk at $SKYWATER_PDK_COMMIT (this can take several minutes)"
+  git clone https://github.com/google/skywater-pdk.git "$PDK_ROOT/skywater-pdk"
+  git -C "$PDK_ROOT/skywater-pdk" checkout "$SKYWATER_PDK_COMMIT"
+  git -C "$PDK_ROOT/skywater-pdk" submodule update --init \
+    libraries/sky130_fd_pr/latest libraries/sky130_fd_sc_hd/latest
+else
+  echo "skywater-pdk already present at $PDK_ROOT/skywater-pdk -- skipping clone"
+fi
+
+SKY130_FD_BD_SRAM_COMMIT="dd64256961317205343a3fd446908b42bafba388"
+if [ ! -d "$PDK_ROOT/sky130_fd_bd_sram/.git" ]; then
+  echo "Cloning sky130_fd_bd_sram at $SKY130_FD_BD_SRAM_COMMIT"
+  git clone https://github.com/vlsida/sky130_fd_bd_sram.git "$PDK_ROOT/sky130_fd_bd_sram"
+  git -C "$PDK_ROOT/sky130_fd_bd_sram" checkout "$SKY130_FD_BD_SRAM_COMMIT"
+else
+  echo "sky130_fd_bd_sram already present at $PDK_ROOT/sky130_fd_bd_sram -- skipping clone"
+fi
 
 # --- Step 3: pull the OpenRAM toolchain image ---
 docker pull vlsida/openram-ubuntu:latest
@@ -68,6 +106,7 @@ printf '%s:x:%s:\n' "$(id -gn)" "$(id -g)" > "$GROUP_FILE"
 docker run --rm \
   -v "$OPENRAM_SRC":/openram \
   -v "$PDK_ROOT":/pdk \
+  -v "$VOLARE_PDK_ROOT/sky130A":/pdk/sky130A:ro \
   -e PDK_ROOT=/pdk \
   -e PDKPATH=/pdk/sky130A \
   -e OPENRAM_HOME=/openram/compiler \
@@ -79,4 +118,14 @@ docker run --rm \
   -v "$(pwd)":/workspace \
   -w /workspace \
   vlsida/openram-ubuntu:latest \
-  bash -lc 'python3 /openram/sram_compiler.py /workspace/config_operand_bank.py'
+  bash -lc '
+    set -e
+    if [ ! -d /openram/technology/sky130/gds_lib ]; then
+      echo "Running make sky130-install (one-time bitcell library setup)..."
+      cd /openram && PDK_ROOT=/pdk OPENRAM_HOME=/openram/compiler make sky130-install
+    else
+      echo "technology/sky130/gds_lib already populated -- skipping make sky130-install"
+    fi
+    cd /workspace
+    python3 /openram/sram_compiler.py /workspace/config_operand_bank.py
+  '
