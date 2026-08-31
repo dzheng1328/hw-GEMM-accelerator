@@ -37,6 +37,58 @@ num_w_ports = 0
 num_spare_rows = 1
 num_spare_cols = 1
 
+# words_per_row: force a real 2:1 column mux instead of OpenRAM's auto-sized
+# no-mux (words_per_row=1) layout.
+#
+# A real generation run (Task 2) got past sizing/submodule generation with
+# the fix above, then hit a second, real, reproducible OpenRAM v1.2.48
+# supply-router failure (compiler/router/supply_router.py: "Couldn't route
+# from ... to ..." trying to route a vdd path on met3) -- confirmed
+# independent of PDK version (identical failure against both the cached
+# volare PDK and the exact commit OpenRAM's own Makefile pins) and not fixed
+# by two other config-only options (supply_pin_type="left" hits an unrelated
+# router TypeError bug in this OpenRAM version; num_spare_cols=3 fails the
+# same way at different coordinates).
+#
+# technology/sky130/sky130_sram_common.py itself has a live comment flagging
+# this exact class of failure: "Local wordlines have issues with met3 power
+# routing for now" / "#local_array_size = 16". More tellingly: every real
+# 1RW sky130 macro OpenRAM ships (macros/sram_configs/sky130_sram_*_1rw_*.py)
+# uses word_size=32 with num_words in the hundreds/thousands, which its own
+# estimate_words_per_row() heuristic always sizes to words_per_row>1 (a real
+# column mux) -- none of OpenRAM's shipped sky130 1RW references are the
+# no-mux (words_per_row=1) shape our word_size=64/num_words=64 geometry
+# happens to produce, and the only no-mux test case in the regression suite
+# (20_sram_1bank_nomux_spare_cols_test.py) is 128 bits, nowhere near this
+# macro's 4096 bits. No evidence anyone has gotten a no-mux macro at this
+# scale to route on this OpenRAM/sky130 combination.
+#
+# words_per_row is a purely internal OpenRAM physical-layout knob (same
+# settable-top-level-config mechanism already proven for num_spare_rows/
+# num_spare_cols above) -- it changes how the array is organized in silicon,
+# not operand_mem's external interface: still exactly one 64-bit word
+# read/written per access, a column mux is transparent to the port. Setting
+# it to 2 doubles num_cols to 128 (num_cols = words_per_row * word_size),
+# which still satisfies sky130's array_col_multiple=2 parity check
+# ((128 + 1 num_rw_port + 1 num_spare_col) % 2 == 0) with no other changes.
+#
+# CONFIRMED (Task 2, real run): this does fix the supply-router failure --
+# "** Routing: 394.1 seconds" completes with no error, versus the prior
+# unconditional crash. It does NOT, however, produce a clean macro: the same
+# run's real DRC/LVS pass (see use_conda fix below, which is what let
+# DRC/LVS actually execute) found 52200 real DRC violations and a real LVS
+# mismatch, and generation still never reaches the point where the .gds/.lef
+# are written -- it crashes later in delay-characterization setup
+# (characterizer/simulation.py: "Could not find bl net in timing paths."),
+# a separate, third real OpenRAM bug/incompatibility with this word-mux
+# configuration. No openram/reports/summary.md was written for this run --
+# per this task's own brief, a run with real DRC/LVS violations is not
+# reported as a clean success. Full real log evidence is in Task 2's report
+# (.superpowers/sdd/2026-08-29-operand-mem-sram-macro/task-2-report.md) and
+# will be distilled into docs/learnings.md. This macro is NOT clean; do not
+# treat words_per_row=2 as a solved/working configuration.
+words_per_row = 2
+
 # NOTE: this is "sky130", not "sky130A" -- "sky130A" is the PDK_ROOT variant
 # directory name (what PDKPATH points at), a different string in a different
 # role. OpenRAM's own technology/ directory (confirmed against the v1.2.48
@@ -57,6 +109,24 @@ supply_voltages = [1.8]
 check_lvsdrc = True
 uniquify = True
 nominal_corner_only = True
+
+# use_conda: this Docker toolchain image (vlsida/openram-ubuntu) has magic/
+# netgen/ngspice/klayout installed system-wide (all found fine via plain
+# PATH -- confirmed by every run reaching magic at all), but no conda/
+# miniconda. use_conda defaults to True in OpenRAM (compiler/options.py),
+# which makes compiler/verify/run_script.py unconditionally prepend
+# "source {CONDA_HOME}/bin/activate" to every DRC/LVS/ext shell script it
+# generates (run_drc.sh, run_lvs.sh, ...). With no conda installed that
+# source fails immediately, the script produces no other output, and
+# verify/magic.py then can't find a "Total DRC errors found:" line to parse
+# -- surfacing as "Unable to find the total error line in Magic output."
+# Confirmed directly: a real run with -k (keep temp dir, OPENRAM_TMP pointed
+# at a host-visible path) showed .drc.out completely empty and .drc.err
+# containing exactly "run_drc.sh: line 2: /openram/miniconda/bin/activate:
+# No such file or directory". use_conda=False skips that wrapping entirely
+# (and the earlier-harmless-but-noisy install_conda.sh attempt every run
+# log shows).
+use_conda = False
 
 output_name = "sky130_sram_512b_1rw_64x64"
 output_path = "runs/sky130_sram_512b_1rw_64x64"
