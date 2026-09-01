@@ -24,6 +24,36 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-01 -- The operand_mem SRAM macro's Magic extraction wasn't failing on a bug, it was hitting Docker's memory ceiling
+
+**Phase:** Phase 3
+**Problem:** `openram/run_operand_sram.sh`'s Magic-based extraction/LVS step for the `operand_mem` SRAM
+macro (issue #31) had never once completed. The clearest symptom was a `.ext.out` log that stopped
+mid-stream at `Extracting sky130_sram_512b_1rw_64x64_bank into sky130_sram_512b_1rw_64x64_bank.ext:`,
+right after Magic logged `Created database crash recovery file`. That message looks like a crash signal,
+and it was tempting to chase it as one (e.g. by hand-patching the extraction script to pre-stage `.mag`
+files the way the DRC script does).
+**Cause:** Docker Desktop was allocated only 7.65GB of the host's 24GB (`docker info --format
+'{{.MemTotal}}'`). This macro's largest intermediate extraction artifacts are genuinely huge --
+`sky130_sram_512b_1rw_64x64_sky130_bitcell_array.ext` alone hit 140MB on disk, with the live in-memory
+Magic database around it larger still -- because OpenRAM's own generator (`compiler/verify/magic.py`)
+unconditionally sets `gds flatten true` for a macro this size. `"Created database crash recovery file"`
+is actually just Magic's routine periodic autosave checkpoint (confirmed live: the container was still at
+99% CPU and only 300MB of a 15.6GB limit when that exact message reappeared on the successful run), not a
+crash indicator by itself -- the real signal was the extraction simply never reaching `Finished extract`.
+**Fix:** Bumped Docker Desktop's memory limit to 15.6GB via its GUI (Settings -> Resources -> Memory; no
+safe CLI or config-file path was found for this in the installed Docker Desktop version). Re-ran the same,
+unmodified, OpenRAM-generated `run_ext.sh`. It reached the same "start of bitcell_array extraction"
+milestone in ~9 minutes instead of the ~45-60 minutes the old, memory-constrained run took to reach the
+same point (per file mtimes) before eventually stalling, then sailed through `bank` (the exact cell that
+had killed every prior attempt) and finished cleanly: exit code 0, first successful full extraction of
+this macro ever produced.
+**Takeaway:** When a long-running EDA/simulation tool's log just stops mid-operation with no explicit
+error, check the container/VM memory ceiling before treating any nearby log message as the root cause --
+an innocuous-looking checkpoint/autosave message right before the log goes silent is exactly what memory
+pressure or an OOM kill looks like from the tool's side, and it's easy to mistake it for the actual
+failure.
+
 ### 2026-08-12 -- A negative timing slack wasn't fixed by guessing SDC knobs -- it took reading the actual critical path
 
 **Phase:** Phase 3

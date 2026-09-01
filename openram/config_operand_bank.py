@@ -128,5 +128,22 @@ nominal_corner_only = True
 # log shows).
 use_conda = False
 
+# use_nix: a genuinely NEW config need, first hit on Task 2's OpenRAM version
+# bump (v1.2.48 -> commit b2b069ce, see run_operand_sram.sh's OPENRAM_COMMIT
+# comment). This OpenRAM version's compiler/globals.py:init_openram() now
+# unconditionally calls install_nix() unless OPTS.use_nix=False, which
+# hard-errors immediately ("Nix is required for automatic tool setup, but
+# 'nix' was not found in PATH.") because this Docker toolchain image
+# (vlsida/openram-ubuntu) has no nix installed -- the exact same class of
+# problem as the use_conda fix above (a new tool-bootstrap mechanism this
+# image doesn't have). Confirmed via compiler/options.py's own doc comment:
+# "Use Nix to initialize the default open-source toolchain. If disabled,
+# OpenRAM uses whatever tools are already in PATH." -- and this image's
+# magic/netgen/ngspice/klayout are already confirmed on PATH (see the
+# use_conda fix's own investigation). Checked both call sites gated by this
+# flag (compiler/verify/run_script.py, compiler/characterizer/stimuli.py):
+# both simply run the tool command directly, unwrapped, when use_nix=False.
+use_nix = False
+
 output_name = "sky130_sram_512b_1rw_64x64"
 output_path = "runs/sky130_sram_512b_1rw_64x64"

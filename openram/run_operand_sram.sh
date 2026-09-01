@@ -9,28 +9,40 @@
 # $OPENRAM_HOME $OPENRAM_TECH'`). So this script clones OpenRAM's own source
 # (which provides compiler/, technology/, and sram_compiler.py) and mounts it
 # into the container, following the real intended invocation shown in
-# OpenRAM's own docker/ + openram.mk `mount` target at tag v1.2.48 (with the
+# OpenRAM's own docker/ + openram.mk `mount` target (with the
 # FREEPDK45 mount dropped -- this project only uses sky130A).
 #
 # Requires Docker Desktop running, and a local sky130 PDK already fetched by
 # volare (this repo's openlane/run_pe.sh is what originally fetched it).
 #
 # See .superpowers/sdd/2026-08-29-operand-mem-sram-macro/ for the design spec
-# and Task 1's ruling/report on how these facts were confirmed.
-set -euo pipefail
-cd "$(dirname "$0")"
-
-OPENRAM_TAG="v1.2.48"
+# and Task 1/2's ruling/report on how these facts were confirmed.
+#
+# OPENRAM_COMMIT: pinned to a specific commit on OpenRAM's `stable` branch
+# (not the floating branch name, and not the v1.2.48 release tag this was
+# originally pinned to -- see Task 2's ruling) because three commits past
+# v1.2.48 directly fix real bugs this macro's generation hit: a sky130 1rw
+# LVS col_cap pin-order mismatch (ec28bc6dfdc02a5ae33b789721cb5ff1830904da),
+# a sky130 1rw characterization address-bit-ordering crash
+# (6d14626a75f82113b812a20141b2f352a2502112), and a spare-cols routing
+# short-circuit fix (ed369f1af468110a230ffbde17e9159f2f021a4e). All three
+# confirmed as real ancestors of this pinned commit via
+# `git merge-base --is-ancestor`. The pinned PDK commits
+# (sky130_fd_bd_sram, skywater-pdk) in this commit's Makefile are unchanged
+# from v1.2.48's, so no new PDK fetch is implied by this bump.
+OPENRAM_COMMIT="b2b069ce119d1488cbe6883b2240bceb5c7ce29a"
 OPENRAM_SRC="$(pwd)/.openram-src"
 
-# --- Step 1: clone (or update) OpenRAM source at the pinned release tag ---
+# --- Step 1: clone (or update) OpenRAM source at the pinned commit ---
 if [ -d "$OPENRAM_SRC/.git" ]; then
-  echo "OpenRAM source already present at $OPENRAM_SRC -- updating to $OPENRAM_TAG"
-  git -C "$OPENRAM_SRC" fetch --tags --depth 1 origin "$OPENRAM_TAG"
-  git -C "$OPENRAM_SRC" checkout "$OPENRAM_TAG"
+  echo "OpenRAM source already present at $OPENRAM_SRC -- updating to $OPENRAM_COMMIT"
+  git -C "$OPENRAM_SRC" fetch --depth 1 origin "$OPENRAM_COMMIT"
+  git -C "$OPENRAM_SRC" checkout "$OPENRAM_COMMIT"
 else
-  echo "Cloning OpenRAM at $OPENRAM_TAG into $OPENRAM_SRC"
-  git clone --branch "$OPENRAM_TAG" --depth 1 https://github.com/VLSIDA/OpenRAM.git "$OPENRAM_SRC"
+  echo "Cloning OpenRAM into $OPENRAM_SRC and checking out $OPENRAM_COMMIT"
+  git clone https://github.com/VLSIDA/OpenRAM.git "$OPENRAM_SRC"
+  git -C "$OPENRAM_SRC" fetch --depth 1 origin "$OPENRAM_COMMIT"
+  git -C "$OPENRAM_SRC" checkout "$OPENRAM_COMMIT"
 fi
 
 # --- Step 2: resolve the local sky130 PDK_ROOT dynamically (volare-managed) ---
@@ -47,7 +59,7 @@ echo "Using volare sky130A at $VOLARE_PDK_ROOT"
 #
 # OpenRAM's own bitcell library (sky130_fd_bd_sram) has no matching SPICE
 # model out of the box -- its `make sky130-install` target (see
-# .openram-src/Makefile at v1.2.48, and this task's ruling) populates
+# .openram-src/Makefile at the pinned commit, and this task's ruling) populates
 # technology/sky130/{gds_lib,mag_lib,sp_lib,...} inside the OpenRAM checkout
 # from three PDK_ROOT-sibling dirs: sky130A (already have it via volare, just
 # symlinked in -- not re-fetched), skywater-pdk (two submodules only), and
@@ -120,12 +132,8 @@ docker run --rm \
   vlsida/openram-ubuntu:latest \
   bash -lc '
     set -e
-    if [ ! -d /openram/technology/sky130/gds_lib ]; then
-      echo "Running make sky130-install (one-time bitcell library setup)..."
-      cd /openram && PDK_ROOT=/pdk OPENRAM_HOME=/openram/compiler make sky130-install
-    else
-      echo "technology/sky130/gds_lib already populated -- skipping make sky130-install"
-    fi
+    echo "Running make sky130-install (bitcell library setup; -B force-rebuild in this OpenRAM checkout makes this safe to re-run)..."
+    cd /openram && PDK_ROOT=/pdk OPENRAM_HOME=/openram/compiler make sky130-install
     cd /workspace
     python3 /openram/sram_compiler.py /workspace/config_operand_bank.py
   '

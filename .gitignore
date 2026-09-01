@@ -42,6 +42,11 @@ openram/.openram-src/
 # clones, fetched by openram/run_operand_sram.sh, never committed)
 openram/.pdk-root/
 
+# Manual DRC/LVS diagnostic scratch workspaces for the operand_mem SRAM macro
+# (large regenerable artifacts: extracted .mag/.ext files, LVS reports/netlists)
+openram/diag_tmp/
+openram/klayout_verify/
+
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
 
