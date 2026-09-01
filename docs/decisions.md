@@ -19,6 +19,41 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-01 -- Use KLayout (native, via Homebrew) as an independent LVS cross-check alongside Magic/netgen (issue #31)
+
+**Context:** Once Magic extraction finally completed for the `operand_mem` SRAM macro (see the Docker
+memory entry in `docs/learnings.md`, same date), the real `run_lvs.sh` (netgen) produced a concrete, fully
+quantified failure: device counts matched (37,591 = 37,591) but 104 devices were misclassified and ~520
+nets were missing. Traced this to ~10 `sky130_fd_bd_sram` primitive cells whose GDS uses foundry-internal
+layer/datatype pairs (layers 92 and 115, and non-standard datatype variants of layers 22/33) that the
+open-source `sky130A.tech` Magic techfile has zero entries for anywhere -- confirmed by grepping the
+techfile directly, not guessed.
+**Options considered:** (1) Hand-patch the missing GDS layer/datatype mappings into a local Magic tech
+extension, sourced from the vendor's own `calibre_lvs_lib`/`klayout_lvs_lib` decks that already ship in
+`.openram-src/technology/sky130/`. (2) Accept the gap as a documented, known upstream open-PDK limitation
+and scope issue #31 down to "DRC-clean, LVS-gap-documented." (3) Try KLayout as an alternate DRC/LVS
+toolchain -- OpenRAM natively supports this via `use_klayout=True` (`compiler/verify/klayout.py`), and
+`.openram-src/technology/sky130/tech/sky130.lylvs` is a self-contained ruleset with its own layer
+extraction logic embedded in the script, independent of Magic's techfile gap entirely.
+**Decision:** Option 3. Ran KLayout's own LVS invocation (the exact command OpenRAM's
+`write_lvs_script` would generate: `klayout -b -r sky130.lylvs -rd input=... -rd schematic=... -rd
+target_netlist=... -rd connect_supplies=1`) directly against the same GDS and the same ideal-schematic
+`.lvs.sp`, as a standalone step rather than re-running the whole `sram_compiler.py` generation with
+`use_klayout=True` baked into the config (the GDS itself doesn't need regenerating; only the verification
+tool needed to change). KLayout was not present in `vlsida/openram-ubuntu` or on the host, so installed
+it natively via `brew install --cask klayout` (0.30.12) rather than hunting for or trusting an
+unofficial third-party KLayout Docker image -- also sidesteps the amd64-on-arm64 Docker emulation this
+whole flow has been paying a real time cost for.
+**Why:** Patching Magic's techfile (option 1) is PDK-level surgery with real risk of getting the vendor's
+own internal layer semantics subtly wrong; KLayout's ruleset already encodes that correctly and is the
+tool OpenRAM itself ships first-class support for. It also validated fast in practice: KLayout's run
+finished in 44 seconds against netgen's ~24 minutes, and its report format is far more granular (flags
+exactly which cell and which geometric pattern each warning traces to, e.g.
+`sky130_replica_bitcell_array`), which is what let the next finding -- a 9,360-occurrence "diff/gate"
+warning pattern that's very likely benign extraction-tool noise on dense diffusion-shared bitcell
+geometry, versus a much smaller, structurally real `VDD`/`vdd`/`GND`/`gnd` pin-naming mismatch cluster --
+get separated out cleanly instead of staying tangled together as one opaque "netlists don't match."
+
 ### 2026-08-29 -- Re-synthesize pipelined `pe.v` with Yosys, record the area delta (issue #29)
 
 **Context:** `synth/reports/pe_synth.log` and `synth/reports/pe_sky130.log` were still the pre-pipeline
