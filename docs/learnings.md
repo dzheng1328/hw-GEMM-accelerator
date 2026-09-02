@@ -24,6 +24,37 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-02 -- A prior session's "next step" for the SRAM macro's LVS gap was a plausible-looking guess, not a verified diagnosis
+
+**Phase:** Phase 3
+**Problem:** The prior session's notes said KLayout's LVS "netlists don't match" was caused by
+`NetlistSpiceReader` uppercasing the schematic's circuit/net names while the layout-extracted netlist
+stayed lowercase, and that the next step was to make `sky130.lylvs` read the schematic case-sensitively.
+That diagnosis was plausible (it correctly identified a real case fold) and came with real supporting
+evidence (an exact count of uppercase occurrences), which made it easy to carry forward as settled and
+start implementing the fix it implied.
+**Cause:** The case fold was real, but it was never the cause of the actual failures.
+Direct RBA API testing showed `circuit_by_name` lookups are case-insensitive, and the real `.lvs.report`
+showed every single "could not be compared" entry correctly pairing the lowercase and uppercase versions
+of the same circuit — pairing was never broken.
+A second, more specific hypothesis (that `connect_global(SUB,"gnd")`'s hardcoded lowercase net names
+were the real blocker, since they can only ever match the layout side) was also real and directly
+verified with a `NetlistSpiceReaderDelegate` fix — but applying that fix and re-running the actual LVS
+check end to end left the failure count completely unchanged, disproving it too.
+The real cause (a body/bulk-tie terminal splitting into a separate net instead of merging into the
+ground rail, isolated to 5 vendor-proprietary `sky130_fd_bd_sram__` cells) only surfaced by dumping the
+extracted circuit's actual pins and device-terminal references via the RBA API and comparing schematic
+vs. extracted port counts directly, not by reasoning about the report text.
+**Fix:** Treated the inherited "next step" as a hypothesis to test, not a diagnosis to implement — the
+first real test (a minimal Ruby repro reading the schematic and checking `circuit_by_name` case
+sensitivity) took under a minute and immediately showed the plan's premise was wrong, before any time
+was spent editing the real LVS script for the wrong reason.
+**Takeaway:** A confident-sounding root-cause note from a previous session (even one full of real,
+verified evidence, like an exact occurrence count) is still a hypothesis until the fix it implies is
+actually tried and shown to change the outcome — cheap, targeted experiments against the real tool
+(a 10-line RBA script, a 45-second LVS re-run) are faster than trusting the inherited narrative and
+finding out three steps later.
+
 ### 2026-09-01 -- The operand_mem SRAM macro's Magic extraction wasn't failing on a bug, it was hitting Docker's memory ceiling
 
 **Phase:** Phase 3

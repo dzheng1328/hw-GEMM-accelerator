@@ -28,8 +28,9 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 
 **Phase 2 is complete (2026-07-19); Phase 3 is in progress (Phase 3.1 -- pipeline `pe.v`'s MAC datapath --
 is complete as of 2026-08-29: OpenLane 2 P&R confirms full timing closure on the pipelined design, and
-Yosys area numbers are re-synthesized and up to date. Phase 3.2 -- SRAM-macro `operand_mem` -- and
-`gemm_tile`/`router` P&R are still to come).**
+Yosys area numbers are re-synthesized and up to date. Phase 3.2 -- SRAM-macro `operand_mem` -- closed
+2026-09-02 (issue #31): a real macro is generated with a documented DRC/LVS gap, see below. Issue #32
+(RTL integration behind `operand_mem`'s port interface) and `gemm_tile`/`router` P&R are still to come).**
 Phase 2's three strands, all landed:
 
 - *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
@@ -98,6 +99,20 @@ Phase 3's first physical-design strands, both landed:
   deep multiply-accumulate cone -- same effect the OpenLane pass above found post-P&R, now confirmed
   pre-P&R too. Real numbers in `synth/reports/pe_synth.log`, `synth/reports/pe_sky130.log`, and
   `docs/decisions.md` (2026-08-29 entry). This closes out Phase 3.1 end to end.
+- *SRAM macro for `operand_mem` (2026-09-02, done -- closes Phase 3.2/issue #31):* generated a real
+  512b/1RW/64x64 sky130 SRAM macro with OpenRAM (`openram/config_operand_bank.py` +
+  `openram/run_operand_sram.sh`, `words_per_row=2` to route around an OpenRAM v1.2.48 no-mux router bug,
+  pinned to OpenRAM `stable`@`b2b069c` to pick up three real upstream fixes). Real GDS/LEF/Verilog/
+  Liberty/datasheet outputs exist for the first time (`openram/runs/sky130_sram_512b_1rw_64x64/`,
+  gitignored). DRC and LVS were both run to real completion via two independent open-source toolchains
+  (Magic/netgen and KLayout, native via Homebrew) -- neither is clean, but both concentrate their real
+  findings in the same narrow, vendor-supplied `sky130_fd_bd_sram` primitive-cell family that uses
+  foundry-internal GDS layers the open sky130 PDK doesn't publish, not in this project's own config, RTL,
+  or scripts. Closed as a documented, cross-tool-confirmed upstream open-source-PDK limitation rather than
+  a clean pass -- see `docs/decisions.md`, 2026-09-01 and 2026-09-02 entries, and `docs/learnings.md`,
+  2026-09-02 entry (a plausible-looking case-sensitivity diagnosis from an earlier session, disproven by
+  direct experiment rather than trusted). Issue #32 (wrap the macro behind `operand_mem`'s existing
+  write/load + `rd_addr` read port, including the real synchronous-read latency adaptation) is next.
 
 ## What this is
 

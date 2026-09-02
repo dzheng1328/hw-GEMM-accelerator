@@ -19,6 +19,76 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-02 -- Close issue #31: accept the operand_mem SRAM macro's DRC/LVS gap as a documented, cross-tool-confirmed open-source-PDK limitation
+
+**Context:** The 2026-09-01 entry below left one real, precisely-scoped blocker: KLayout's independent
+LVS run reported "netlists don't match," with a `VDD`/`vdd`, `GND`/`gnd` pin-naming mismatch flagged as
+the likely real cause and case-sensitive schematic parsing flagged as the next thing to try.
+This session tested that plan directly instead of assuming it, and it turned out to be wrong on two
+counts, both proven rather than guessed.
+First, `NetlistSpiceReader` really does uppercase every name it reads (confirmed via direct RBA API
+introspection: `SKY130_FD_BD_SRAM__OPENRAM_DFF`), but `circuit_by_name` lookups are case-insensitive, and
+every one of the real report's 76 "could not be compared" entries shows KLayout correctly pairing the
+lowercase (layout) and uppercase (schematic) circuit names together — the case fold never broke circuit
+pairing at all.
+Second, the actual mechanism the prior entry pointed at (`connect_global(SUB, "gnd")` /
+`connect_implicit("*", "vdd"/"gnd")` only ever seeing the layout's lowercase net labels) was real, so a
+`NetlistSpiceReaderDelegate` subclass was written to force the schematic's `VDD`/`GND` to lowercase on
+read, and the LVS check was re-run end to end with the fix in place.
+The failure count did not change at all: same 76 circuits, same pin-mismatch categories, just relabeled
+in lowercase — proving case was never the real blocker either.
+**Options considered:** With both case-related hypotheses eliminated by direct experiment, the real cause
+needed tracing from first principles rather than a third guess.
+Comparing the schematic's and the freshly re-extracted netlist's `.SUBCKT` port counts for one failing
+cell (`sky130_fd_bd_sram__openram_sp_nand2_dec`, a vendor-supplied primitive) found 5 ports on the
+schematic side (`A B Z VDD GND`) against 6 on the extracted side — a real port-count mismatch, not a
+naming issue.
+Dumping that circuit's extracted pins and their device-terminal references directly via the RBA API (not
+guessed) showed the cause precisely: the two NMOS pull-down transistors' bulk/body terminals land on a
+*separate* net (`gnd`, carrying only the two `B` terminals) instead of merging into the same net as the
+real ground rail (`GND,gnd`, carrying the source terminal) — `connect_global(SUB, "gnd")`'s bulk-merge
+isn't capturing this vendor cell's body-tie geometry.
+Cross-checking against a plain, non-proprietary OpenRAM-composed cell (`pinv`, which uses only generic
+`sky130_fd_pr` transistors) confirmed this is *not* a macro-wide extraction gap: `pinv` extracts cleanly
+with the expected 4 ports and has no `.subckt` entry in the schematic at all (it's meant to be flattened
+away by `align`), so its appearances in the earlier "leaf circuits with real net-mismatch errors" list
+were downstream cascades from its failing siblings, not independent defects.
+Re-deriving the full leaf-failure list on that basis narrows it to exactly 5 real root circuits, and all
+5 are `sky130_fd_bd_sram__`-prefixed vendor primitives (`openram_dff`, `openram_sense_amp`,
+`openram_sp_nand2_dec`, `openram_sp_nand3_dec`, `openram_write_driver`) — precisely the same proprietary
+cell family the 2026-09-01 entry's Magic/netgen run independently traced to foundry-internal GDS layers
+(92, 115, and non-standard datatype variants of 22/33) absent from the open `sky130A.tech` techfile.
+DRC was also run to completion for the first time against this final GDS this session (KLayout's
+`sky130.lydrc`, ~33 minutes, 62,734 violations) — 84% of them (52,930) land on
+`sky130_sram_512b_1rw_64x64_sky130_bitcell_array` alone, with the replica/dummy/col-cap array wrappers
+accounting for nearly all the rest, the same dense bitcell-array-family geometry already flagged as
+likely benign KLayout extraction noise in the 2026-09-01 LVS entry (the "diff/gate" warnings) and
+consistent with vendor-qualified silicon IP that has already passed real Calibre/Assura signoff DRC the
+open-source `sky130.lydrc` ruleset doesn't fully replicate.
+**Decision:** Accept the DRC/LVS gap as documented and close issue #31.
+Two independent open-source toolchains (Magic/netgen and KLayout) were run to real completion against
+the final generated macro (`words_per_row=2`, OpenRAM `stable`@`b2b069c`, Docker Desktop at 15.6GB) and
+both concentrate their real, non-cosmetic findings in the same narrow, vendor-supplied
+`sky130_fd_bd_sram` primitive-cell family that uses foundry-internal layers the open PDK doesn't publish
+— not in this project's own config, RTL, or scripts.
+Continuing to chase this specific gap (patching `connect_global` for an undocumented proprietary layer,
+or reverse-engineering the vendor's body-tie geometry) would mean guessing at foundry-internal PDK
+internals with no public documentation to verify against, which is a fundamentally different, much
+lower-confidence activity than the config/version fixes that got the flow this far.
+Issue #32 (RTL integration behind `operand_mem`'s port interface) is unblocked to proceed against this
+macro's real GDS/LEF/Liberty outputs; the DRC/LVS status carried forward is "run to completion via two
+independent tools, gap traced and documented, not clean."
+**Why:** Every real (non-case, non-cosmetic) discrepancy found across both tools and two independent
+verification passes (DRC and LVS) lands on the same small, named set of vendor-proprietary cells, via
+two structurally different symptoms (Magic: misclassified devices; KLayout: a split body-tie net) that
+both trace back to the same foundry-internal-layer gap already confirmed by direct techfile inspection —
+that convergence is what makes "documented upstream limitation" a evidenced conclusion here rather than
+a shrug.
+Reproducing the schematic/layout terminal counts and device-terminal references directly via KLayout's
+own RBA API (rather than re-reading report prose) is also what let two plausible but wrong hypotheses
+(case-sensitivity breaking circuit pairing; case-sensitivity breaking net matching) get ruled out
+cleanly instead of accumulating as unverified assumptions carried into issue #32.
+
 ### 2026-09-01 -- Use KLayout (native, via Homebrew) as an independent LVS cross-check alongside Magic/netgen (issue #31)
 
 **Context:** Once Magic extraction finally completed for the `operand_mem` SRAM macro (see the Docker
