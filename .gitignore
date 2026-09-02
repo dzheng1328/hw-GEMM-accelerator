@@ -35,5 +35,20 @@ model/.mnist_cache/
 # Third-party PDK data (fetched by synth/fetch_sky130.sh, never committed)
 synth/lib/
 
+# Third-party OpenRAM source clone (fetched by openram/run_operand_sram.sh, never committed)
+openram/.openram-src/
+
+# Local PDK_ROOT for OpenRAM's sky130 SRAM bitcell setup (symlink + third-party
+# clones, fetched by openram/run_operand_sram.sh, never committed)
+openram/.pdk-root/
+
+# Manual DRC/LVS diagnostic scratch workspaces for the operand_mem SRAM macro
+# (large regenerable artifacts: extracted .mag/.ext files, LVS reports/netlists)
+openram/diag_tmp/
+openram/klayout_verify/
+
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
+
+# Git worktrees for isolated implementation work
+.worktrees/
