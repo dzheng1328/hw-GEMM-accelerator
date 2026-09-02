@@ -24,6 +24,48 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-02 -- A documented testbench gotcha didn't stop the same bug from recurring twice in one branch
+
+**Phase:** Phase 3
+**Problem:** Issue #32's new `tb/operand_mem/test_operand_mem.py` hit the exact same class of bug this
+file already documented in its 2026-07-05 entry ("reading acc_out right after RisingEdge saw stale
+values"), and it hit it twice, in two separate assertion blocks within the same new test function
+(`test_read_latency_is_registered`), requiring two separate fix rounds during implementation (commits
+`d5be170` and `9b46ae4`).
+**Cause:** The root cause is the same one the 2026-07-05 entry already fully diagnosed: `await
+RisingEdge(dut.clk)` resumes the test coroutine in the simulator's Active region, which fires before the
+RTL's own non-blocking register updates settle in the NBA region for that same edge, so a signal read
+immediately after `RisingEdge` (or immediately after a plain signal assignment, in the first block's case)
+sees a stale value rather than the value that update actually produced.
+The first occurrence (commit `d5be170`) was a same-cycle assertion right after driving `dut.rd_addr.value`
+that passed vacuously against both the old combinational RTL and the new registered RTL, because neither
+variant's output had a chance to respond to the new address before the assertion ran.
+The second occurrence (commit `9b46ae4`) was a different assertion block in the same test function,
+immediately after a second `await RisingEdge(dut.clk)`, that only started failing once Task 2 replaced the
+combinational RTL with the real registered-read macro; against the old combinational RTL this race never
+mattered, because a combinational read reflects a new address instantly regardless of the read-timing
+race, so the latent bug sat unexercised until a genuinely registered `operand_mem.v` existed to expose it.
+**Fix:** Both instances got the same fix already documented in the 2026-07-05 entry: insert `await
+Timer(1, units="ns")` between the triggering event and the read, letting the NBA update settle before the
+assertion runs.
+**Takeaway:** Having a gotcha documented in this file did not, by itself, prevent the same mistake from
+being written twice in the same branch.
+The lesson isn't "read the docs again," it's that a documented pattern like this one needs to be actively
+checked against every new `await RisingEdge` (or any driven-signal read) plus an immediate register read
+while writing a testbench, not just remembered in the abstract and trusted to surface itself.
+For the record, not fixed in this pass: the final whole-branch review found `test_operand_mem.py` still
+has two more instances of this same pattern, un-settled reads after a double `await RisingEdge(dut.clk)`
+with no `Timer` in between the second edge and the assertion, in the read loops inside
+`test_write_then_read_all_slots` (current HEAD: lines 62-65) and `test_banks_are_independent` (current
+HEAD: lines 108-111).
+The review's own cited line numbers (88-89, 131-132) do not match the file as it stands at `15ac2d4`; the
+content of the finding is confirmed real by inspection even though those specific line numbers are not.
+Both loops happen to pass because the second `RisingEdge` lands a full clock period after the register
+write that mattered already settled, not because the race was actually closed the way the two fixed
+assertion blocks above were.
+This is a known, deferred loose end, intentionally left untouched by this fix wave (out of scope) rather
+than an oversight.
+
 ### 2026-09-02 -- A prior session's "next step" for the SRAM macro's LVS gap was a plausible-looking guess, not a verified diagnosis
 
 **Phase:** Phase 3

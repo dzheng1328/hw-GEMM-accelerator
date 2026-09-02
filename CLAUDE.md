@@ -14,14 +14,19 @@ port-representation reasoning). `model/` now has a real, trained, quantized MNIS
 — tiling each layer's matmul into repeated 8x8x8 waves (see `docs/decisions.md` for the tiling/
 quantization scheme), checking hardware output against a NumPy reference bit-exactly, and reporting
 classification accuracy against both true labels and the original float model. Run the full test suite
-(`tb/`, `tb/array/`, `tb/tile/`, `tb/gemm/`, `tb/router/`, `tb/noc/`, `tb/mesh/`, `tb/mnist/`) with:
+(`tb/`, `tb/array/`, `tb/tile/`, `tb/operand_mem/`, `tb/gemm/`, `tb/router/`, `tb/noc/`, `tb/mesh/`,
+`tb/mnist/`) with:
 
 ```
 ./test.sh
 ```
 
-(equivalent to running `make` in each of those eight directories, but works from any directory/shell
+(equivalent to running `make` in each of those nine directories, but works from any directory/shell
 state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if modifying it).
+As of issue #32 (2026-09-02), `tb/gemm/`, `tb/noc/`, and `tb/mesh/` are *expected* to fail - this is not a
+regression.
+`operand_mem.v`'s read is now registered (real SRAM macro timing), and `gemm_sequencer.v` has not yet
+been updated to compensate for the added latency; that ripple is issue #33's job.
 
 `sim/` (simulation build artifacts, gitignored) is created automatically on first `make` run.
 `model/checkpoints/` and `model/.mnist_cache/` are also gitignored (only the frozen `.npz` is committed).
@@ -30,7 +35,12 @@ state — see the `make -C` vs `cd && make` gotcha in `docs/learnings.md` if mod
 is complete as of 2026-08-29: OpenLane 2 P&R confirms full timing closure on the pipelined design, and
 Yosys area numbers are re-synthesized and up to date. Phase 3.2 -- SRAM-macro `operand_mem` -- closed
 2026-09-02 (issue #31): a real macro is generated with a documented DRC/LVS gap, see below. Issue #32
-(RTL integration behind `operand_mem`'s port interface) and `gemm_tile`/`router` P&R are still to come).**
+(wiring that macro's real, synchronous read timing behind `operand_mem`'s existing port interface) is
+also closed as of 2026-09-02: `rtl/operand_mem.v` now instantiates `sky130_sram_512b_1rw_64x64` (real
+macro for synthesis, `tb/operand_mem/sram_macro_behavioral.v` stand-in for simulation), with a registered
+one-cycle read (`RD_LATENCY`) in place of the old combinational read. `gemm_sequencer.v` has not yet been
+updated for the new latency (issue #33), so `tb/gemm/`, `tb/noc/`, and `tb/mesh/` are expected to fail
+until #33 lands -- see the note above `./test.sh`. `gemm_tile`/`router` P&R are still to come).**
 Phase 2's three strands, all landed:
 
 - *Yosys synthesis (done, first pass):* `synth/synth.ys` / `synth/synth_pe.ys` synthesize
