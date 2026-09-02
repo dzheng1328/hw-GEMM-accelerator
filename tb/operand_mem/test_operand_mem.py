@@ -9,7 +9,7 @@ import random
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import RisingEdge, Timer
 
 N = 8
 KMAX = 8
@@ -79,6 +79,7 @@ async def test_read_latency_is_registered(dut):
     dut.rd_addr.value = 5
     await RisingEdge(dut.clk)
     dut.rd_addr.value = 9
+    await Timer(1, units="ns")
     # Same cycle rd_addr changes to 9: output must still reflect addr 5.
     assert dut.rd_a_col.value.integer == 0xAAAA_BBBB_CCCC_DDDD
     assert dut.rd_b_row.value.integer == 0x1111_2222_3333_4444
