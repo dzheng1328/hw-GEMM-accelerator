@@ -85,6 +85,7 @@ async def test_read_latency_is_registered(dut):
     assert dut.rd_b_row.value.integer == 0x1111_2222_3333_4444
 
     await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
     # Exactly RD_LATENCY cycles after presenting addr 9: output reflects addr 9.
     assert dut.rd_a_col.value.integer == 0x5555_6666_7777_8888
     assert dut.rd_b_row.value.integer == 0x9999_AAAA_BBBB_CCCC
