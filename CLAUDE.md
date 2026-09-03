@@ -165,6 +165,13 @@ Task/todo tracking for this project lives in Notion, not in this repo:
 Quick/messy notes get captured in Notion first; resolved, polished versions get written into
 `docs/learnings.md` and `docs/decisions.md` in this repo.
 
+**Phase 3.1-3.4 execution** (pipeline `pe.v`, SRAM-macro `operand_mem`, `gemm_tile`/`router` P&R, Tiny
+Tapeout) is tracked separately as [GitHub milestones](https://github.com/dzheng1328/hw-GEMM-accelerator/milestones)
++ issues, surfaced on the [Phase 3 Roadmap project board](https://github.com/users/dzheng1328/projects/2) —
+set up 2026-08-26 once the timing-closure and SRAM-macro findings became concrete, PR-sized next steps
+rather than open-ended Notion cards. Notion stays the source of truth for Phase 1/2 history and
+day-to-day quick notes; this GitHub-native tracker is specifically for the milestone-shaped work ahead.
+
 ## Git workflow
 
 Work lands via feature branches + PRs, not direct commits to `main` — adopted 2026-07-05 once the
