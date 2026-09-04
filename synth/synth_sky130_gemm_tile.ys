@@ -12,6 +12,12 @@ read_verilog rtl/pe.v
 read_verilog rtl/systolic_array.v
 read_verilog rtl/skew_feeder.v
 read_verilog rtl/tile.v
+# BROKEN as of the issue #32 branch (2026-09-02): rtl/operand_mem.v now instantiates the real
+# sky130_sram_512b_1rw_64x64 SRAM macro by name, and this flow has no blackbox stub or real macro
+# definition for Yosys to resolve it against, so this line will hard-error with
+# "Module `\sky130_sram_512b_1rw_64x64' ... is not part of the design." Providing a blackbox stub for
+# synthesis is issue #35's job, not fixed here. synth/reports/gemm_tile_sky130.log is stale as of this
+# branch (last regenerated against the pre-macro combinational operand_mem.v).
 read_verilog rtl/operand_mem.v
 read_verilog rtl/gemm_sequencer.v
 read_verilog rtl/gemm_tile.v

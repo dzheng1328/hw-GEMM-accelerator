@@ -19,7 +19,83 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
-### 2026-09-02 -- Close issue #31: accept the operand_mem SRAM macro's DRC/LVS gap as a documented, cross-tool-confirmed open-source-PDK limitation
+### 2026-09-02 -- Wire the real SRAM macro behind operand_mem's port interface: latency contract, address-port arbitration, and macro-selection mechanism (issue #32)
+
+**Context:** Issue #31 generated a real sky130 SRAM macro (`sky130_sram_512b_1rw_64x64`) sized to
+`operand_mem`'s per-bank geometry.
+Issue #32's job was to wrap that macro behind `operand_mem.v`'s existing write/read port shape, which
+meant resolving three real design questions the combinational register-file version never had to answer:
+how to represent the macro's synchronous (registered) read latency to callers, how to arbitrate the
+macro's single shared address/control port against the module's separate read and write ports, and how
+to select the real macro for synthesis versus a simulation stand-in without touching `operand_mem.v`'s
+own logic.
+Full reasoning is in `docs/superpowers/specs/2026-08-31-operand-mem-macro-integration-design.md`'s
+"Options considered" section; this entry promotes that reasoning to the project's canonical log.
+
+**Options considered (latency contract):** A valid/ready handshake on the read port, versus a fixed
+`localparam RD_LATENCY = 1` as the source-of-truth constant.
+The handshake was rejected because the real macro's read latency is a fixed hardware fact, not
+data-dependent or variable, so a handshake would add real complexity (extra signals, extra states in
+every consumer) for no behavioral benefit over a named constant the consumer's FSM can size itself
+against.
+
+**Options considered (shared address port):** A real arbiter/FSM for concurrent read and write, versus a
+simple priority mux (`wr_en ? wr_addr : rd_addr`, write always wins, no arbitration).
+Re-reading `rtl/gemm_tile.v` and `rtl/noc_node.v` confirmed `wr_en` only ever fires during OPERAND-flit
+delivery (the load phase) and `rd_addr` only matters after `start` triggers the sequencer (the compute
+phase), so the two are never concurrent in any real usage today and a real arbiter would be premature
+complexity for a case that can't currently happen.
+
+**Options considered (macro selection):** An internal `ifdef`/parameter switch inside `operand_mem.v`
+(e.g. `generate if (SIM) ... else ...`), versus resolving the real macro (for synthesis) or a behavioral
+stand-in (`tb/operand_mem/sram_macro_behavioral.v`, for simulation) purely by module-name matching
+against whichever file list a given build's tooling happens to compile.
+The `ifdef` approach was rejected as a feature-flag-style branch inside a module that actually gets taped
+out, for a distinction the build system's file lists already provide for free with zero internal
+branching.
+
+**Decision:** `rtl/operand_mem.v` defines `localparam RD_LATENCY = 1` as the latency contract (the same
+pattern already established by `pe.v`'s `ACC_LATENCY`, threaded onward the same way through
+`gemm_sequencer`/`gemm_tile`/`noc_node`, issue #33's job); uses a write-priority mux with no arbitration
+on both banks' shared address port; and instantiates `sky130_sram_512b_1rw_64x64` by name with zero
+internal branching, resolved to the real macro or the behavioral stand-in purely by which `.v` file a
+given Makefile's `VERILOG_SOURCES` (or the synthesis flow's `read_verilog` list) happens to include.
+
+**Why:** All three choices follow the same principle already established elsewhere in this codebase:
+prefer the simplest mechanism that's actually justified by real, verified caller behavior today, over
+speculative generality for cases that don't currently exist.
+`RD_LATENCY` mirrors `ACC_LATENCY`'s proven pattern; the write-priority mux mirrors the same YAGNI call
+issue #31's spec already made rejecting a dual-port macro; and file-list resolution avoids adding
+feature-flag complexity to a module that will actually be fabricated.
+
+**A named constraint for issue #33/#35, not fixed here:** the final whole-branch review surfaced a real
+risk in the write-priority mux's safety argument.
+The mux's "read and write never overlap" reasoning depends entirely on today's callers never asserting
+`wr_en` while a read is in flight, but that invariant is not enforced anywhere in RTL, only true by
+inspection of current traffic patterns.
+Concretely, `rtl/noc_node.v`'s LOCAL port unconditionally accepts every OPERAND flit (`r_out_ready[LOCAL]`
+is tied `1'b1`, with no `busy` interlock gating it), so if a future NoC traffic pattern ever delivers an
+operand flit while a `gemm_sequencer.v`-driven read is mid-flight, the write would silently steal the
+shared address port from that in-flight read with no error indication, silently corrupting the read data.
+Whoever picks up issue #33 (updating `gemm_sequencer.v` for the new read latency) or issue #35
+(blackboxing the macro for synthesis) must account for this constraint; it is not fixed by this branch.
+A synthesis-safe simulation assertion (`wr_en && rd_addr !== wr_addr` -> `$display` warning, wrapped in
+`synthesis translate_off`/`translate_on`) was tried in `rtl/operand_mem.v` as a cheap early-warning
+safeguard, but was reverted after running `tb/operand_mem`: `rd_addr` sits at its idle default (0) for the
+whole write-loading phase in every current test (nothing is actually reading yet), so the naive condition
+fires on nearly every write and floods the log with false positives, rather than only flagging a genuine
+concurrent read-during-write.
+A version of this check that is actually useful would need to know whether a read is genuinely in flight
+(not just whether `rd_addr` happens to differ from `wr_addr`), which this module's current port interface
+has no signal for; building that signal is folded into the interlock work named above, not attempted here.
+The invariant stays documented here in `docs/decisions.md`, without an RTL assertion backing it, until
+issue #33/#35 gives the module something better than "was `rd_addr` presented," such as a real `busy`/
+`rd_en` signal, to check.
+
+**Also:** this branch adds a ninth suite to `./test.sh` (`tb/operand_mem`, testing `operand_mem.v` in
+isolation against the behavioral macro stand-in), and three previously-passing suites (`tb/gemm`,
+`tb/noc`, `tb/mesh`) are now expected to fail until issue #33 updates `gemm_sequencer.v` for the new
+registered-read latency; this is a known, intentional ripple, not a regression.
 
 **Context:** The 2026-09-01 entry below left one real, precisely-scoped blocker: KLayout's independent
 LVS run reported "netlists don't match," with a `VDD`/`vdd`, `GND`/`gnd` pin-naming mismatch flagged as
