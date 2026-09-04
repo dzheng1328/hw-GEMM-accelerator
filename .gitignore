@@ -52,3 +52,10 @@ openram/klayout_verify/
 
 # Git worktrees for isolated implementation work
 .worktrees/
+
+# AI agent working files (instructions, decision/learning logs, plans/specs)
+CLAUDE.md
+AGENTS.md
+docs/decisions.md
+docs/learnings.md
+docs/superpowers/
