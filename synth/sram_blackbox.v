@@ -3,8 +3,11 @@
 // synth/sram_blackbox.v -- Yosys blackbox stub for the real sky130 SRAM macro
 // (sky130_sram_512b_1rw_64x64, generated via OpenRAM -- issue #31/#32) that
 // rtl/operand_mem.v instantiates by name. Port list matches operand_mem.v's
-// instantiation exactly; no internal behavior is modeled here (this file is
-// synthesis-only, never used in simulation -- tb/operand_mem/
+// real instantiation exactly (addr0[6:0]/din0,dout0[64:0]/spare_wen0 -- the
+// real macro's actual port shape, confirmed by regenerating it and reading
+// its real generated .v/.lef, issue #48; see rtl/operand_mem.v's header
+// comment for the derivation). No internal behavior is modeled here (this
+// file is synthesis-only, never used in simulation -- tb/operand_mem/
 // sram_macro_behavioral.v is the simulation stand-in).
 //
 // (* blackbox *) tells Yosys to treat this as an opaque, already-implemented
@@ -18,8 +21,9 @@ module sky130_sram_512b_1rw_64x64 (
     input  wire        clk0,
     input  wire        csb0,
     input  wire        web0,
-    input  wire [5:0]  addr0,
-    input  wire [63:0] din0,
-    output wire [63:0] dout0
+    input  wire        spare_wen0,
+    input  wire [6:0]  addr0,
+    input  wire [64:0] din0,
+    output wire [64:0] dout0
 );
 endmodule

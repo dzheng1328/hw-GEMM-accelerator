@@ -19,6 +19,54 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-08 -- Fix operand_mem.v's SRAM macro port shape to match the real macro (issue #48)
+
+**Context:** Issue #35's macro regeneration found that the real `sky130_sram_512b_1rw_64x64.v` has
+`ADDR_WIDTH=7`, `DATA_WIDTH=65`, and a `spare_wen0` pin -- none of which `rtl/operand_mem.v`'s real macro
+instantiation or `tb/operand_mem/sram_macro_behavioral.v`'s stand-in accounted for (both assumed a clean
+6-bit-address/64-bit-data port with no spare pin). Filed as issue #48 rather than fixed inline at the
+time, since it's distinct RTL work from #35's "measure the area" scope.
+
+**Investigation:** Before writing any fix, traced the exact address layout and `spare_wen0` polarity
+against OpenRAM's own generator source (`compiler/base/verilog.py`, `compiler/sram_config.py`, same
+pinned commit `b2b069ce...` issues #31/#32/#35 used) rather than guess a second time.
+`sram_config.py`'s `recompute_sizes()`: with `num_words_per_bank=64`, `words_per_row=2`,
+`num_spare_rows=1`, this macro has `num_rows = 64/2 + 1 = 33` real+spare rows, `row_addr_size =
+ceil(log2(33)) = 6`, `col_addr_size = log2(2) = 1`, `bank_addr_size = 7` -- confirms where `ADDR_WIDTH=7`
+comes from.
+`bank.py`'s address-bit assignment puts the column-mux select at `addr0[0]` (the LSB) and the row select
+at `addr0[6:1]`, so the raw integer value of `addr0` already equals `row*2 + col` with no permutation --
+meaning this module's 64 logical words (row-major over the real 32 data rows x 2 columns) land at flat
+addresses 0..63 *unpermuted*, and the real macro's extra high address bit only ever selects the spare row
+(address 64+), which this module never needs to address.
+`verilog.py`'s `add_write_block()`: the spare column is written with `if (spare_wen{port}_reg) mem[...]
+[word_size] = din{port}_reg[word_size]`, inside the block already gated by a real write (`!csb && !web`)
+-- confirming `spare_wen0` is active-high and independent of `web0`, so tying it low protects the spare
+column regardless of what's tied to its data bit.
+
+**Decision:** In `rtl/operand_mem.v`, widen the real macro instantiation only (the module's own external
+6-bit/64-bit interface is unchanged): `addr0` gets a single `1'b0` prepended (`{1'b0, a_addr}` for the
+7-bit port), `din0` gets a `1'b0` prepended for the spare-column bit (`{1'b0, wr_a_col}`), `dout0`'s low
+64 bits are used (`rd_a_col = a_dout_raw[63:0]`) and its spare bit (bit 64) is simply unused, and
+`spare_wen0` is tied to `1'b0`. Updated `tb/operand_mem/sram_macro_behavioral.v` to the same real port
+shape (`addr0[6:0]`, `din0`/`dout0[64:0]`, `spare_wen0` input) so simulation actually exercises the same
+interface the real macro presents, modeling the full 128-deep address space (not just the 64 real words)
+so an out-of-range address reads/writes a distinct, defined location rather than aliasing onto real data.
+Updated `synth/sram_blackbox.v` (issue #35) to the same corrected port list, since it must match whatever
+`operand_mem.v` actually instantiates.
+
+**Why:** The zero-extension/tie-off approach needed zero changes to `operand_mem.v`'s own external
+interface or to any caller (`gemm_tile.v`, `noc_node.v`, `gemm_sequencer.v` are all untouched), because
+the address math above showed the extra macro-side bits are pure padding for this module's actual usage
+pattern -- not a real remapping problem. Verified rather than assumed a second time: re-ran the full
+suite (`./test.sh`, 25/25 tests, all 9 suites pass) and re-ran the Yosys blackbox synthesis
+(`synth/synth_sky130_gemm_tile.ys`); `operand_mem`'s own local logic area is bit-for-bit identical
+(71.318 um^2) before and after, since the tie-off constants (`1'b0` concatenations) fully optimize away --
+confirming the fix is functionally free, not just functionally correct. (The synth run's *total* tile
+area differs by about 1% run-to-run due to `abc`'s ordinary non-deterministic mapping jitter on
+`gemm_sequencer`/`tile`, unrelated to this change -- not re-committing `synth/reports/gemm_tile_sky130.log`
+over noise; issue #35's numbers stand.)
+
 ### 2026-09-08 -- Real area win from the SRAM macro, measured via Yosys blackbox synthesis (issue #35, closes Phase 3.2)
 
 **Context:** The sky130 Yosys pass (2026-07-19) found the flop-array `operand_mem` cost 42.5%
