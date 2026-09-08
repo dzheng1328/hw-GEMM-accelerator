@@ -19,6 +19,44 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-08 -- Propagate operand_mem's registered read latency into gemm_sequencer's feed_valid timing (issue #33)
+
+**Context:** Issue #32 wired a real sky130 SRAM macro behind `operand_mem`'s port interface, changing its
+read from combinational to registered (`RD_LATENCY = 1` cycle).
+`gemm_sequencer.v` still drove `rd_addr` and `feed_valid` (which gates the tile's `in_valid`) from the
+same combinational cycle counter, so `feed_valid` fired one cycle before the corresponding data actually
+appeared on `rd_a_col`/`rd_b_row` -- feeding the array stale data every column.
+This is why `tb/gemm/`, `tb/noc/`, and `tb/mesh/` were expected to fail per the `CLAUDE.md` status note
+after issue #32 landed.
+
+**Options considered:** Shift `rd_addr` generation earlier (issue addresses `RD_LATENCY` cycles ahead of
+the feed window) versus leaving `rd_addr` generation untouched and instead delaying the `feed_valid`
+output by `RD_LATENCY` cycles via a shift register.
+The first option would have meant prefetching into the next chunk's addressing window, complicating the
+chunk-boundary bookkeeping the FSM already has proofs for.
+The second option only touches the signal that gates the tile, not the address sequence itself.
+
+**Decision:** Delay `feed_valid` by `RD_LATENCY` cycles via a shift register fed by the existing
+combinational "is this a real column" signal (renamed `rd_col_valid`), running unconditionally every
+cycle regardless of FSM state.
+`RD_LATENCY` is threaded through `gemm_sequencer.v`/`gemm_tile.v`/`noc_node.v` as a parameter, mirroring
+the existing `PE_ACC_LATENCY` "must stay in sync with the source-of-truth constant" pattern, with
+`operand_mem.v`'s `RD_LATENCY` localparam as the source of truth.
+`DRAIN_CYCLES` grows by `RD_LATENCY` (now `2*N + PE_ACC_LATENCY + RD_LATENCY`) since the last chunk's real
+data now reaches the array `RD_LATENCY` cycles after the address-generation counter finishes issuing
+addresses for it.
+
+**Why:** `rd_addr` is already issued one column per cycle, exactly what a pipelined SRAM wants, so it
+needed no change.
+The read delay is a constant offset applied uniformly to every column, so the proven `P = 3N-2` wave
+spacing and its cross-chunk non-contamination argument are untouched -- only the trailing edge (drain)
+needed the extra cycles.
+Running the shift register unconditionally (not gated by `state == S_RUN`) means it drains correctly
+across the `S_RUN` -> `S_DRAIN` boundary with no extra bookkeeping: whatever was shifted in during the
+last real columns of `S_RUN` keeps propagating out during `S_DRAIN` on its own.
+Verified by re-running the full suite (`./test.sh`): all 9 suites pass, including the three
+(`tb/gemm/`, `tb/noc/`, `tb/mesh/`) that were expected to fail going in.
+
 ### 2026-09-02 -- Wire the real SRAM macro behind operand_mem's port interface: latency contract, address-port arbitration, and macro-selection mechanism (issue #32)
 
 **Context:** Issue #31 generated a real sky130 SRAM macro (`sky130_sram_512b_1rw_64x64`) sized to
