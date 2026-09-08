@@ -19,6 +19,69 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-08 -- Real area win from the SRAM macro, measured via Yosys blackbox synthesis (issue #35, closes Phase 3.2)
+
+**Context:** The sky130 Yosys pass (2026-07-19) found the flop-array `operand_mem` cost 42.5%
+(309,456.79 um^2) of `gemm_tile`'s 727,844.31 um^2 total -- the measured case for the SRAM-macro swap
+issues #31/#32 then implemented. Issue #35's job was to measure the *real* area win now that a real
+macro exists, not the flop-array estimate.
+Yosys can't synthesize a real hard macro's internals (no gate-level Verilog exists for it, only GDS/LEF/
+LIB views), so `synth/synth_sky130_gemm_tile.ys` hard-errored trying to resolve
+`sky130_sram_512b_1rw_64x64` by name (see that file's prior "BROKEN as of the issue #32 branch" comment).
+
+**Options considered:** Write a hand-crafted area estimate from the macro's known bit count, versus
+giving Yosys a `(* blackbox *)` stub (`synth/sram_blackbox.v`) so it synthesizes everything else for
+real and reports 0 area for the macro, then adding the macro's *real* physical area (from its own
+generated LEF) back in by hand.
+A hand-estimate would have been guessing at overhead (decoders, sense amps, spare rows/columns) this
+project has already stated it won't do when real numbers are obtainable -- the blackbox approach gets a
+real number for every component.
+
+**Decision:** Blackbox stub + real LEF area, added back in by hand.
+Regenerated the macro via `openram/run_operand_sram.sh` (same pinned OpenRAM commit and
+`openram/config_operand_bank.py` as issue #31 -- `openram/runs/` is gitignored, so the artifacts don't
+persist between sessions/worktrees and had to be rebuilt).
+Real per-bank area from the LEF (`SIZE 508.56 BY 166.525`): 84,687.954 um^2, independently corroborated
+by OpenRAM's own `datasheet.info` output (`84687.95399999998`, an exact match).
+Logic-only tile area with both banks blackboxed: 332,373.7728 um^2 (`operand_mem`'s own residual logic --
+just the write/read address-priority mux -- is 71.318 um^2, versus 309,456.79 um^2 for the old flop
+array).
+Real total = 332,373.7728 + 2 x 84,687.954 = **501,749.6808 um^2**, a **31.06% reduction** from
+727,844.31 um^2.
+Full arithmetic in `synth/reports/gemm_tile_real_area_summary.md`.
+
+**Why the win is more modest than the flop-vs-SRAM bit-density comparison alone would suggest:**
+`operand_mem`'s share of total tile area only drops from 42.52% to 33.76%, not to something close to 0%,
+because this is a small macro (4096 bits per bank) paying real fixed peripheral overhead -- decoders,
+sense amps, and the spare row/column sky130's array-column/row-parity constraint required (see
+`openram/config_operand_bank.py`'s `num_spare_rows`/`num_spare_cols`/`words_per_row` comments) -- that a
+flip-flop array simply doesn't pay. Real SRAM macros win decisively on area at the thousands-to-millions-
+of-bits scale their peripheral overhead amortizes over; at this macro's small scale, the win is real but
+bounded. Reporting the true 31.06%/33.76% numbers rather than a more flattering approximation matches
+this project's standing practice of measuring rather than assuming (see the pe.v pipelining and #29/#30
+entries below for the same "measure it, don't guess" pattern in the other direction).
+
+**Real macro DRC/LVS status:** unchanged from issue #31's closure -- 52,200 DRC violations and an LVS
+mismatch on this same regeneration, both still concentrated in the vendor-supplied `sky130_fd_bd_sram`
+primitive-cell family using foundry-internal GDS layers the open sky130 PDK doesn't publish. Not a new
+finding; carried forward as the same documented upstream limitation.
+
+**A real gap found along the way (filed separately as issue #48, not fixed here):** the real generated
+macro's actual port shape is `ADDR_WIDTH=7` (`addr0[6:0]`), `DATA_WIDTH=65` (`din0`/`dout0[64:0]`), plus a
+`spare_wen0` pin -- none of which `rtl/operand_mem.v`'s real macro instantiation or
+`tb/operand_mem/sram_macro_behavioral.v`'s stand-in account for (both assume a clean 6-bit/64-bit port
+with no spare pin). This is exactly the unverified assumption `sram_macro_behavioral.v`'s own header
+comment flagged ("verify against the real generated .v next time the macro is regenerated") -- now
+disproven by direct regeneration rather than left untested. Does not affect the area numbers above (area
+comes from the LEF's physical `SIZE`, independent of port wiring), but it is a real correctness gap in
+already-merged RTL. Filed as issue #48 rather than fixed inline, since it's real RTL work (widening the
+real instantiation to the true port shape while tying off the spare row/column) distinct from #35's
+"measure the area" scope.
+
+**Also out of scope for #35:** full OpenLane P&R of `gemm_tile` with the macro as a real hard macro.
+That's milestone 3 / issue #36's job (`gemm_tile`/`router` P&R), deferred until Phase 3.1-3.3 line up, per
+the milestone structure already in place before this issue was picked up.
+
 ### 2026-09-08 -- Close issue #34 as already-delivered by #32/#33, not new work
 
 **Context:** Issue #34 asked for a behavioral Verilog SRAM model (Icarus can't simulate the hard
