@@ -25,7 +25,13 @@ module gemm_tile #(
     // rtl/gemm_sequencer.v's PE_ACC_LATENCY default, this default, and
     // rtl/noc_node.v's PE_ACC_LATENCY default (threaded into its gemm_tile
     // instantiation below).
-    parameter PE_ACC_LATENCY = 2
+    parameter PE_ACC_LATENCY = 2,
+    // Must match operand_mem.v's RD_LATENCY localparam (the source of
+    // truth). Sites that must stay in sync if that value ever changes:
+    // rtl/operand_mem.v's RD_LATENCY localparam, rtl/gemm_sequencer.v's
+    // RD_LATENCY default, this default, and rtl/noc_node.v's RD_LATENCY
+    // default (threaded into its gemm_tile instantiation below).
+    parameter RD_LATENCY     = 1
 ) (
     input  wire                          clk,
     input  wire                          rst,
@@ -59,7 +65,7 @@ module gemm_tile #(
         .rd_b_row (b_row)
     );
 
-    gemm_sequencer #(.N(N), .KMAX(KMAX), .PE_ACC_LATENCY(PE_ACC_LATENCY)) seq (
+    gemm_sequencer #(.N(N), .KMAX(KMAX), .PE_ACC_LATENCY(PE_ACC_LATENCY), .RD_LATENCY(RD_LATENCY)) seq (
         .clk        (clk),
         .rst        (rst),
         .start      (start),

@@ -33,7 +33,13 @@ module gemm_sequencer #(
     // rtl/pe.v's ACC_LATENCY localparam (the source of truth), this default,
     // rtl/gemm_tile.v's PE_ACC_LATENCY default, and rtl/noc_node.v's
     // PE_ACC_LATENCY default (threaded into its gemm_tile instantiation).
-    parameter PE_ACC_LATENCY = 2
+    parameter PE_ACC_LATENCY = 2,
+    // Must match operand_mem.v's RD_LATENCY localparam (the source of
+    // truth). Sites that must stay in sync if that value ever changes:
+    // rtl/operand_mem.v's RD_LATENCY localparam, this default,
+    // rtl/gemm_tile.v's RD_LATENCY default, and rtl/noc_node.v's RD_LATENCY
+    // default (threaded into its gemm_tile instantiation).
+    parameter RD_LATENCY     = 1
 ) (
     input  wire                          clk,
     input  wire                          rst,        // sync system reset -> force IDLE
@@ -41,7 +47,7 @@ module gemm_sequencer #(
     input  wire [3:0]                    k_chunks,   // K-chunks in this N-block (1..KMAX)
     output reg  [$clog2(N*KMAX)-1:0]     rd_addr,    // -> operand_mem read address (chunk*N + col)
     output reg                           tile_reset, // -> tile.reset (pulsed once per N-block)
-    output reg                           feed_valid, // -> tile.in_valid
+    output wire                          feed_valid, // -> tile.in_valid, delayed RD_LATENCY cycles
     output reg                           busy,
     output reg                           done        // latches high once the result is valid
 );
@@ -53,7 +59,12 @@ module gemm_sequencer #(
     // the array itself (rtl/systolic_array.v), PLUS PE_ACC_LATENCY cycles to
     // accumulate -- two separate skew stages, not one. (2*N + PE_ACC_LATENCY)
     // keeps the same generous slack the original 2*N had over that minimum.
-    localparam DRAIN_CYCLES = 2*N + PE_ACC_LATENCY;
+    // RD_LATENCY is added on top: operand_mem's registered read means the
+    // last chunk's real data reaches the array RD_LATENCY cycles after the
+    // address-generation counter below finishes issuing addresses for it
+    // (see the feed_valid_pipe comment), so the drain window must cover
+    // that extra trailing delay too.
+    localparam DRAIN_CYCLES = 2*N + PE_ACC_LATENCY + RD_LATENCY;
 
     localparam S_IDLE  = 3'd0,
                S_RESET = 3'd1,
@@ -69,14 +80,39 @@ module gemm_sequencer #(
 
     // ---- Combinational operand addressing ----
     // Read slot addr = chunk_idx*N + col, where the active column index is c_cyc
-    // during the feed window (clamped otherwise so the address stays in range;
-    // feed_valid gates whether the tile actually consumes the read).
+    // during the feed window (clamped otherwise so the address stays in range).
+    // rd_col_valid marks a cycle where rd_addr is a real (non-padding) column;
+    // it is NOT what drives feed_valid -- see the pipe below.
     reg  [4:0] col_idx;
+    reg        rd_col_valid;
     always @* begin
-        col_idx    = (c_cyc < N) ? c_cyc : 5'd0;
-        feed_valid = (state == S_RUN) && (c_cyc < N);
-        rd_addr    = chunk_idx * N + col_idx;
+        col_idx      = (c_cyc < N) ? c_cyc : 5'd0;
+        rd_col_valid = (state == S_RUN) && (c_cyc < N);
+        rd_addr      = chunk_idx * N + col_idx;
     end
+
+    // ---- feed_valid pipe ----
+    // operand_mem's read is registered: data addressed by rd_addr at cycle t
+    // only appears on rd_a_col/rd_b_row at cycle t+RD_LATENCY. feed_valid
+    // gates the tile's in_valid, so it must trail rd_col_valid by exactly
+    // RD_LATENCY cycles to line up with when the data actually arrives,
+    // rather than when the address was issued. This shift register runs
+    // every cycle regardless of `state`, so it drains correctly across the
+    // S_RUN -> S_DRAIN boundary (DRAIN_CYCLES above already budgets the
+    // extra RD_LATENCY cycles this adds at the tail of the last chunk).
+    reg [RD_LATENCY-1:0] feed_valid_sr;
+    integer fv;
+    always @(posedge clk) begin
+        if (rst) begin
+            feed_valid_sr <= {RD_LATENCY{1'b0}};
+        end else begin
+            feed_valid_sr[0] <= rd_col_valid;
+            for (fv = 1; fv < RD_LATENCY; fv = fv + 1) begin
+                feed_valid_sr[fv] <= feed_valid_sr[fv-1];
+            end
+        end
+    end
+    assign feed_valid = feed_valid_sr[RD_LATENCY-1];
 
     // ---- Sequential control ----
     task start_run;
