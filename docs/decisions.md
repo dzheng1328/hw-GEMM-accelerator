@@ -19,6 +19,36 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-08 -- Close issue #34 as already-delivered by #32/#33, not new work
+
+**Context:** Issue #34 asked for a behavioral Verilog SRAM model (Icarus can't simulate the hard
+`sky130_sram_512b_1rw_64x64` macro directly) wired into `tb/gemm/` and `tb/tile/`, with all suites still
+bit-exact against the NumPy reference.
+Before starting new work, audited what already exists against that scope.
+
+**Findings:** `tb/operand_mem/sram_macro_behavioral.v` already exists and is already wired into
+`tb/gemm/Makefile`, `tb/noc/Makefile`, and `tb/mesh/Makefile` (commit `dab5383`, landed as part of #32's
+PR #43, not tracked against #34 at the time).
+`test_gemm.py` already asserts bit-exact equality (`np.array_equal`) against a real NumPy reference, and
+that suite -- along with `tb/noc/` and `tb/mesh/` -- now passes clean now that issue #33 fixed
+`gemm_sequencer`'s read-latency timing (verified by the full `./test.sh` run before merging PR #46:
+25/25 tests across all nine suites).
+The one part of #34 not satisfied -- "update `tb/tile/` testbenches for the new read latency" -- does not
+apply to the architecture that was actually built: `rtl/tile.v` is `skew_feeder` + `systolic_array` + `pe`
+only, with no `operand_mem` inside it.
+`operand_mem` is only ever exercised through `gemm_tile`/`noc_node`, neither of which `tb/tile/` touches,
+so there is no read-latency-dependent behavior in `tb/tile/` to update.
+
+**Decision:** Close #34 as already-delivered, no code changes needed.
+The `tb/tile/` clause in the original issue text reflects a stale assumption from before the
+`operand_mem`/`gemm_tile`/`tile` module boundary was decided (see the 2026-07-19 self-feeding-tile
+entries below), not a real gap.
+
+**Why:** Writing new behavioral-model or `tb/tile/` code to satisfy an issue whose described work is
+already done (in a different PR, for a different reason) would be pure busywork -- the same
+verify-before-implementing standard applied when issue #31 was closed as a documented upstream
+limitation rather than chased further.
+
 ### 2026-09-08 -- Propagate operand_mem's registered read latency into gemm_sequencer's feed_valid timing (issue #33)
 
 **Context:** Issue #32 wired a real sky130 SRAM macro behind `operand_mem`'s port interface, changing its
