@@ -12,12 +12,13 @@ read_verilog rtl/pe.v
 read_verilog rtl/systolic_array.v
 read_verilog rtl/skew_feeder.v
 read_verilog rtl/tile.v
-# BROKEN as of the issue #32 branch (2026-09-02): rtl/operand_mem.v now instantiates the real
-# sky130_sram_512b_1rw_64x64 SRAM macro by name, and this flow has no blackbox stub or real macro
-# definition for Yosys to resolve it against, so this line will hard-error with
-# "Module `\sky130_sram_512b_1rw_64x64' ... is not part of the design." Providing a blackbox stub for
-# synthesis is issue #35's job, not fixed here. synth/reports/gemm_tile_sky130.log is stale as of this
-# branch (last regenerated against the pre-macro combinational operand_mem.v).
+# rtl/operand_mem.v instantiates the real sky130_sram_512b_1rw_64x64 SRAM macro (issue #31/#32) by
+# name twice (a_bank, b_bank). Yosys can't synthesize a real hard macro's internals -- it has no gate-
+# level Verilog, only GDS/LEF/LIB views -- so synth/sram_blackbox.v provides a (* blackbox *) stub with
+# a matching port list. `stat` below reports 0 area for the macro (blackboxes contribute no cells), so
+# the real per-bank area from the macro's own generated LEF must be added back in by hand when reporting
+# the tile's true total area -- see docs/decisions.md, issue #35 entry, for that arithmetic.
+read_verilog synth/sram_blackbox.v
 read_verilog rtl/operand_mem.v
 read_verilog rtl/gemm_sequencer.v
 read_verilog rtl/gemm_tile.v
