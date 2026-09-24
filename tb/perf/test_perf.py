@@ -14,7 +14,7 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, RisingEdge
 
-from host import CLK_NS, MESH_H, MESH_W, TILE_ORDER, measure, read_counters, reset_dut, run_gemm, wrap32
+from host import CLK_NS, MESH_H, MESH_W, TILE_ORDER, measure, node_scope, read_counters, reset_dut, run_gemm, wrap32
 from perflib import COUNTERS, PORTS, node_key
 
 SEED = 0x54_0B5E
@@ -55,7 +55,7 @@ async def shadow_counters(dut, totals):
     while True:
         await FallingEdge(dut.clk)
         for x, y in nodes:
-            node = getattr(dut, f"node{x}{y}")
+            node = node_scope(dut, x, y)
             t = totals[node_key(x, y)]
             t["busy_cyc"] += int(node.busy.value)
             t["feed_cyc"] += int(node.tile_feeding.value)

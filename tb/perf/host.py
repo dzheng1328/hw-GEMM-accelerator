@@ -1,5 +1,5 @@
-"""Packetized GEMM host for the perf harness: drives the 2x2 mesh purely
-through the (0,0) injector (OPERAND + GO flits) and reassembles results from
+"""Packetized GEMM host for the perf harness: drives the 2x2 mesh
+(rtl/noc_mesh.v at its default size) purely through the (0,0) injector (OPERAND + GO flits) and reassembles results from
 RESULT flits delivered back at (0,0). Flit helpers are local copies of
 tb/mesh/test_mesh.py's (per-directory cocotb convention).
 
@@ -81,12 +81,10 @@ def operand_flits(dest_x, dest_y, A, B_block, k_chunks):
 
 async def reset_dut(dut, cycles=3):
     dut.rst.value = 1
-    for inj in ("inj00", "inj11"):
-        getattr(dut, f"{inj}_valid").value = 0
-        getattr(dut, f"{inj}_flit").value = 0
-    for node in ("00", "10", "01", "11"):
-        getattr(dut, f"start_{node}").value = 0
-        getattr(dut, f"k_chunks_{node}").value = 0
+    # Node (0,0) is bit/field 0 of every per-node bus; the host drives only
+    # that one, so it can write the whole bus.
+    for bus in (dut.inj_valid, dut.inj_flit, dut.start, dut.k_chunks):
+        bus.value = 0
     for _ in range(cycles):
         await RisingEdge(dut.clk)
     dut.rst.value = 0
@@ -99,31 +97,35 @@ async def inject(dut, flits):
     returned at a falling edge) cannot change this cycle's arbitration."""
     await RisingEdge(dut.clk)
     for flit in flits:
-        dut.inj00_valid.value = 1
-        dut.inj00_flit.value = flit
+        dut.inj_valid.value = 1
+        dut.inj_flit.value = flit
         while True:
             await FallingEdge(dut.clk)
-            accepted = int(dut.inj00_ready.value) == 1
+            accepted = int(dut.inj_ready.value) & 1 == 1
             await RisingEdge(dut.clk)
             if accepted:
                 break
-    dut.inj00_valid.value = 0
-    dut.inj00_flit.value = 0
+    dut.inj_valid.value = 0
+    dut.inj_flit.value = 0
 
 
 async def collect_results(dut, expected_total):
     """RESULT flits delivered at (0,0): {(src_x, src_y): {idx: acc}}.
-    Raises on a duplicated cell or on timeout."""
+    Raises on a duplicated cell, a RESULT flit delivered anywhere else, or
+    timeout."""
+    amask = (1 << AW) - 1
     got = {}
     count = 0
     for _ in range(RESULT_TIMEOUT_CYCLES):
         await FallingEdge(dut.clk)
-        if int(dut.res00_valid.value) == 1:
-            src = (int(dut.res00_src_x.value), int(dut.res00_src_y.value))
-            idx = int(dut.res00_idx.value)
+        valid = int(dut.res_valid.value)
+        assert valid & ~1 == 0, f"RESULT flit delivered away from the host (res_valid={valid:#x})"
+        if valid:
+            src = (int(dut.res_src_x.value) & amask, int(dut.res_src_y.value) & amask)
+            idx = int(dut.res_idx.value) & 0x3F
             cells = got.setdefault(src, {})
             assert idx not in cells, f"duplicate RESULT flit: tile {src} cell {idx}"
-            cells[idx] = to_signed32(int(dut.res00_acc.value))
+            cells[idx] = to_signed32(int(dut.res_acc.value))
             count += 1
             if count == expected_total:
                 return got
@@ -160,10 +162,15 @@ async def run_gemm(dut, A, B, tiles):
     return C, k_chunks * len(jobs)
 
 
+def node_scope(dut, x, y):
+    """Mesh node (x, y)'s rtl/noc_node.v instance. The only place that knows
+    the mesh's hierarchy (rtl/noc_mesh.v's generate loop)."""
+    return dut.g_node[y * MESH_W + x].node
+
+
 def perf_scope(dut, x, y):
-    """The rtl/node_perf.v instance inside mesh node (x, y). The only place
-    that knows the mesh's hierarchy (4.1c's WxH mesh changes it here)."""
-    return getattr(dut, f"node{x}{y}").g_perf.perf
+    """The rtl/node_perf.v instance inside mesh node (x, y)."""
+    return node_scope(dut, x, y).g_perf.perf
 
 
 def read_counters(dut):

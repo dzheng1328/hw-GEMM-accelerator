@@ -19,6 +19,22 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- The mesh is one generate-based WxH module with every node's ports exposed
+
+**Context:** 4.2's scaling study and command processor need meshes larger than the hand-wired `noc_mesh2x2`, whose 143 lines of per-link wiring grow with every node added (issue #55).
+**Options considered:**
+(1) A script that emits a hand-wired mesh per size - rejected, generated RTL is a second source of truth.
+(2) A generate loop that keeps the old boundary (injection at two corners, results only at (0,0)) - rejected, it bakes a host placement into the fabric, and the baseline already shows the single host corner is the bottleneck 4.2 must be free to move.
+(3) A generate loop over flat node index `i = y*W + x`, with every node's injection, RESULT, and direct-control ports on flat per-node buses.
+**Decision:** (3). `rtl/noc_mesh.v` builds each link from the western/southern node's point of view and ties off boundary links; boundary outputs sink into `unused_*` wires, so lint stays exact without a pattern waiver.
+Coordinates stay an explicit `AW` parameter (default 2) rather than being derived from W and H, so the flit format does not change with mesh size; an oversized mesh stops the run with `$fatal` (`make size-check` proves it).
+`noc_node` hardcoded `AW=2` in its RESULT payload padding; it now pads by `PW-38-2*AW`.
+`tb/mesh/` is shape-generic (`MESH_W`/`MESH_H`/`MESH_AW`, passed to both RTL and Python) and runs at 2x2 and at 4x3 with 3-bit coordinates, so a non-square mesh and a non-default flit width are both simulated; `make lint-configs` lints 1x1, 3x1, 1x3, 8x8, and `PERF=0`.
+A new test, `test_every_node_injects_concurrently`, has every node send a packetized GEMM to its point mirror with itself as the return address, so every node's RESULT port and every link in both directions carry traffic at once.
+**Why:** One module at any size is what 4.2 needs, and exposing every port leaves host and DMA placement to the wrapper instead of the fabric.
+The move was verified as a pure refactor: `tb/perf` `make compare` is identical, cycle for cycle, on all 14 baseline regions, and a planted coordinate swap fails all six mesh tests.
+`noc_pair.v` still hand-wires its 1x2 line; it is equivalent to `noc_mesh #(.W(2), .H(1))` and could be retired along with `tb/noc/`'s port names.
+
 ### 2026-09-24 -- Performance counters live in synthesizable RTL, and the baseline is measured
 
 **Context:** Phase 4.1 needs measured cycles, MAC utilization, and link occupancy to judge every efficiency fix (issue #54), and the same harness must still work for 4.2's multi-million-cycle CIFAR-10 runs and 4.1c's WxH mesh.

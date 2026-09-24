@@ -24,6 +24,14 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- Per-node buses cannot be driven field by field from cocotb, and a comment starting with "Verilator" is a pragma
+
+**Phase:** Phase 4
+**Problem:** Moving to `rtl/noc_mesh.v` put every node's injection and start inputs on flat packed buses, which several concurrent cocotb injector coroutines must drive at once. Separately, the first lint of the new module failed with `BADVLTPRAGMA` on an ordinary comment.
+**Cause:** cocotb cannot write one field of a packed vector (no bit handles under Icarus or Verilator), and a read-modify-write of the whole bus from two coroutines in the same timestep loses one of the writes: both read the old value and the last write wins. The lint error came from a `//` comment line whose first word was "Verilator's", which Verilator parses as a `// verilator ...` directive.
+**Fix:** `tb/mesh/test_mesh.py`'s `MeshIO` keeps every node's input state in Python and rewrites each whole bus after any change, so the last write in a timestep always carries every coroutine's update. The comment was reworded. `tb/mesh/` also moved to drive-on-rising, sample-on-falling, closing the gap the previous entry noted.
+**Takeaway:** Give shared packed input buses a single Python owner, and never start a comment with the word "Verilator".
+
 ### 2026-09-24 -- A cocotb monitor that samples just after the rising edge can count a transfer that never happens
 
 **Phase:** Phase 4
