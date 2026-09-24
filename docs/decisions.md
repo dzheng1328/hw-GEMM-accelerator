@@ -19,6 +19,21 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- Phase 4 direction: a self-contained accelerator running CIFAR-10, then a tiny LM
+
+**Context:** Phases 1-3 produced a verified, packetized 2x2 mesh of GEMM tiles, but the only workload is a tiny 64->32->16 MNIST MLP driven by a Python host, and the remaining Phase 3 work (gemm_tile P&R with SRAM macros, Tiny Tapeout) adds little new signal for its cost.
+A measurement pass found the system itself is the limit, not the workload: Icarus simulates the mesh at about 3,700 cycles/s (Verilator: about 23,000), single-tile utilization over the NoC is about 7-20% of peak, and all RESULT flits converge on one host port, so extra tiles barely help.
+**Options considered:**
+(1) Finish Phase 3 physical design - rejected for now, low marginal signal after pe.v's P&R.
+(2) A bigger workload on the existing Python-host flow - rejected as the finish line, it hides data-movement cost.
+(3) Object detection - rejected, 100x+ the compute of classification with no extra hardware story.
+(4) Fix efficiency, then build an on-chip command processor plus compiler so a whole network runs with no software in the loop, first on CIFAR-10 and then on a tiny language model.
+**Decision:** Option 4, as three GitHub milestones: 4.1 foundation (Verilator, measurement harness, parameterized WxH mesh, on-chip requant with packed int8 results, back-to-back K streaming, K>64), 4.2 command processor + compiler (CIFAR-10 flagship, mesh scaling study), 4.3 vector unit + tiny LM.
+No deadline: each milestone lands fully before the next.
+**Why:** It turns a single-model demo into a general system with measured, honest performance numbers, and each milestone ends in a shippable result.
+The command processor reuses the existing OPERAND/GO/RESULT protocol unchanged; the new work is memory, strided DMA (including im2col), and write-back.
+gemm_tile P&R (#36) and Tiny Tapeout (#37) are paused until Phase 4 is done.
+
 ### 2026-09-24 -- Enforce operand_mem's no-write-during-read invariant with LOCAL-port backpressure (issue #44)
 
 **Context:** `operand_mem`'s real SRAM macro has one shared address port per bank, arbitrated `wr_en ? wr_addr : rd_addr`.
