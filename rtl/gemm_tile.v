@@ -45,6 +45,7 @@ module gemm_tile #(
     input  wire [3:0]                    k_chunks,
     output wire                          busy,
     output wire                          done,
+    output wire                          feeding,  // real data entering the array this cycle (perf counters)
     output wire signed [32*N*N-1:0]      acc_out
 );
 
@@ -54,6 +55,7 @@ module gemm_tile #(
     wire signed [8*N-1:0]     b_row;
     wire                      tile_reset;
     wire                      feed_valid;
+    assign feeding = feed_valid;
 
     operand_mem #(.N(N), .KMAX(KMAX)) mem (
         .clk      (clk),

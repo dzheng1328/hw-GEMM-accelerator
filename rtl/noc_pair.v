@@ -16,6 +16,7 @@
 module noc_pair #(
     parameter N    = 8,
     parameter KMAX = 8,
+    parameter PERF = 1,              // per-node perf counters (rtl/node_perf.v)
     parameter AW   = 2,
     parameter ADDRW = 6,
     parameter PW    = ADDRW + 16*N,
@@ -51,7 +52,7 @@ module noc_pair #(
     wire            w10_valid, w10_ready;
     wire [FW-1:0]   w10_flit;
 
-    noc_node #(.N(N), .KMAX(KMAX), .AW(AW)) node0 (
+    noc_node #(.N(N), .KMAX(KMAX), .AW(AW), .PERF(PERF)) node0 (
         .clk(clk), .rst(rst),
         .my_x(2'd0), .my_y(2'd0),
         .lcl_in_valid(inj_valid), .lcl_in_flit(inj_flit), .lcl_in_ready(inj_ready),
@@ -71,7 +72,7 @@ module noc_pair #(
         .busy(busy_0), .done(done_0), .acc_out(acc_out_0)
     );
 
-    noc_node #(.N(N), .KMAX(KMAX), .AW(AW)) node1 (
+    noc_node #(.N(N), .KMAX(KMAX), .AW(AW), .PERF(PERF)) node1 (
         .clk(clk), .rst(rst),
         .my_x(2'd1), .my_y(2'd0),
         // No injector at node 1 in this increment.

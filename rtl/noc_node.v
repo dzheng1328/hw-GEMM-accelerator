@@ -54,6 +54,9 @@ module noc_node #(
     // RD_LATENCY default, rtl/gemm_tile.v's RD_LATENCY default, and this
     // default (threaded into the gemm_tile instantiation below).
     parameter RD_LATENCY     = 1,
+    // 1 = instantiate rtl/node_perf.v's performance counters (issue #54);
+    // 0 = no counter logic at all.
+    parameter PERF           = 1,
     // Derived -- do not override.
     parameter ADDRW = 6,               // $clog2(N*KMAX) for the defaults
     parameter PW    = ADDRW + 16*N,    // operand payload = 134 bits (widest)
@@ -253,6 +256,8 @@ module noc_node #(
     wire       start_eff = start | go_pulse;
     wire [3:0] k_eff     = go_pulse ? go_k : k_chunks;
 
+    wire       tile_feeding;
+
     gemm_tile #(.N(N), .KMAX(KMAX), .PE_ACC_LATENCY(PE_ACC_LATENCY), .RD_LATENCY(RD_LATENCY)) tile_i (
         .clk      (clk),
         .rst      (rst),
@@ -264,7 +269,24 @@ module noc_node #(
         .k_chunks (k_eff),
         .busy     (busy),
         .done     (done),
+        .feeding  (tile_feeding),
         .acc_out  (acc_out)
     );
+
+    // ---- Performance counters (issue #54) ----
+    generate
+        if (PERF) begin : g_perf
+            node_perf perf (
+                .clk          (clk),
+                .rst          (rst),
+                .busy         (busy),
+                .feeding      (tile_feeding),
+                .out_valid    (r_out_valid),
+                .out_ready    (r_out_ready),
+                .lcl_in_valid (r_in_valid[LOCAL]),
+                .lcl_in_ready (r_in_ready[LOCAL])
+            );
+        end
+    endgenerate
 
 endmodule

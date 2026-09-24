@@ -21,6 +21,8 @@ import cocotb
 import numpy as np
 from cocotb.triggers import FallingEdge, RisingEdge
 
+from perflib import COUNTERS, node_key
+
 N = 8
 KMAX = 8
 AW = 2
@@ -155,3 +157,17 @@ async def run_gemm(dut, A, B, tiles):
             cells = got[(x, y)]
             C[:, N * j : N * j + N] = [[cells[i * N + c] for c in range(N)] for i in range(N)]
     return C, k_chunks * len(jobs)
+
+
+def perf_scope(dut, x, y):
+    """The rtl/node_perf.v instance inside mesh node (x, y). The only place
+    that knows the mesh's hierarchy (4.1c's WxH mesh changes it here)."""
+    return getattr(dut, f"node{x}{y}").g_perf.perf
+
+
+def read_counters(dut):
+    return {
+        node_key(x, y): {c: int(getattr(perf_scope(dut, x, y), c).value) for c in COUNTERS}
+        for y in range(MESH_H)
+        for x in range(MESH_W)
+    }
