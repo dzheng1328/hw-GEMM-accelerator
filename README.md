@@ -148,9 +148,10 @@ opens `.fst` files directly, no VCD conversion needed.)
 
 Phase 1 is complete, and Phase 2's build-out is done — the tile is self-feeding (`skew_feeder` +
 `gemm_sequencer` + `operand_mem`, replacing the Python `feed_wave`/`compute_nblock` orchestration), and
-**four tiles now run connected by a verified 2D-mesh NoC** (`router` + `flit_buf` + `noc_node` +
-`noc_mesh2x2`: XY routing with real corner turns, round-robin arbitration, registered loop-free links,
-concurrent cross-traffic — every claim backed by bit-exact matmuls). A generic Yosys synthesis pass is
+**tiles now run connected by a verified 2D-mesh NoC** (`router` + `flit_buf` + `noc_node` +
+`noc_mesh`, a generate-based WxH mesh tested at 2x2 and 4x3: XY routing with real corner turns,
+round-robin arbitration, registered loop-free links, concurrent all-to-all cross-traffic — every claim
+backed by bit-exact matmuls). A generic Yosys synthesis pass is
 done; real PDK area/timing numbers are Phase 3 scope. See
 [closed pull requests](../../pulls?q=is%3Apr+is%3Aclosed) for a reviewable,
 one-PR-per-task history of how this was built, and [`docs/learnings.md`](docs/learnings.md) /

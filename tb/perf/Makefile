@@ -16,10 +16,10 @@ VERILOG_SOURCES = $(PWD)/../../rtl/pe.v \
                   $(PWD)/../../rtl/flit_buf.v \
                   $(PWD)/../../rtl/node_perf.v \
                   $(PWD)/../../rtl/noc_node.v \
-                  $(PWD)/../../rtl/noc_mesh2x2.v
+                  $(PWD)/../../rtl/noc_mesh.v
 
 # Top-level Verilog module under test.
-TOPLEVEL = noc_mesh2x2
+TOPLEVEL = noc_mesh
 
 # Python module (tb/perf/test_perf.py, no .py).
 MODULE = test_perf

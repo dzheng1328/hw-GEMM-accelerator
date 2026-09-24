@@ -135,7 +135,7 @@ module noc_node #(
     reg  [AW-1:0]   rr_ret_x, rr_ret_y;
     wire            rr_streaming = (rr_state == 2'd3);
     wire [31:0]     rr_acc = acc_out[32*rr_idx +: 32];
-    wire [PW-1:0]   rr_payload = { {(PW-42){1'b0}}, my_y, my_x, rr_idx[5:0], rr_acc };
+    wire [PW-1:0]   rr_payload = { {(PW-38-2*AW){1'b0}}, my_y, my_x, rr_idx[5:0], rr_acc };
     wire [FW-1:0]   rr_flit = { T_RES, rr_payload, rr_ret_y, rr_ret_x };
 
     assign r_in_valid[LOCAL]         = rr_streaming ? 1'b1    : lcl_in_valid;
