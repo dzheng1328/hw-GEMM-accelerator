@@ -17,6 +17,13 @@ TB_DIR    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT := $(abspath $(TB_DIR)/..)
 SIM_ROOT  := $(REPO_ROOT)/sim/$(SIM)$(if $(filter 1,$(WAVES)),-waves)
 
+# cocotb 1.9's Makefile flow only checks that results.xml exists, so a failed
+# test still exited 0. Recipes expand this at run time, and override beats the
+# plain define cocotb's Makefile.inc makes after this file is included.
+override define check_for_results_file
+	@python $(TB_DIR)/check_results.py $(COCOTB_RESULTS_FILE)
+endef
+
 ifeq ($(SIM),verilator)
 # -Wall with warnings fatal: every lint and style warning either gets fixed or
 # is waived, with a reason, in tb/lint_waivers.vlt.

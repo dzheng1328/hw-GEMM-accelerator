@@ -38,3 +38,8 @@ make "$@"
 
 cd "$REPO_ROOT/tb/mnist"
 make "$@"
+
+cd "$REPO_ROOT/tb/perf"
+make "$@"
+
+python -m pytest -q "$REPO_ROOT/tb/test_check_results.py" "$REPO_ROOT/tb/perf/test_perflib.py"
