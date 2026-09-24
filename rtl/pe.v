@@ -63,7 +63,7 @@ module pe (
         if (reset) begin
             acc_out <= 32'sd0;
         end else if (pipe_valid) begin
-            acc_out <= acc_out + prod_reg;
+            acc_out <= acc_out + {{16{prod_reg[15]}}, prod_reg};
         end
     end
 

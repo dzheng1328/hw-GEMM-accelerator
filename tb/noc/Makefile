@@ -1,9 +1,8 @@
-# tb/noc/Makefile -- cocotb + Icarus Verilog flow for rtl/noc_pair.v (two
+# tb/noc/Makefile -- cocotb flow for rtl/noc_pair.v (two
 # router+tile NoC nodes over a registered link -- the full RTL stack).
 # Assumes cocotb 1.8.x (see ../../requirements.txt).
 
-SIM ?= icarus
-TOPLEVEL_LANG ?= verilog
+include $(PWD)/../common.mk
 
 VERILOG_SOURCES = $(PWD)/../../rtl/pe.v \
                   $(PWD)/../../rtl/systolic_array.v \
@@ -25,7 +24,7 @@ TOPLEVEL = noc_pair
 MODULE = test_noc
 
 # Separate build dir so this suite never clobbers the others' artifacts.
-SIM_BUILD = $(PWD)/../../sim/sim_build_noc
-COCOTB_RESULTS_FILE = $(PWD)/../../sim/sim_build_noc/results.xml
+SIM_BUILD = $(SIM_ROOT)/sim_build_noc
+COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_noc/results.xml
 
 include $(shell cocotb-config --makefiles)/Makefile.sim

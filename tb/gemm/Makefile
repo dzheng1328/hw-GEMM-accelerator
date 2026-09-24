@@ -1,9 +1,8 @@
-# tb/gemm/Makefile -- cocotb + Icarus Verilog flow for rtl/gemm_tile.v
+# tb/gemm/Makefile -- cocotb flow for rtl/gemm_tile.v
 # (rtl/gemm_sequencer.v + rtl/tile.v + rtl/skew_feeder.v + rtl/systolic_array.v
 # + rtl/pe.v). Assumes cocotb 1.8.x (see ../../requirements.txt).
 
-SIM ?= icarus
-TOPLEVEL_LANG ?= verilog
+include $(PWD)/../common.mk
 
 VERILOG_SOURCES = $(PWD)/../../rtl/pe.v \
                   $(PWD)/../../rtl/systolic_array.v \
@@ -21,7 +20,7 @@ TOPLEVEL = gemm_tile
 MODULE = test_gemm
 
 # Separate build dir so this suite never clobbers the others' artifacts.
-SIM_BUILD = $(PWD)/../../sim/sim_build_gemm
-COCOTB_RESULTS_FILE = $(PWD)/../../sim/sim_build_gemm/results.xml
+SIM_BUILD = $(SIM_ROOT)/sim_build_gemm
+COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_gemm/results.xml
 
 include $(shell cocotb-config --makefiles)/Makefile.sim

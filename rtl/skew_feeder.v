@@ -39,7 +39,7 @@ module skew_feeder #(
     output wire signed [8*N-1:0] b_north     // to array: lane j = input lane j delayed by j
 );
 
-    genvar i, k;
+    genvar i;
     generate
         for (i = 0; i < N; i = i + 1) begin : lane
             // in_valid gates each lane's input to zero -> hardware zero-padding.

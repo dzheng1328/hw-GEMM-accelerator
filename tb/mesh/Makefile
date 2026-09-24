@@ -1,9 +1,8 @@
-# tb/mesh/Makefile -- cocotb + Icarus Verilog flow for rtl/noc_mesh2x2.v
+# tb/mesh/Makefile -- cocotb flow for rtl/noc_mesh2x2.v
 # (four router+tile NoC nodes in a 2x2 mesh -- the full RTL stack).
 # Assumes cocotb 1.8.x (see ../../requirements.txt).
 
-SIM ?= icarus
-TOPLEVEL_LANG ?= verilog
+include $(PWD)/../common.mk
 
 VERILOG_SOURCES = $(PWD)/../../rtl/pe.v \
                   $(PWD)/../../rtl/systolic_array.v \
@@ -25,7 +24,7 @@ TOPLEVEL = noc_mesh2x2
 MODULE = test_mesh
 
 # Separate build dir so this suite never clobbers the others' artifacts.
-SIM_BUILD = $(PWD)/../../sim/sim_build_mesh
-COCOTB_RESULTS_FILE = $(PWD)/../../sim/sim_build_mesh/results.xml
+SIM_BUILD = $(SIM_ROOT)/sim_build_mesh
+COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_mesh/results.xml
 
 include $(shell cocotb-config --makefiles)/Makefile.sim

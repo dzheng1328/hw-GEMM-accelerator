@@ -15,9 +15,11 @@
 // port from that read, so callers must never overlap them (issue #44). That
 // is ENFORCED upstream, not assumed: rtl/noc_node.v backpressures OPERAND
 // flits at its LOCAL port while the tile is busy, and the simulation-only
-// check below flags any caller (e.g. the direct gemm_tile write port) that
-// still overlaps them. rd_en also gates the macro's chip select, so the SRAM
-// is idle on cycles with neither a read nor a write.
+// check below kills the run ($fatal, so every simulator fails the test -- a
+// plain $error only prints under Icarus) for any caller (e.g. the direct
+// gemm_tile write port) that still overlaps them. rd_en also gates the
+// macro's chip select, so the SRAM is idle on cycles with neither a read nor
+// a write.
 //
 // Read is now REGISTERED (RD_LATENCY cycles after rd_addr is presented, not
 // the same cycle) -- a real SRAM macro's read is synchronous. Issue #33 threads
@@ -78,7 +80,7 @@ module operand_mem #(
 `ifndef SYNTHESIS
     always @(posedge clk) begin
         if (wr_en && rd_en)
-            $error("operand_mem: write to slot %0d collided with an in-flight read of slot %0d (issue #44)",
+            $fatal(1, "operand_mem: write to slot %0d collided with an in-flight read of slot %0d (issue #44)",
                    wr_addr, rd_addr);
     end
 `endif

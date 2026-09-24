@@ -1,8 +1,7 @@
-# tb/router/Makefile -- cocotb + Icarus Verilog flow for rtl/router.v (a single
+# tb/router/Makefile -- cocotb flow for rtl/router.v (a single
 # 2D-mesh NoC router). Assumes cocotb 1.8.x (see ../../requirements.txt).
 
-SIM ?= icarus
-TOPLEVEL_LANG ?= verilog
+include $(PWD)/../common.mk
 
 VERILOG_SOURCES = $(PWD)/../../rtl/router.v
 
@@ -13,7 +12,7 @@ TOPLEVEL = router
 MODULE = test_router
 
 # Separate build dir so this suite never clobbers the others' artifacts.
-SIM_BUILD = $(PWD)/../../sim/sim_build_router
-COCOTB_RESULTS_FILE = $(PWD)/../../sim/sim_build_router/results.xml
+SIM_BUILD = $(SIM_ROOT)/sim_build_router
+COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_router/results.xml
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
