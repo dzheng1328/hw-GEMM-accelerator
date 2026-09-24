@@ -29,3 +29,10 @@ SIM_BUILD = $(SIM_ROOT)/sim_build_mesh
 COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_mesh/results.xml
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+# Lint the mesh with its perf counters compiled out (PERF=0): no suite builds
+# that configuration, so without this it could silently rot.
+.PHONY: lint-noperf
+lint-noperf:
+	verilator --lint-only -Wall -GPERF=0 $(TB_DIR)/lint_waivers.vlt \
+	    $(VERILOG_SOURCES) --top-module $(TOPLEVEL)

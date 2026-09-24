@@ -73,12 +73,13 @@ def test_make_record_carries_meta_and_counters():
 def rec(name, cycles, util):
     return {"name": name, "workload": "gemm", "K": 8, "N": 32, "tiles": 1, "cycles": cycles,
             "metrics": {"util_mesh": util, "util_used": util, "max_link_occupancy": 0.5,
-                        "host_in_occupancy": 0.25, "host_in_stall": 0.0}}
+                        "host_in_occupancy": 0.25, "host_in_stall": 0.0, "host_out_occupancy": 0.75}}
 
 
 def test_render_table_row():
     out = render_table([rec("gemm_K8_T1", 1234, 0.071)])
-    assert "| gemm_K8_T1 | 8 | 32 | 1 | 1234 | 7.1% | 7.1% | 50.0% | 25.0% | 0.0% |" in out
+    assert "| gemm_K8_T1 | 8 | 32 | 1 | 1234 | 7.1% | 7.1% | 50.0% | 75.0% | 25.0% | 0.0% |" in out
+    assert "(0,0) LOCAL out" in out.splitlines()[0]
 
 
 def test_render_compare_speedup_and_new_rows():

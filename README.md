@@ -114,16 +114,16 @@ real Phase 2 synthesis timing, not simulation.)
 
 ## Performance
 
-Every mesh node carries synthesizable performance counters ([`rtl/node_perf.v`](rtl/node_perf.v)), and [`tb/perf/`](tb/perf/) measures real workloads with them.
+Every mesh node carries performance counters ([`rtl/node_perf.v`](rtl/node_perf.v)), and [`tb/perf/`](tb/perf/) measures real workloads with them.
 Every workload runs fully over the network (operands and GO descriptors in, RESULT flits out, host at node (0,0)) and is checked bit-exact against NumPy before a number is recorded.
 The committed baseline is [`docs/perf/baseline.md`](docs/perf/baseline.md); later changes report before/after tables against it (`cd tb/perf && make compare`).
 
-Measured baseline, before any Phase 4 efficiency work:
+Measured baseline, before any Phase 4 efficiency work (numbers from the committed baseline):
 
 - One tile reaches 6.7% of its 64 MACs/cycle peak at K=8 and 19.4% at K=64.
 - Four tiles speed up a fixed 8xKx32 GEMM by only 1.53x at K=8 and 2.49x at K=64, peaking at 12.1% utilization of the whole mesh.
 - The MNIST MLP runs at 12.1% (layer 1, 4 tiles) and 5.8% (layer 2, 2 tiles) of mesh peak.
-- The busiest resource is the host corner's LOCAL port, shared by host injection and tile (0,0)'s results: up to 61% occupied, with up to 32% of cycles stalled.
+- The bottleneck is the host corner, not the mesh: with 4 tiles, node (0,0)'s LOCAL output (every RESULT flit reaches the host through it) is busy 61-85% of cycles, and its LOCAL input (every operand flit, plus tile (0,0)'s results) 32-61%, while no mesh link exceeds 41%.
 
 ## Waveforms
 

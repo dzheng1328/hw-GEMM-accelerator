@@ -4,7 +4,8 @@
 // 32-bit counters, cleared only by reset. Software measures a region by
 // snapshotting them before and after and subtracting modulo 2^32, so there is
 // no clear/enable logic. Read by hierarchy from cocotb today; an on-chip
-// readout path is 4.2's command processor's job.
+// readout path is 4.2's command processor's job. Until that exists nothing
+// observes these registers, so synthesis prunes them (zero area).
 //
 // Router port index (matches rtl/noc_node.v): 0 LOCAL, 1 NORTH, 2 EAST,
 // 3 SOUTH, 4 WEST. A mesh link's occupancy is its sender's out_xfer_*/

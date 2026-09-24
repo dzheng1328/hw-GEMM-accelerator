@@ -35,6 +35,7 @@ make "$@"
 
 cd "$REPO_ROOT/tb/mesh"
 make "$@"
+make lint-noperf
 
 cd "$REPO_ROOT/tb/mnist"
 make "$@"

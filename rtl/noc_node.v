@@ -286,6 +286,10 @@ module noc_node #(
                 .lcl_in_valid (r_in_valid[LOCAL]),
                 .lcl_in_ready (r_in_ready[LOCAL])
             );
+        end else begin : g_noperf
+            // Lint exempts *unused* names from UNUSEDSIGNAL: the feed
+            // strobe exists only for the counters.
+            wire unused_tile_feeding = tile_feeding;
         end
     endgenerate
 
