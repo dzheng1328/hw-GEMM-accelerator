@@ -31,6 +31,7 @@ async def idle(dut):
     dut.wr_addr.value = 0
     dut.wr_a_col.value = 0
     dut.wr_b_row.value = 0
+    dut.rd_en.value = 0
     dut.rd_addr.value = 0
 
 
@@ -58,6 +59,7 @@ async def test_write_then_read_all_slots(dut):
         await write_slot(dut, addr, a_vals[addr], b_vals[addr])
 
     for addr in range(DEPTH):
+        dut.rd_en.value = 1
         dut.rd_addr.value = addr
         await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)  # generous margin -- exact latency is checked below
@@ -75,6 +77,8 @@ async def test_read_latency_is_registered(dut):
 
     await write_slot(dut, 5, 0xAAAA_BBBB_CCCC_DDDD, 0x1111_2222_3333_4444)
     await write_slot(dut, 9, 0x5555_6666_7777_8888, 0x9999_AAAA_BBBB_CCCC)
+
+    dut.rd_en.value = 1
 
     dut.rd_addr.value = 5
     await RisingEdge(dut.clk)
@@ -104,8 +108,33 @@ async def test_banks_are_independent(dut):
         await write_slot(dut, addr, addr, (~addr) & mask64())
 
     for addr in addrs:
+        dut.rd_en.value = 1
         dut.rd_addr.value = addr
         await RisingEdge(dut.clk)
         await RisingEdge(dut.clk)
         assert dut.rd_a_col.value.integer == addr, f"a_ram[{addr}] wrong or leaked from b_ram"
         assert dut.rd_b_row.value.integer == ((~addr) & mask64()), f"b_ram[{addr}] wrong or leaked from a_ram"
+
+
+@cocotb.test()
+async def test_output_holds_when_not_reading(dut):
+    """rd_en gates the macro's chip select (issue #44): with rd_en low the
+    macro is deselected, so a changing rd_addr must not disturb the last read's
+    data."""
+    await start_clock(dut)
+    await idle(dut)
+    await RisingEdge(dut.clk)
+
+    await write_slot(dut, 3, 0x0123_4567_89AB_CDEF, 0x0F0F_0F0F_F0F0_F0F0)
+    await write_slot(dut, 4, 0x1111_1111_1111_1111, 0x2222_2222_2222_2222)
+
+    dut.rd_en.value = 1
+    dut.rd_addr.value = 3
+    await RisingEdge(dut.clk)
+    dut.rd_en.value = 0
+    dut.rd_addr.value = 4
+    for _ in range(3):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        assert dut.rd_a_col.value.integer == 0x0123_4567_89AB_CDEF
+        assert dut.rd_b_row.value.integer == 0x0F0F_0F0F_F0F0_F0F0

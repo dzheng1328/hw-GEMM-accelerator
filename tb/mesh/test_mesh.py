@@ -278,3 +278,88 @@ async def test_fully_packetized_load_go_result(dut):
         got = np.array([[cells[i * N + j] for j in range(N)] for i in range(N)])
         exp = reference(*mats[node])
         assert np.array_equal(got, exp), f"tile {node} (via RESULT flits):\n{got}\nvs\n{exp}"
+
+
+async def collect_result_streams(dut, expected_total):
+    """Collect RESULT flits delivered at the host corner, in arrival order per
+    source tile: {(src_x, src_y): [(idx, acc), ...]}."""
+    streams = {}
+    for _ in range(DONE_TIMEOUT_CYCLES * 4):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.res00_valid.value) == 1:
+            src = (int(dut.res00_src_x.value), int(dut.res00_src_y.value))
+            streams.setdefault(src, []).append(
+                (int(dut.res00_idx.value), to_signed32(int(dut.res00_acc.value)))
+            )
+            if sum(len(v) for v in streams.values()) == expected_total:
+                return streams
+    got = sum(len(v) for v in streams.values())
+    raise AssertionError(f"result collection timed out: got {got}/{expected_total} flits")
+
+
+def stream_to_matrix(stream):
+    """One 64-flit RESULT stream -> 8x8 matrix (each index exactly once)."""
+    cells = dict(stream)
+    assert len(stream) == N * N and len(cells) == N * N, f"malformed stream: {len(stream)} flits"
+    return np.array([[cells[i * N + j] for j in range(N)] for i in range(N)])
+
+
+@cocotb.test()
+async def test_prefetch_overlap_is_backpressured(dut):
+    """Issue #44: block 2's OPERAND flits (targeting the SAME operand_mem
+    slots) and GO are injected immediately behind block 1's GO, so they reach
+    tile (1,0) while block 1 is still computing. The LOCAL port must hold them
+    off until the tile is idle -- otherwise the writes steal operand_mem's
+    shared address port from in-flight reads and overwrite slots block 1 still
+    needs, and block 2's GO is dropped by the busy sequencer. Both results
+    must come back bit-exact, in order."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset_dut(dut)
+
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x44)
+    k_chunks = 2
+    K = 8 * k_chunks
+    blocks = [(rand_mat(rng, N, K), rand_mat(rng, K, N)) for _ in range(2)]
+
+    flits = []
+    for A, B in blocks:
+        flits += operand_flits(1, 0, A, B, k_chunks)
+        flits.append(go_flit(1, 0, k_chunks, 0, 0))
+
+    mon = cocotb.start_soon(collect_result_streams(dut, 2 * N * N))
+    await inject(dut, "inj00", flits)
+    streams = await mon
+
+    stream = streams[(1, 0)]
+    for b, (A, B) in enumerate(blocks):
+        got = stream_to_matrix(stream[b * N * N:(b + 1) * N * N])
+        exp = reference(A, B)
+        assert np.array_equal(got, exp), f"block {b}:\n{got}\nvs\n{exp}"
+
+
+@cocotb.test()
+async def test_back_to_back_go_is_backpressured(dut):
+    """Issue #44: a second GO sent right behind the first reaches the tile
+    while it is computing (and, once released, must not restart the tile
+    while the first result is still streaming back -- that would clear the
+    accumulators mid-stream). Both GOs must each produce a full, correct
+    result stream over the same loaded operands."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset_dut(dut)
+
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x45)
+    k_chunks = 1
+    A, B = rand_mat(rng, N, 8 * k_chunks), rand_mat(rng, 8 * k_chunks, N)
+    flits = operand_flits(1, 1, A, B, k_chunks)
+    flits += [go_flit(1, 1, k_chunks, 0, 0), go_flit(1, 1, k_chunks, 0, 0)]
+
+    mon = cocotb.start_soon(collect_result_streams(dut, 2 * N * N))
+    await inject(dut, "inj00", flits)
+    streams = await mon
+
+    stream = streams[(1, 1)]
+    exp = reference(A, B)
+    for r in range(2):
+        got = stream_to_matrix(stream[r * N * N:(r + 1) * N * N])
+        assert np.array_equal(got, exp), f"run {r}:\n{got}\nvs\n{exp}"

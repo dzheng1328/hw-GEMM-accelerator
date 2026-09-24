@@ -49,6 +49,7 @@ module gemm_tile #(
 );
 
     wire [$clog2(N*KMAX)-1:0] rd_addr;
+    wire                      rd_en;
     wire signed [8*N-1:0]     a_col;
     wire signed [8*N-1:0]     b_row;
     wire                      tile_reset;
@@ -60,6 +61,7 @@ module gemm_tile #(
         .wr_addr  (wr_addr),
         .wr_a_col (wr_a_col),
         .wr_b_row (wr_b_row),
+        .rd_en    (rd_en),
         .rd_addr  (rd_addr),
         .rd_a_col (a_col),
         .rd_b_row (b_row)
@@ -71,6 +73,7 @@ module gemm_tile #(
         .start      (start),
         .k_chunks   (k_chunks),
         .rd_addr    (rd_addr),
+        .rd_en      (rd_en),
         .tile_reset (tile_reset),
         .feed_valid (feed_valid),
         .busy       (busy),

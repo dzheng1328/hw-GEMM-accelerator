@@ -32,6 +32,11 @@
 // start/k_chunks/busy/done/acc_out ports remain functional alongside the
 // packetized path (used by the earlier testbenches; a GO is just another way
 // to pulse start).
+//
+// LOCAL delivery is backpressured (issue #44): OPERAND flits are held while
+// the tile is computing and GO flits while it is computing or streaming
+// results, so network traffic can never collide with operand_mem reads or
+// restart a tile mid-run. Direct-port callers must respect busy themselves.
 module noc_node #(
     parameter N    = 8,
     parameter KMAX = 8,
@@ -117,6 +122,10 @@ module noc_node #(
     wire [NP-1:0]    r_in_valid, r_in_ready, r_out_valid, r_out_ready;
     wire [NP*FW-1:0] r_in_flit, r_out_flit;
 
+    // GO-decode registers (declared early: they gate LOCAL delivery below).
+    reg        go_pulse;
+    reg [3:0]  go_k;
+
     // Result-return engine state (declared early: it muxes the LOCAL input).
     reg  [1:0]      rr_state;   // 0 idle / 1 wait-fall / 2 wait-rise / 3 stream
     reg  [6:0]      rr_idx;
@@ -169,10 +178,26 @@ module noc_node #(
     wire [1:0]    ltype   = lflit[FW-1 -: TW];
     wire [PW-1:0] payload = lflit[2*AW +: PW];
     wire          deliver = r_out_valid[LOCAL];
-    assign r_out_ready[LOCAL] = 1'b1;   // every delivery consumed in one cycle
+
+    // LOCAL delivery backpressure (issue #44). operand_mem has one shared
+    // address port per bank, and the tile reads its slots throughout a run,
+    // so an OPERAND write must not land between a GO and the end of the
+    // compute it starts (from go_pulse, before busy rises, through busy):
+    // it would steal the port from an in-flight read and overwrite a slot
+    // the run still needs. A GO must additionally wait for the result-return
+    // engine to go idle -- the sequencer ignores start while busy (the GO
+    // would be silently lost), and restarting the tile mid-stream would
+    // clear the accumulators being returned. Both stalls are bounded (the
+    // run and the 64-flit stream finish independently of the network), so
+    // holding the flit in the router cannot deadlock. RESULT flits go to the
+    // host-side sink and are never stalled.
+    wire opr_stall = busy || go_pulse;
+    wire go_stall  = opr_stall || (rr_state != 2'd0);
+    assign r_out_ready[LOCAL] = !((ltype == T_OPR && opr_stall) ||
+                                  (ltype == T_GO  && go_stall));
 
     // OPERAND -> operand_mem write.
-    wire                 wr_en    = deliver && (ltype == T_OPR);
+    wire                 wr_en    = deliver && r_out_ready[LOCAL] && (ltype == T_OPR);
     wire [8*N-1:0]       wr_b_row = payload[8*N-1 : 0];
     wire [8*N-1:0]       wr_a_col = payload[16*N-1 : 8*N];
     wire [ADDRW-1:0]     wr_addr  = payload[PW-1 : 16*N];
@@ -185,9 +210,7 @@ module noc_node #(
     assign res_src_y = payload[38+AW +: AW];
 
     // GO -> registered start pulse + latched descriptor, arms result return.
-    wire go_deliver = deliver && (ltype == T_GO);
-    reg        go_pulse;
-    reg [3:0]  go_k;
+    wire go_deliver = deliver && r_out_ready[LOCAL] && (ltype == T_GO);
     always @(posedge clk) begin
         if (rst) begin
             go_pulse <= 1'b0;

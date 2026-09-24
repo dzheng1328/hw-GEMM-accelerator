@@ -20,8 +20,9 @@
 // *which* operands to present *when*.
 //
 // Operands live in rtl/operand_mem.v; the FSM addresses it via rd_addr =
-// chunk*N + col, one slot per (chunk, column). The memory returns the unskewed
-// A-column / B-row combinationally, which the top wires straight to the tile.
+// chunk*N + col, one slot per (chunk, column), with rd_en marking the cycles
+// that are real reads. The memory returns the unskewed A-column / B-row
+// RD_LATENCY cycles later, which the top wires straight to the tile.
 // The outer loop over N-blocks (and the fresh reset each N-block gets, via a new
 // `start` pulse) stays with the caller, the same way a DMA engine issues one
 // descriptor per block.
@@ -46,6 +47,7 @@ module gemm_sequencer #(
     input  wire                          start,      // pulse to run one N-block
     input  wire [3:0]                    k_chunks,   // K-chunks in this N-block (1..KMAX)
     output reg  [$clog2(N*KMAX)-1:0]     rd_addr,    // -> operand_mem read address (chunk*N + col)
+    output wire                          rd_en,      // -> operand_mem: rd_addr is a real read this cycle
     output reg                           tile_reset, // -> tile.reset (pulsed once per N-block)
     output wire                          feed_valid, // -> tile.in_valid, delayed RD_LATENCY cycles
     output reg                           busy,
@@ -113,6 +115,7 @@ module gemm_sequencer #(
         end
     end
     assign feed_valid = feed_valid_sr[RD_LATENCY-1];
+    assign rd_en      = rd_col_valid;
 
     // ---- Sequential control ----
     task start_run;
