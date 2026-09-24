@@ -85,9 +85,9 @@ module router #(
             grant_vld[oo] = 1'b0;
             grant_idx[oo] = 3'd0;
             for (kk = 0; kk < NP; kk = kk + 1) begin
-                idx = rr[oo] + kk;
+                idx = {29'd0, rr[oo]} + kk;
                 if (idx >= NP) idx = idx - NP;
-                if (!grant_vld[oo] && in_valid[idx] && (dest_port[idx] == oo)) begin
+                if (!grant_vld[oo] && in_valid[idx] && (dest_port[idx] == oo[2:0])) begin
                     grant_vld[oo] = 1'b1;
                     grant_idx[oo] = idx[2:0];
                 end

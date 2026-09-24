@@ -1,4 +1,5 @@
 # Simulation artifacts
+/sim/
 sim_build/
 obj_dir/
 *.vcd

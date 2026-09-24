@@ -68,7 +68,7 @@ reference; see `docs/decisions.md` / `docs/learnings.md` for the design reasonin
 | Tool | Role |
 |---|---|
 | Verilog | hardware description language — the design itself |
-| Icarus Verilog / Verilator | simulate the design |
+| Verilator (default) / Icarus Verilog (cross-check) | simulate the design |
 | cocotb | Python-based testbenches |
 | Surfer | waveform viewing / debugging |
 | PyTorch | train + quantize the reference model |
@@ -82,12 +82,16 @@ is `requirements.txt`'s `cocotb>=1.8,<2.0` pin: cocotb 2.0 deprecates the `Makef
 project's Makefiles use, so installing an unpinned/2.0+ cocotb would break `./test.sh`.
 
 ```
-brew install icarus-verilog   # or your platform's equivalent
+brew install verilator icarus-verilog   # or your platform's equivalent
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-./test.sh
+./test.sh              # Verilator (default)
+SIM=icarus ./test.sh   # Icarus cross-check
 ```
+
+Verilator builds run with `-Wall` and warnings fatal.
+The only waived warnings are listed, with reasons, in [`tb/lint_waivers.vlt`](tb/lint_waivers.vlt).
 
 ## Demo
 
@@ -111,7 +115,7 @@ real Phase 2 synthesis timing, not simulation.)
 ## Waveforms
 
 [`docs/waveforms/test_mnist.fst`](docs/waveforms/test_mnist.fst) is a real waveform dump from
-`tb/mnist/test_mnist.py` (via cocotb/Icarus's built-in `make WAVES=1`, no RTL changes needed), and
+`tb/mnist/test_mnist.py` (via `make WAVES=1`, which dumps an FST under either simulator, no RTL changes needed), and
 [`docs/waveforms/test_mnist.surf.ron`](docs/waveforms/test_mnist.surf.ron) is a saved
 [Surfer](https://surfer-project.org/) session pre-selecting a sensible signal set: `clk`, `reset`,
 `valid_in`, the `a_west`/`b_north` buses, and three individual PE accumulator registers (corner cells

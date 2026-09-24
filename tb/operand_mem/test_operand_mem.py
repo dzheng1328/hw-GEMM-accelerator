@@ -5,6 +5,7 @@ integrity on both banks, the macro's RD_LATENCY=1 registered read timing, and
 bank independence (a_ram/b_ram don't cross-talk).
 """
 
+import os
 import random
 
 import cocotb
@@ -138,3 +139,22 @@ async def test_output_holds_when_not_reading(dut):
         await Timer(1, units="ns")
         assert dut.rd_a_col.value.integer == 0x0123_4567_89AB_CDEF
         assert dut.rd_b_row.value.integer == 0x0F0F_0F0F_F0F0_F0F0
+
+
+@cocotb.test(skip=os.environ.get("OPERAND_MEM_COLLISION_PROBE") != "1")
+async def test_collision_is_fatal(dut):
+    """Negative test, run only by `make collision-check`: a write in the same
+    cycle as a real read must kill the simulation (issue #44). Passing here
+    means the check did NOT fire; collision-check expects this run to die."""
+    await start_clock(dut)
+    await idle(dut)
+    await RisingEdge(dut.clk)
+
+    dut.rd_en.value = 1
+    dut.rd_addr.value = 3
+    dut.wr_en.value = 1
+    dut.wr_addr.value = 7
+    await RisingEdge(dut.clk)
+    await idle(dut)
+    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)

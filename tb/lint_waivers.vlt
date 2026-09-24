@@ -1,0 +1,35 @@
+`verilator_config
+// tb/lint_waivers.vlt -- the complete list of Verilator -Wall warnings this
+// repo deliberately waives. tb/common.mk passes -Wall to every Verilator build
+// and warnings are fatal, so anything not listed here fails the build.
+// Every waiver must be narrow (one rule, one file, one match where possible)
+// and say why the flagged code is intentional rather than a bug.
+// Pattern notes: -match uses "?" for a literal [ or ] (brackets are special
+// in Verilator wildcards), and -file patterns begin with a star-slash
+// wildcard because cocotb passes sources by absolute path.
+
+// Mesh/pair edge ports and host-only RESULT outputs are left unconnected on
+// purpose. An empty .port() connection is the idiomatic way to say "intentionally unconnected";
+// routing each one to a dummy wire would only add noise.
+lint_off -rule PINCONNECTEMPTY -file "*/rtl/noc_pair.v"
+lint_off -rule PINCONNECTEMPTY -file "*/rtl/noc_mesh2x2.v"
+
+// The behavioral SRAM stand-in must use the real macro's module name
+// (sky130_sram_512b_1rw_64x64) so operand_mem.v instantiates it unchanged,
+// but its filename says what it is: a test-only model, not the macro.
+lint_off -rule DECLFILENAME -file "*/sram_macro_behavioral.v"
+
+// Documentation-only latency constants, kept as real Verilog constants so the
+// value is findable at its source (see the comments above each definition).
+lint_off -rule UNUSEDPARAM -file "*/rtl/pe.v" -match "*'ACC_LATENCY'*"
+lint_off -rule UNUSEDPARAM -file "*/rtl/operand_mem.v" -match "*'RD_LATENCY'*"
+
+// Bit 64 of each SRAM macro read port is the macro's spare column, which
+// operand_mem.v never writes (din0[64] tied to 0) and so never reads.
+lint_off -rule UNUSEDSIGNAL -file "*/rtl/operand_mem.v" -match "*'a_dout_raw'?64?"
+lint_off -rule UNUSEDSIGNAL -file "*/rtl/operand_mem.v" -match "*'b_dout_raw'?64?"
+
+// A flit's destination coords (lflit[2*AW-1:0]) are consumed by the router's
+// XY routing decision; once a flit reaches the LOCAL port only its type and
+// payload matter.
+lint_off -rule UNUSEDSIGNAL -file "*/rtl/noc_node.v" -match "*'lflit'?3:0?"

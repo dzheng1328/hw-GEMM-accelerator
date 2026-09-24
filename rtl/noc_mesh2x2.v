@@ -99,6 +99,8 @@ module noc_mesh2x2 #(
         .s_out_valid(), .s_out_flit(), .s_out_ready(1'b1),
         .w_in_valid(v_00e10), .w_in_flit(f_00e10), .w_in_ready(r_00e10),
         .w_out_valid(v_10w00), .w_out_flit(f_10w00), .w_out_ready(r_10w00),
+        // RESULT flits only leave the mesh at the host corner (0,0).
+        .res_valid(), .res_src_x(), .res_src_y(), .res_idx(), .res_acc(),
         .start(start_10), .k_chunks(k_chunks_10),
         .busy(busy_10), .done(done_10), .acc_out(acc_out_10)
     );
@@ -114,6 +116,8 @@ module noc_mesh2x2 #(
         .s_out_valid(v_01s00), .s_out_flit(f_01s00), .s_out_ready(r_01s00),
         .w_in_valid(1'b0), .w_in_flit({FW{1'b0}}), .w_in_ready(),
         .w_out_valid(), .w_out_flit(), .w_out_ready(1'b1),
+        // RESULT flits only leave the mesh at the host corner (0,0).
+        .res_valid(), .res_src_x(), .res_src_y(), .res_idx(), .res_acc(),
         .start(start_01), .k_chunks(k_chunks_01),
         .busy(busy_01), .done(done_01), .acc_out(acc_out_01)
     );
@@ -129,6 +133,8 @@ module noc_mesh2x2 #(
         .s_out_valid(v_11s10), .s_out_flit(f_11s10), .s_out_ready(r_11s10),
         .w_in_valid(v_01e11), .w_in_flit(f_01e11), .w_in_ready(r_01e11),
         .w_out_valid(v_11w01), .w_out_flit(f_11w01), .w_out_ready(r_11w01),
+        // RESULT flits only leave the mesh at the host corner (0,0).
+        .res_valid(), .res_src_x(), .res_src_y(), .res_idx(), .res_acc(),
         .start(start_11), .k_chunks(k_chunks_11),
         .busy(busy_11), .done(done_11), .acc_out(acc_out_11)
     );

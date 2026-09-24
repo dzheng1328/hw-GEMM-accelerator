@@ -19,6 +19,22 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- Verilator is the default simulator, with -Wall fatal and a written waiver list
+
+**Context:** Phase 4 workloads (a CIFAR-10 CNN is about 2.8M MACs per image) need far more simulated cycles than Icarus can deliver at about 3,700 cycles/s on the 2x2 mesh (issue #53).
+**Options considered:**
+(1) Keep Icarus and shrink workloads - rejected, it caps Phase 4 at toy sizes.
+(2) Switch to Verilator with `-Wno-fatal` - rejected, it hides real width and missing-pin bugs behind a wall of style noise.
+(3) Switch to Verilator with `-Wall` and warnings fatal, fix every real warning, and waive only intentional style cases in one file with a reason per waiver.
+**Decision:** (3).
+Every suite includes `tb/common.mk`, which defaults `SIM=verilator`, passes `-Wall tb/lint_waivers.vlt`, and gives each simulator its own build tree (`sim/<SIM>/`).
+Icarus stays a supported cross-check via `SIM=icarus ./test.sh`, and `WAVES=1` dumps an FST under either simulator.
+Real fixes: explicit sign extension of `pe.v`'s product into the accumulator, width-correct round-robin index math in `router.v`, an unused genvar in `skew_feeder.v`, and explicitly unconnected `res_*` pins in `noc_pair.v`/`noc_mesh2x2.v`.
+Waived with reasons: intentionally empty edge-port connections, the behavioral SRAM model's filename, two documentation-only latency constants, the SRAM spare column, and flit destination bits the router already consumed.
+The `operand_mem` write/read collision check moved from `$error` to `$fatal`, and `make collision-check` proves it kills the run under both simulators.
+**Why:** Verilator's speed is what makes Phase 4 feasible, and fatal `-Wall` turns it into a free lint gate on every test run.
+The collision check change came from testing it under both simulators: Icarus prints `$error` but cocotb still marks the test passed, so the issue #44 invariant was never actually enforced there.
+
 ### 2026-09-24 -- Phase 4 direction: a self-contained accelerator running CIFAR-10, then a tiny LM
 
 **Context:** Phases 1-3 produced a verified, packetized 2x2 mesh of GEMM tiles, but the only workload is a tiny 64->32->16 MNIST MLP driven by a Python host, and the remaining Phase 3 work (gemm_tile P&R with SRAM macros, Tiny Tapeout) adds little new signal for its cost.

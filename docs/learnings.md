@@ -24,6 +24,26 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- Under Icarus, a $error in the RTL does not fail a cocotb test
+
+**Phase:** Phase 4
+**Problem:** While moving to Verilator (issue #53), a deliberate `operand_mem` write/read collision showed the issue #44 check behaving differently per simulator: Verilator stopped the run, while Icarus printed the error and cocotb reported the test as PASS.
+**Cause:** `$error` is a non-fatal severity task. Icarus logs it and keeps simulating, and cocotb only looks at Python-side test outcomes, so nothing turned the message into a failure. Verilator happens to `$stop` on the first `$error` by default.
+**Fix:** The check now uses `$fatal(1, ...)`, and `make collision-check` in `tb/operand_mem/` runs a negative test that passes only if the probe run dies on that exact message. Mutating the check back to `$error` makes the Icarus collision-check fail, so the guard is proven.
+**Takeaway:** An RTL assertion that should fail a test must be `$fatal`, and it needs a negative test that proves it actually kills the run in every simulator you support.
+
+### 2026-09-24 -- Verilator config-file and cocotb Makefile gotchas
+
+**Phase:** Phase 4
+**Problem:** Wiring Verilator into the cocotb flow hit four separate snags: `.vlt` waivers that silently did not match, a `.vlt` file that failed to parse, `WAVES=1` doing nothing under Verilator, and an FST build failing with `'lz4.h' file not found`.
+**Cause:**
+(1) `lint_off -match` uses wildcards where `[` and `]` are special, and `-file` is matched against the path exactly as given (cocotb passes absolute paths, sometimes with `../` segments).
+(2) A `.vlt` file is run through the preprocessor, so a backtick or `*/` inside a `//` comment breaks parsing.
+(3) cocotb 1.9's Verilator makefile only knows `VERILATOR_TRACE=1` (VCD), and it passes `EXTRA_ARGS` to the built binary at run time as well as to Verilator.
+(4) Homebrew's Verilator 5.050 links its FST writer against lz4 but does not add Homebrew's include dir to the C++ flags.
+**Fix:** Waiver patterns use `?` for brackets and a leading `*/` on paths. No backticks in `.vlt` comments. `tb/common.mk` uses `COMPILE_ARGS` rather than `EXTRA_ARGS`, maps `WAVES=1` to `--trace-fst` in a separate `sim/verilator-waves/` tree, and adds `brew --prefix` include/lib dirs for traced builds.
+**Takeaway:** After adding a Verilator waiver, confirm the warning really disappears, and after adding a build knob, confirm the output file really appears. Both of these can fail without an error.
+
 ### 2026-09-24 -- An "unenforced traffic assumption" hid two more bugs at the same port
 
 **Phase:** Phase 3
