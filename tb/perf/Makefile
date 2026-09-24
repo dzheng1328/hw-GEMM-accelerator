@@ -32,3 +32,17 @@ COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_perf/results.xml
 export PERF_RESULTS ?= $(SIM_BUILD)/perf_results.json
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+BASELINE = $(REPO_ROOT)/docs/perf/baseline.json
+
+# Re-measure and overwrite the committed baseline (only when a change is
+# meant to become the new reference point).
+.PHONY: baseline compare
+baseline: sim
+	mkdir -p $(dir $(BASELINE))
+	cp $(PERF_RESULTS) $(BASELINE)
+	python $(TB_DIR)/perf/report.py $(BASELINE) > $(dir $(BASELINE))baseline.md
+
+# Re-measure and print a before/after table against the committed baseline.
+compare: sim
+	python $(TB_DIR)/perf/report.py $(PERF_RESULTS) --before $(BASELINE)

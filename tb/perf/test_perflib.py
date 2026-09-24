@@ -1,8 +1,9 @@
-"""pytest unit tests for tb/perf/perflib.py (pure Python, no simulator)."""
+"""pytest unit tests for tb/perf/perflib.py and tb/perf/report.py (pure Python, no simulator)."""
 
 import pytest
 
 from perflib import COUNTERS, delta, links, make_record, metrics, node_key
+from report import render_compare, render_table
 
 
 def zero_node():
@@ -67,3 +68,20 @@ def test_make_record_carries_meta_and_counters():
     assert (r["workload"], r["K"], r["N"], r["tiles"], r["cycles"]) == ("gemm", 8, 32, 1, 100)
     assert r["counters"] == d
     assert r["metrics"]["cycles"] == 100
+
+
+def rec(name, cycles, util):
+    return {"name": name, "workload": "gemm", "K": 8, "N": 32, "tiles": 1, "cycles": cycles,
+            "metrics": {"util_mesh": util, "util_used": util, "max_link_occupancy": 0.5,
+                        "host_in_occupancy": 0.25, "host_in_stall": 0.0}}
+
+
+def test_render_table_row():
+    out = render_table([rec("gemm_K8_T1", 1234, 0.071)])
+    assert "| gemm_K8_T1 | 8 | 32 | 1 | 1234 | 7.1% | 7.1% | 50.0% | 25.0% | 0.0% |" in out
+
+
+def test_render_compare_speedup_and_new_rows():
+    out = render_compare([rec("a", 1000, 0.1)], [rec("a", 500, 0.2), rec("b", 10, 0.3)])
+    assert "| a | 1000 | 500 | 2.00x | 10.0% | 20.0% |" in out
+    assert "| b | - | 10 | new | - | 30.0% |" in out

@@ -22,6 +22,7 @@ venv/
 *.json
 !config/*.json
 !openlane/**/config.json
+!docs/perf/*.json
 runs/
 
 # Model training artifacts (frozen model/mnist_quantized.npz IS committed)
