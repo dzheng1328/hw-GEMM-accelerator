@@ -20,8 +20,9 @@ host waits for every RESULT flit of the wave.
 import cocotb
 import numpy as np
 from cocotb.triggers import FallingEdge, RisingEdge
+from cocotb.utils import get_sim_time
 
-from perflib import COUNTERS, node_key
+from perflib import COUNTERS, delta, make_record, node_key
 
 N = 8
 KMAX = 8
@@ -171,3 +172,32 @@ def read_counters(dut):
         for y in range(MESH_H)
         for x in range(MESH_W)
     }
+
+
+async def measure(dut, name, work, chunks_expected, tiles_used, **meta):
+    """Run `work` (an un-awaited run_gemm coroutine) as one measured region.
+    Regions start and end quiescent (nothing in flight), which two checks
+    enforce: every flit that entered at a LOCAL port left at one, and the
+    array was fed exactly 8 cycles per K-chunk issued.
+
+    Both snapshots are taken at falling edges, when the counters have settled
+    (read right after a rising edge, that edge's increments may not be
+    visible yet). The region is exactly the rising edges between them, the
+    last one being the edge that delivers the final RESULT flit."""
+    await FallingEdge(dut.clk)
+    t0, before = get_sim_time(units="ns"), read_counters(dut)
+    C, chunks = await work
+    await FallingEdge(dut.clk)
+    t1, after = get_sim_time(units="ns"), read_counters(dut)
+
+    span = int(round(t1 - t0))
+    assert span % CLK_NS == 0, f"{name}: region of {span} ns is not whole cycles"
+    d = delta(before, after)
+    entered = sum(n["lcl_in_xfer"] for n in d.values())
+    left = sum(n["out_xfer_l"] for n in d.values())
+    assert entered == left, f"{name}: {entered} flits entered but {left} left (region not quiescent)"
+    feed = sum(n["feed_cyc"] for n in d.values())
+    assert chunks == chunks_expected and feed == N * chunks, (
+        f"{name}: fed {feed} cycles for {chunks} chunks (expected {chunks_expected})"
+    )
+    return C, make_record(name, d, span // CLK_NS, MESH_W, MESH_H, tiles_used, **meta)

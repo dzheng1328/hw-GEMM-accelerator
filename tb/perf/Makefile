@@ -28,4 +28,7 @@ MODULE = test_perf
 SIM_BUILD = $(SIM_ROOT)/sim_build_perf
 COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_perf/results.xml
 
+# Where test_perf.py writes its measurement records (see tb/perf/report.py).
+export PERF_RESULTS ?= $(SIM_BUILD)/perf_results.json
+
 include $(shell cocotb-config --makefiles)/Makefile.sim
