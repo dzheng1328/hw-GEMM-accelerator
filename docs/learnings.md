@@ -24,6 +24,22 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- A cocotb monitor that samples just after the rising edge can count a transfer that never happens
+
+**Phase:** Phase 4
+**Problem:** The new perf host driver saw "duplicate" RESULT flits: the same accumulator cell arrived twice, identically under Verilator and Icarus, but only when two result streams converged on the host port.
+**Cause:** Not the RTL. The collector sampled `res00_valid` at rising edge + 1 ns and returned; in that same timestep the next wave's injector raised `inj00_valid`, which changed the host router's LOCAL-output grant before the next clock edge. The sampled flit was not delivered that cycle, so it was delivered (and counted) again a cycle later. Sampling right after a rising edge is not final while other coroutines still drive inputs in the same timestep. The same effect made a counter snapshot read right after a rising edge miss that edge's increments.
+**Fix:** In `tb/perf/`, inputs are driven only right after a rising edge (`inject()` aligns itself first), and every handshake and counter snapshot is sampled at the falling edge. `measure()` also checks flit conservation per region, which is what caught the snapshot bug.
+**Takeaway:** Drive on the rising edge, sample on the falling edge. `tb/mesh/`'s collectors still sample at rising edge + 1 ns and currently pass only because nothing drives in the same timestep they sample.
+
+### 2026-09-24 -- cocotb 1.9's Makefile flow exits 0 when tests fail
+
+**Phase:** Phase 4
+**Problem:** A deliberately failing cocotb test still let `make` exit 0, so `./test.sh` had never actually failed on a failing test.
+**Cause:** cocotb 1.9's `check_for_results_file` only checks that `results.xml` exists, not what it records.
+**Fix:** `tb/check_results.py` parses `results.xml` and fails on any `<failure>`/`<error>` or on zero test cases. `tb/common.mk` runs it via an `override define check_for_results_file` (recipes expand at run time, and `override` beats the plain define in cocotb's `Makefile.inc`, which is included later). Proven by a sabotaged test that now fails the run.
+**Takeaway:** Prove a gate by making it fail once. A test runner that has never been seen to fail may not be able to.
+
 ### 2026-09-24 -- Under Icarus, a $error in the RTL does not fail a cocotb test
 
 **Phase:** Phase 4

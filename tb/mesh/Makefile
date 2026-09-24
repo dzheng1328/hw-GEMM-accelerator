@@ -14,6 +14,7 @@ VERILOG_SOURCES = $(PWD)/../../rtl/pe.v \
                   $(PWD)/../../rtl/gemm_tile.v \
                   $(PWD)/../../rtl/router.v \
                   $(PWD)/../../rtl/flit_buf.v \
+                  $(PWD)/../../rtl/node_perf.v \
                   $(PWD)/../../rtl/noc_node.v \
                   $(PWD)/../../rtl/noc_mesh2x2.v
 
@@ -28,3 +29,10 @@ SIM_BUILD = $(SIM_ROOT)/sim_build_mesh
 COCOTB_RESULTS_FILE = $(SIM_ROOT)/sim_build_mesh/results.xml
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+# Lint the mesh with its perf counters compiled out (PERF=0): no suite builds
+# that configuration, so without this it could silently rot.
+.PHONY: lint-noperf
+lint-noperf:
+	verilator --lint-only -Wall -GPERF=0 $(TB_DIR)/lint_waivers.vlt \
+	    $(VERILOG_SOURCES) --top-module $(TOPLEVEL)

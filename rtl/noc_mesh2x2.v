@@ -28,6 +28,7 @@
 module noc_mesh2x2 #(
     parameter N    = 8,
     parameter KMAX = 8,
+    parameter PERF = 1,              // per-node perf counters (rtl/node_perf.v)
     parameter AW   = 2,
     parameter ADDRW = 6,
     parameter PW    = ADDRW + 16*N,
@@ -71,7 +72,7 @@ module noc_mesh2x2 #(
     wire           v_10n11, r_10n11;  wire [FW-1:0] f_10n11;   // (1,0) north -> (1,1)
     wire           v_11s10, r_11s10;  wire [FW-1:0] f_11s10;   // (1,1) south -> (1,0)
 
-    noc_node #(.N(N), .KMAX(KMAX), .AW(AW)) node00 (
+    noc_node #(.N(N), .KMAX(KMAX), .AW(AW), .PERF(PERF)) node00 (
         .clk(clk), .rst(rst), .my_x(2'd0), .my_y(2'd0),
         .lcl_in_valid(inj00_valid), .lcl_in_flit(inj00_flit), .lcl_in_ready(inj00_ready),
         .n_in_valid(v_01s00), .n_in_flit(f_01s00), .n_in_ready(r_01s00),
@@ -88,7 +89,7 @@ module noc_mesh2x2 #(
         .busy(busy_00), .done(done_00), .acc_out(acc_out_00)
     );
 
-    noc_node #(.N(N), .KMAX(KMAX), .AW(AW)) node10 (
+    noc_node #(.N(N), .KMAX(KMAX), .AW(AW), .PERF(PERF)) node10 (
         .clk(clk), .rst(rst), .my_x(2'd1), .my_y(2'd0),
         .lcl_in_valid(1'b0), .lcl_in_flit({FW{1'b0}}), .lcl_in_ready(),
         .n_in_valid(v_11s10), .n_in_flit(f_11s10), .n_in_ready(r_11s10),
@@ -105,7 +106,7 @@ module noc_mesh2x2 #(
         .busy(busy_10), .done(done_10), .acc_out(acc_out_10)
     );
 
-    noc_node #(.N(N), .KMAX(KMAX), .AW(AW)) node01 (
+    noc_node #(.N(N), .KMAX(KMAX), .AW(AW), .PERF(PERF)) node01 (
         .clk(clk), .rst(rst), .my_x(2'd0), .my_y(2'd1),
         .lcl_in_valid(1'b0), .lcl_in_flit({FW{1'b0}}), .lcl_in_ready(),
         .n_in_valid(1'b0), .n_in_flit({FW{1'b0}}), .n_in_ready(),
@@ -122,7 +123,7 @@ module noc_mesh2x2 #(
         .busy(busy_01), .done(done_01), .acc_out(acc_out_01)
     );
 
-    noc_node #(.N(N), .KMAX(KMAX), .AW(AW)) node11 (
+    noc_node #(.N(N), .KMAX(KMAX), .AW(AW), .PERF(PERF)) node11 (
         .clk(clk), .rst(rst), .my_x(2'd1), .my_y(2'd1),
         .lcl_in_valid(inj11_valid), .lcl_in_flit(inj11_flit), .lcl_in_ready(inj11_ready),
         .n_in_valid(1'b0), .n_in_flit({FW{1'b0}}), .n_in_ready(),

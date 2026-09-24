@@ -19,6 +19,22 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- Performance counters live in synthesizable RTL, and the baseline is measured
+
+**Context:** Phase 4.1 needs measured cycles, MAC utilization, and link occupancy to judge every efficiency fix (issue #54), and the same harness must still work for 4.2's multi-million-cycle CIFAR-10 runs and 4.1c's WxH mesh.
+**Options considered:**
+(1) Passive cocotb monitors sampling handshakes every cycle - rejected, the per-cycle Python cost grows with link count and would dominate long runs.
+(2) Simulation-only counters under `ifndef SYNTHESIS` - rejected, cheap but not a real hardware feature and not readable on-chip later.
+(3) Counters written as ordinary synthesizable RTL in every node, gated by a `PERF` parameter.
+**Decision:** (3). `rtl/node_perf.v` holds 14 free-running 32-bit counters per node (tile busy and feed cycles, transfers and stalls per router output port, LOCAL-input transfers and stalls).
+Software snapshots them around a region and subtracts modulo 2^32, so there is no clear or enable logic, and `PERF=0` removes them entirely.
+`tb/perf/` drives GEMMs fully over the network from the (0,0) corner and records each region only after a bit-exact check, a flit-conservation check (every flit that entered at a LOCAL port left at one), and an exact feed check (8 fed cycles per K-chunk).
+The counters themselves are proven by a test that re-derives every counter on every node from an independent per-cycle Python count over a contended run.
+**Why:** Counters cost nothing per simulated cycle, carry over to any mesh size, and give 4.2's command processor something real to read.
+Until 4.2 adds a readout path the counters drive no output, so synthesis prunes them; their area cost can only be measured once that path exists.
+**Result:** the baseline (`docs/perf/baseline.md`) confirms the 2026-09-24 estimates: one tile reaches 6.7% of peak at K=8 and 19.4% at K=64, and four tiles speed up a fixed GEMM by only 1.53x-2.49x because all traffic funnels through the host corner: with 4 tiles, node (0,0)'s LOCAL output (every RESULT flit) is busy 61-85% of cycles and its LOCAL input (every operand flit plus tile (0,0)'s results) 32-61%, while no mesh link exceeds 41%.
+Verilator and Icarus produce identical measurements.
+
 ### 2026-09-24 -- Verilator is the default simulator, with -Wall fatal and a written waiver list
 
 **Context:** Phase 4 workloads (a CIFAR-10 CNN is about 2.8M MACs per image) need far more simulated cycles than Icarus can deliver at about 3,700 cycles/s on the 2x2 mesh (issue #53).
