@@ -24,6 +24,16 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- An "unenforced traffic assumption" hid two more bugs at the same port
+
+**Phase:** Phase 3
+**Problem:** Issue #44 described one hazard (an OPERAND write stealing `operand_mem`'s shared port from an in-flight read), but the E2E reproduction in the 2x2 mesh timed out with only 64 of 128 result flits.
+**Cause:** `noc_node`'s LOCAL port accepted every flit unconditionally, so a GO arriving mid-run pulsed `start` into a busy `gemm_sequencer`, which ignores it - the GO vanished with no error.
+The same missing interlock also let a GO restart the tile while the result-return engine was still streaming, which would clear the accumulators mid-stream.
+**Fix:** Type-aware backpressure on the LOCAL output (`r_out_ready[LOCAL]`): OPERAND flits wait out the run, GO flits also wait for the result stream, and `wr_en`/`go_deliver` now also require the handshake to complete.
+**Takeaway:** When a sink ties `ready` high, check every flit type it consumes, not only the one the bug report names.
+Reproducing through the full mesh (not a unit test of `operand_mem`) is what surfaced the dropped GO.
+
 ### 2026-09-02 -- A documented testbench gotcha didn't stop the same bug from recurring twice in one branch
 
 **Phase:** Phase 3

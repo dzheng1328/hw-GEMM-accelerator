@@ -10,10 +10,14 @@
 // {wr_addr, wr_a_col, wr_b_row} is an addressed operand payload.
 //
 // The real macro has one shared address/control port per bank, not separate
-// read and write ports -- write wins by priority (wr_en ? wr_addr : rd_addr)
-// since no real caller today ever asserts wr_en and expects a read in the same
-// cycle (write happens during the NoC load phase; reads happen once the
-// sequencer starts the compute phase).
+// read and write ports -- write wins by priority (wr_en ? wr_addr : rd_addr).
+// A write in the same cycle as a real read (rd_en) would silently steal the
+// port from that read, so callers must never overlap them (issue #44). That
+// is ENFORCED upstream, not assumed: rtl/noc_node.v backpressures OPERAND
+// flits at its LOCAL port while the tile is busy, and the simulation-only
+// check below flags any caller (e.g. the direct gemm_tile write port) that
+// still overlaps them. rd_en also gates the macro's chip select, so the SRAM
+// is idle on cycles with neither a read nor a write.
 //
 // Read is now REGISTERED (RD_LATENCY cycles after rd_addr is presented, not
 // the same cycle) -- a real SRAM macro's read is synchronous. Issue #33 threads
@@ -50,6 +54,7 @@ module operand_mem #(
     input  wire signed [8*N-1:0]           wr_a_col,   // unskewed column of A for this slot
     input  wire signed [8*N-1:0]           wr_b_row,   // matching row of B for this slot
     // Read port (to the sequencer / tile), registered.
+    input  wire                            rd_en,      // rd_addr is a real read this cycle
     input  wire [$clog2(N*KMAX)-1:0]       rd_addr,
     output wire signed [8*N-1:0]           rd_a_col,
     output wire signed [8*N-1:0]           rd_b_row
@@ -67,13 +72,24 @@ module operand_mem #(
     wire [$clog2(N*KMAX)-1:0] a_addr = wr_en ? wr_addr : rd_addr;
     wire [$clog2(N*KMAX)-1:0] b_addr = wr_en ? wr_addr : rd_addr;
 
+    // Active-low chip select: only enable the macro on a real access.
+    wire csb = ~(wr_en | rd_en);
+
+`ifndef SYNTHESIS
+    always @(posedge clk) begin
+        if (wr_en && rd_en)
+            $error("operand_mem: write to slot %0d collided with an in-flight read of slot %0d (issue #44)",
+                   wr_addr, rd_addr);
+    end
+`endif
+
     wire [MACRO_DATA_WIDTH-1:0] a_dout_raw, b_dout_raw;
     assign rd_a_col = a_dout_raw[8*N-1:0];
     assign rd_b_row = b_dout_raw[8*N-1:0];
 
     sky130_sram_512b_1rw_64x64 a_bank (
         .clk0       (clk),
-        .csb0       (1'b0),
+        .csb0       (csb),
         .web0       (~wr_en),
         .spare_wen0 (1'b0),
         .addr0      ({{(MACRO_ADDR_WIDTH-$clog2(N*KMAX)){1'b0}}, a_addr}),
@@ -83,7 +99,7 @@ module operand_mem #(
 
     sky130_sram_512b_1rw_64x64 b_bank (
         .clk0       (clk),
-        .csb0       (1'b0),
+        .csb0       (csb),
         .web0       (~wr_en),
         .spare_wen0 (1'b0),
         .addr0      ({{(MACRO_ADDR_WIDTH-$clog2(N*KMAX)){1'b0}}, b_addr}),

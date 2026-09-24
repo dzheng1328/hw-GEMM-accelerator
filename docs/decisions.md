@@ -19,6 +19,27 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-24 -- Enforce operand_mem's no-write-during-read invariant with LOCAL-port backpressure (issue #44)
+
+**Context:** `operand_mem`'s real SRAM macro has one shared address port per bank, arbitrated `wr_en ? wr_addr : rd_addr`.
+That was safe only because current traffic never overlapped an OPERAND write with a compute-phase read, and nothing in RTL enforced it: `noc_node`'s LOCAL port tied `r_out_ready` high and accepted every flit unconditionally.
+Reproducing the hazard end-to-end in the 2x2 mesh (block 2's operands and GO injected right behind block 1's GO) exposed two more bugs in the same class.
+A GO arriving while the tile is busy was silently dropped, because `gemm_sequencer` only accepts `start` in IDLE/DONE.
+And a GO released while the result-return engine was still streaming would restart the tile and clear the accumulators mid-stream.
+**Options considered:**
+(1) A true arbiter in `operand_mem` that stalls the sequencer on a write conflict - rejected, it breaks the fixed 22-cycle wave schedule the tiling proof depends on.
+(2) Ping-pong operand banks so the next block can be prefetched during compute - rejected for now, it doubles SRAM area right before gemm_tile P&R and nothing needs prefetch yet.
+(3) Backpressure at the producer: expose a real read-in-flight signal and hold tile-bound flits at `noc_node`'s LOCAL port until the tile can safely take them.
+**Decision:** Option 3.
+`gemm_sequencer` now outputs `rd_en` (high only on real column reads), which `operand_mem` uses to gate the macro's chip select and to drive a simulation-only `$error` on any `wr_en && rd_en` overlap.
+`noc_node` stalls OPERAND flits while `busy || go_pulse` (from the GO's registered start pulse, before `busy` rises, through the end of the run) and GO flits additionally while the result-return engine is not idle.
+RESULT flits are never stalled.
+**Why:** Stalling the OPERAND flit covers both the port collision and the slot overwrite (a write to a slot the current run has yet to read), with no change to the sequencer's timing.
+Both stalls are bounded by the run and the 64-flit result stream, which finish independently of the network, so holding a flit in the router cannot deadlock; the cost is head-of-line blocking of other LOCAL-bound flits for that window.
+The earlier attempt at a sim assertion (#32) flooded false positives because it inferred reads from `rd_addr`; a real `rd_en` makes the check precise, and it stays silent across the whole suite.
+Direct `gemm_tile` write-port callers get the assertion but no hardware interlock - they already see `busy`.
+New tests: `tb/mesh/test_prefetch_overlap_is_backpressured`, `tb/mesh/test_back_to_back_go_is_backpressured` (both failed on the old RTL with 64/128 result flits; the prefetch test also fails with only the OPERAND stall removed), and `tb/operand_mem/test_output_holds_when_not_reading`.
+
 ### 2026-09-08 -- Fix operand_mem.v's SRAM macro port shape to match the real macro (issue #48)
 
 **Context:** Issue #35's macro regeneration found that the real `sky130_sram_512b_1rw_64x64.v` has
