@@ -14,6 +14,7 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, RisingEdge
 
+from fixedpoint import quantize_multiplier, requant
 from host import CLK_NS, MESH_H, MESH_W, TILE_ORDER, measure, node_scope, read_counters, reset_dut, run_gemm, wrap32
 from perflib import COUNTERS, PORTS, node_key
 
@@ -117,47 +118,60 @@ def save_records():
 @cocotb.test()
 async def test_gemm_sweep(dut):
     """Strong scaling: an 8 x K x 32 GEMM (4 jobs, fixed work) for each K on
-    1, 2, and 4 tiles, one measured region per configuration."""
+    1, 2, and 4 tiles, one measured region per configuration, with raw int32
+    results and again with on-chip requantized int8 results (_q8)."""
     await start(dut)
     rng = random.Random(SEED ^ 0x10)
     for K in (8, 16, 32, 64):
         A, B = rand_i8(rng, 8, K), rand_i8(rng, K, 32)
+        # Spread outputs over the int8 range: |acc| is about 5000 * sqrt(K).
+        rq = (*quantize_multiplier(1 / (80 * K**0.5)), False)
         for tiles in (1, 2, 4):
-            C, rec = await measure(
-                dut, f"gemm_K{K}_T{tiles}", run_gemm(dut, A, B, TILE_ORDER[:tiles]),
-                chunks_expected=(K // 8) * 4, tiles_used=tiles, workload="gemm", K=K, N=32,
-            )
-            assert np.array_equal(C, wrap32(A @ B)), f"K={K} tiles={tiles}: result mismatch"
-            RECORDS.append(rec)
+            for suffix, mode in (("", None), ("_q8", rq)):
+                C, rec = await measure(
+                    dut, f"gemm_K{K}_T{tiles}{suffix}", run_gemm(dut, A, B, TILE_ORDER[:tiles], mode),
+                    chunks_expected=(K // 8) * 4, tiles_used=tiles, workload="gemm", K=K, N=32,
+                    output="int8" if mode else "int32",
+                )
+                exp = requant(A @ B, *mode) if mode else wrap32(A @ B)
+                assert np.array_equal(C, exp), f"K={K} tiles={tiles} rq={mode}: result mismatch"
+                RECORDS.append(rec)
     save_records()
 
 
 @cocotb.test()
 async def test_mnist_layers(dut):
-    """The MNIST MLP over the mesh, one measured region per layer. Requantize
-    + ReLU run in Python between layers (4.1d moves them on-chip)."""
+    """The MNIST MLP over the mesh, one measured region per layer. Layer 1's
+    requantize + ReLU run on-chip (issue #56), so its int8 activations come
+    straight back from the tiles and feed layer 2 unchanged; layer 2 returns
+    raw int32 logits for the argmax."""
     await start(dut)
     data = np.load(os.path.join(REPO_ROOT, "model", "mnist_quantized.npz"))
     W1 = data["W1_int8"].astype(np.int64)  # (64, 32)
     W2 = data["W2_int8"].astype(np.int64)  # (32, 16)
     A0 = data["test_images_int8"].astype(np.int64)  # (8, 64)
     M1 = (float(data["s_input"]) * float(data["s_W1"])) / float(data["s_hidden"])
+    rq1 = (*quantize_multiplier(M1), True)
 
-    H_pre, rec1 = await measure(
-        dut, "mnist_l1", run_gemm(dut, A0, W1, TILE_ORDER),
-        chunks_expected=8 * 4, tiles_used=4, workload="mnist", K=64, N=32,
+    H, rec1 = await measure(
+        dut, "mnist_l1", run_gemm(dut, A0, W1, TILE_ORDER, rq1),
+        chunks_expected=8 * 4, tiles_used=4, workload="mnist", K=64, N=32, output="int8",
     )
-    assert np.array_equal(H_pre, wrap32(A0 @ W1)), "layer 1 mismatch"
-    H = np.clip(np.round(np.maximum(H_pre, 0) * M1), 0, 127).astype(np.int64)
+    assert np.array_equal(H, requant(A0 @ W1, *rq1)), "layer 1 mismatch"
 
     logits_raw, rec2 = await measure(
         dut, "mnist_l2", run_gemm(dut, H, W2, TILE_ORDER),
-        chunks_expected=4 * 2, tiles_used=2, workload="mnist", K=32, N=16,
+        chunks_expected=4 * 2, tiles_used=2, workload="mnist", K=32, N=16, output="int32",
     )
     assert np.array_equal(logits_raw, wrap32(H @ W2)), "layer 2 mismatch"
     preds = np.argmax(logits_raw[:, :10], axis=1)
     labels = data["test_labels"]
+    float_preds = data["float_model_preds"]
     dut._log.info(f"predictions {preds.tolist()} vs labels {labels.tolist()} "
-                  f"({int(np.sum(preds == labels))}/8 match)")
+                  f"({int(np.sum(preds == labels))}/8 match), float model {float_preds.tolist()}")
+    # The on-chip int8 datapath must classify exactly like the float model on
+    # the frozen demo images (model/evaluate_quantized.py checks the same
+    # pipeline over all 10,000 test images).
+    assert np.array_equal(preds, float_preds), "on-chip pipeline diverged from the float model"
     RECORDS.extend([rec1, rec2])
     save_records()

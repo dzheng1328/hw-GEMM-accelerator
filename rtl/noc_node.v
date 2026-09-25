@@ -12,13 +12,27 @@
 //   type 0 OPERAND  payload = {wr_addr, wr_a_col, wr_b_row} -- an addressed
 //                   operand_mem write, delivered straight into the tile's
 //                   write port (the interface built in the operand-mem step).
-//   type 1 GO       payload[7:0] = {ret_y, ret_x, k_chunks} -- a compute
-//                   descriptor: pulses the tile's start with k_chunks, and
-//                   arms the result-return engine with a RETURN ADDRESS.
-//   type 2 RESULT   payload[41:0] = {src_y, src_x, idx, acc32} -- one
-//                   accumulator cell, streamed back to the GO's return
-//                   address when the tile finishes. Delivered at the
-//                   destination on the res_* ports (a host-side interface).
+//   type 1 GO       a compute descriptor: pulses the tile's start with
+//                   k_chunks, and arms the result-return engine with a
+//                   RETURN ADDRESS and an output mode (issue #56):
+//                     [3:0]         k_chunks
+//                     [4 +: AW]     ret_x      (AW <= 6: fields below
+//                     [4+AW +: AW]  ret_y       start at bit 16)
+//                     [31:16]       rq_m       requant multiplier
+//                     [37:32]       rq_sh      requant right shift
+//                     [38]          rq_relu    ReLU before saturation
+//                     [39]          rq_en      0: raw int32 results
+//                                              1: requantized int8 results
+//   type 2 RESULT   one raw accumulator cell: data = acc32 sign-extended.
+//   type 3 RESULT8  one requantized ROW: data = N int8 lanes, lane j is
+//                   column j (rtl/requant.v; math in model/fixedpoint.py).
+//                   Both RESULT types share one payload layout,
+//                     { src_y, src_x, idx[5:0], data[8N-1:0] }
+//                   (idx = cell i*N+j for RESULT, row i for RESULT8), are
+//                   streamed to the GO's return address when the tile
+//                   finishes, and are delivered on the res_* ports (a
+//                   host-side interface). A block returns as N*N RESULT
+//                   flits or as N RESULT8 flits.
 //
 // With GO and RESULT flits, a tile's entire life cycle -- load operands,
 // kick off compute, collect the 8x8 result -- rides the network; no
@@ -28,7 +42,7 @@
 //
 // The result-return engine shares the router's LOCAL input with the external
 // injection port (result flits have priority; injection is held off via the
-// ready handshake while streaming -- 64 cycles-ish, bounded). The direct
+// ready handshake while streaming -- at most N*N cycles, bounded). The direct
 // start/k_chunks/busy/done/acc_out ports remain functional alongside the
 // packetized path (used by the earlier testbenches; a GO is just another way
 // to pulse start).
@@ -86,10 +100,11 @@ module noc_node #(
 
     // Delivered RESULT flits (host-side interface; valid for one cycle each).
     output wire            res_valid,
+    output wire            res_q8,     // 1: RESULT8 (packed int8 row)
     output wire [AW-1:0]   res_src_x,
     output wire [AW-1:0]   res_src_y,
     output wire [5:0]      res_idx,
-    output wire [31:0]     res_acc,
+    output wire [8*N-1:0]  res_data,
 
     // Direct tile control/status -- still functional alongside GO flits.
     input  wire            start,
@@ -101,7 +116,13 @@ module noc_node #(
 
     localparam LOCAL = 0, NORTH = 1, EAST = 2, SOUTH = 3, WEST = 4;
     localparam NP = 5;
-    localparam [1:0] T_OPR = 2'd0, T_GO = 2'd1, T_RES = 2'd2;
+    localparam [1:0] T_OPR = 2'd0, T_GO = 2'd1, T_RES = 2'd2, T_RES8 = 2'd3;
+    localparam DW = 8 * N;             // RESULT data field (>= 32: N >= 4)
+
+    initial begin
+        if (AW > 6)
+            $fatal(1, "noc_node: AW=%0d, but GO descriptors hold coordinates of at most 6 bits", AW);
+    end
 
     // ---- Input buffers on the four mesh ports ----
     wire [3:0]      buf_valid;
@@ -131,12 +152,13 @@ module noc_node #(
 
     // Result-return engine state (declared early: it muxes the LOCAL input).
     reg  [1:0]      rr_state;   // 0 idle / 1 wait-fall / 2 wait-rise / 3 stream
-    reg  [6:0]      rr_idx;
+    reg  [6:0]      rr_idx;     // index of the flit in rr_flit
     reg  [AW-1:0]   rr_ret_x, rr_ret_y;
+    reg             rq_en, rq_relu;
+    reg  [15:0]     rq_m;
+    reg  [5:0]      rq_sh;
+    reg  [FW-1:0]   rr_flit;    // the flit on offer, registered (see below)
     wire            rr_streaming = (rr_state == 2'd3);
-    wire [31:0]     rr_acc = acc_out[32*rr_idx +: 32];
-    wire [PW-1:0]   rr_payload = { {(PW-38-2*AW){1'b0}}, my_y, my_x, rr_idx[5:0], rr_acc };
-    wire [FW-1:0]   rr_flit = { T_RES, rr_payload, rr_ret_y, rr_ret_x };
 
     assign r_in_valid[LOCAL]         = rr_streaming ? 1'b1    : lcl_in_valid;
     assign r_in_flit[LOCAL*FW +: FW] = rr_streaming ? rr_flit : lcl_in_flit;
@@ -205,12 +227,13 @@ module noc_node #(
     wire [8*N-1:0]       wr_a_col = payload[16*N-1 : 8*N];
     wire [ADDRW-1:0]     wr_addr  = payload[PW-1 : 16*N];
 
-    // RESULT -> host-side ports (one cycle per flit).
-    assign res_valid = deliver && (ltype == T_RES);
-    assign res_acc   = payload[31:0];
-    assign res_idx   = payload[37:32];
-    assign res_src_x = payload[38 +: AW];
-    assign res_src_y = payload[38+AW +: AW];
+    // RESULT / RESULT8 -> host-side ports (one cycle per flit).
+    assign res_valid = deliver && (ltype == T_RES || ltype == T_RES8);
+    assign res_q8    = (ltype == T_RES8);
+    assign res_data  = payload[DW-1:0];
+    assign res_idx   = payload[DW +: 6];
+    assign res_src_x = payload[DW+6 +: AW];
+    assign res_src_y = payload[DW+6+AW +: AW];
 
     // GO -> registered start pulse + latched descriptor, arms result return.
     wire go_deliver = deliver && r_out_ready[LOCAL] && (ltype == T_GO);
@@ -220,12 +243,20 @@ module noc_node #(
             go_k     <= 4'd0;
             rr_ret_x <= {AW{1'b0}};
             rr_ret_y <= {AW{1'b0}};
+            rq_m     <= 16'd0;
+            rq_sh    <= 6'd0;
+            rq_relu  <= 1'b0;
+            rq_en    <= 1'b0;
         end else begin
             go_pulse <= 1'b0;
             if (go_deliver) begin
                 go_k     <= payload[3:0];
                 rr_ret_x <= payload[4 +: AW];
                 rr_ret_y <= payload[4+AW +: AW];
+                rq_m     <= payload[31:16];
+                rq_sh    <= payload[37:32];
+                rq_relu  <= payload[38];
+                rq_en    <= payload[39];
                 go_pulse <= 1'b1;
             end
         end
@@ -233,20 +264,58 @@ module noc_node #(
 
     // ---- Result-return engine ----
     // Armed by a GO; waits for the tile's (level-held) done to fall as the
-    // new run starts, then rise when it completes, then streams all N*N
-    // accumulator cells to the return address via the LOCAL input mux.
+    // new run starts, then rise when it completes, then streams the block to
+    // the return address via the LOCAL input mux: N*N RESULT flits (raw), or
+    // N RESULT8 flits (requantized, one row each).
+    //
+    // The offered flit is registered: the edge that enters streaming loads
+    // flit 0 and each accepted flit loads the next, so the requant lanes'
+    // multiply sits between two registers instead of in front of the
+    // router's crossbar. Raw-mode timing is unchanged by the register (flit 0
+    // is on offer in the first streaming cycle, as before). acc_out is
+    // stable throughout: a GO cannot restart the tile until streaming ends.
+    wire [6:0] rr_last = rq_en ? N-1 : N*N-1;
+    wire [6:0] nxt_idx = rr_streaming ? rr_idx + 7'd1 : 7'd0;
+
+    wire [DW-1:0] raw_data = {{(DW-32){acc_out[32*nxt_idx + 31]}}, acc_out[32*nxt_idx +: 32]};
+    wire [DW-1:0] q8_data;
+    genvar lane;
+    generate
+        for (lane = 0; lane < N; lane = lane + 1) begin : g_rq
+            requant rq (
+                .acc  (acc_out[32*(N*nxt_idx + lane) +: 32]),
+                .m    (rq_m),
+                .sh   (rq_sh),
+                .relu (rq_relu),
+                .q    (q8_data[8*lane +: 8])
+            );
+        end
+    endgenerate
+
+    wire [PW-1:0] nxt_payload = { {(PW-DW-6-2*AW){1'b0}}, my_y, my_x, nxt_idx[5:0],
+                                  rq_en ? q8_data : raw_data };
+    wire [FW-1:0] nxt_flit    = { rq_en ? T_RES8 : T_RES, nxt_payload, rr_ret_y, rr_ret_x };
+
     always @(posedge clk) begin
         if (rst) begin
             rr_state <= 2'd0;
             rr_idx   <= 7'd0;
+            rr_flit  <= {FW{1'b0}};
         end else begin
             case (rr_state)
                 2'd0: if (go_deliver) rr_state <= 2'd1;
                 2'd1: if (!done)      rr_state <= 2'd2;   // run underway
-                2'd2: if (done) begin rr_state <= 2'd3; rr_idx <= 7'd0; end
+                2'd2: if (done) begin
+                    rr_state <= 2'd3;
+                    rr_idx   <= nxt_idx;
+                    rr_flit  <= nxt_flit;
+                end
                 2'd3: if (rr_accept) begin
-                    if (rr_idx == N*N-1) rr_state <= 2'd0;
-                    else                 rr_idx   <= rr_idx + 7'd1;
+                    if (rr_idx == rr_last) rr_state <= 2'd0;
+                    else begin
+                        rr_idx  <= nxt_idx;
+                        rr_flit <= nxt_flit;
+                    end
                 end
             endcase
         end

@@ -47,13 +47,14 @@ module noc_mesh #(
     input  wire [NN*FW-1:0]            inj_flit,
     output wire [NN-1:0]               inj_ready,
 
-    // RESULT flits delivered at each node (valid for one cycle each):
-    // {source tile coords, accumulator index, 32-bit value}.
+    // RESULT/RESULT8 flits delivered at each node (valid for one cycle
+    // each): source tile coords, index, and data (see noc_node.v).
     output wire [NN-1:0]               res_valid,
+    output wire [NN-1:0]               res_q8,
     output wire [NN*AW-1:0]            res_src_x,
     output wire [NN*AW-1:0]            res_src_y,
     output wire [NN*6-1:0]             res_idx,
-    output wire [NN*32-1:0]            res_acc,
+    output wire [NN*8*N-1:0]           res_data,
 
     // Direct tile control/status, still functional alongside GO flits.
     input  wire [NN-1:0]               start,
@@ -139,9 +140,9 @@ module noc_mesh #(
                 .s_out_valid(so_v[i]), .s_out_flit(so_f[i*FW +: FW]), .s_out_ready(so_r[i]),
                 .w_in_valid(wi_v[i]), .w_in_flit(wi_f[i*FW +: FW]), .w_in_ready(wi_r[i]),
                 .w_out_valid(wo_v[i]), .w_out_flit(wo_f[i*FW +: FW]), .w_out_ready(wo_r[i]),
-                .res_valid(res_valid[i]), .res_src_x(res_src_x[i*AW +: AW]),
-                .res_src_y(res_src_y[i*AW +: AW]), .res_idx(res_idx[i*6 +: 6]),
-                .res_acc(res_acc[i*32 +: 32]),
+                .res_valid(res_valid[i]), .res_q8(res_q8[i]),
+                .res_src_x(res_src_x[i*AW +: AW]), .res_src_y(res_src_y[i*AW +: AW]),
+                .res_idx(res_idx[i*6 +: 6]), .res_data(res_data[i*8*N +: 8*N]),
                 .start(start[i]), .k_chunks(k_chunks[i*4 +: 4]),
                 .busy(busy[i]), .done(done[i]), .acc_out(acc_out[i*32*N*N +: 32*N*N])
             );

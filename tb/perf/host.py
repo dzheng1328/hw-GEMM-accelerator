@@ -39,9 +39,9 @@ TILE_ORDER = [(0, 0), (1, 0), (0, 1), (1, 1)]
 RESULT_TIMEOUT_CYCLES = 20000
 
 
-def to_signed32(value):
-    value &= 0xFFFFFFFF
-    return value - (1 << 32) if value & 0x80000000 else value
+def to_signed(value, bits):
+    value &= (1 << bits) - 1
+    return value - (1 << bits) if value >> (bits - 1) else value
 
 
 def wrap32(a):
@@ -62,9 +62,14 @@ def make_flit(dest_x, dest_y, wr_addr, a_col_lanes, b_row_lanes):
     return (payload << (2 * AW)) | ((dest_y & 3) << AW) | (dest_x & 3)
 
 
-def go_flit(dest_x, dest_y, k_chunks, ret_x, ret_y):
-    """GO flit: type=1, payload[7:0] = {ret_y, ret_x, k_chunks}."""
+def go_flit(dest_x, dest_y, k_chunks, ret_x, ret_y, rq=None):
+    """GO flit: type=1, {ret_y, ret_x, k_chunks} plus the output mode: rq=None
+    for raw int32 results, or (m, sh, relu) for requantized int8 rows (layout
+    in rtl/noc_node.v)."""
     payload = ((ret_y & 3) << 6) | ((ret_x & 3) << 4) | (k_chunks & 0xF)
+    if rq is not None:
+        m, sh, relu = rq
+        payload |= (m << 16) | (sh << 32) | (int(relu) << 38) | (1 << 39)
     return (T_GO << (PW + 2 * AW)) | (payload << (2 * AW)) | ((dest_y & 3) << AW) | (dest_x & 3)
 
 
@@ -109,10 +114,11 @@ async def inject(dut, flits):
     dut.inj_flit.value = 0
 
 
-async def collect_results(dut, expected_total):
-    """RESULT flits delivered at (0,0): {(src_x, src_y): {idx: acc}}.
-    Raises on a duplicated cell, a RESULT flit delivered anywhere else, or
-    timeout."""
+async def collect_results(dut, expected_total, q8):
+    """RESULT flits (q8=False: {idx: int32 cell}) or RESULT8 flits (q8=True:
+    {row: [N int8 lanes]}) delivered at (0,0), keyed by source tile. Raises
+    on a duplicate, a flit of the other type, a flit delivered anywhere
+    else, or timeout."""
     amask = (1 << AW) - 1
     got = {}
     count = 0
@@ -123,18 +129,22 @@ async def collect_results(dut, expected_total):
         if valid:
             src = (int(dut.res_src_x.value) & amask, int(dut.res_src_y.value) & amask)
             idx = int(dut.res_idx.value) & 0x3F
+            data = int(dut.res_data.value) & ((1 << (8 * N)) - 1)
+            assert (int(dut.res_q8.value) & 1) == q8, f"tile {src}: RESULT type does not match the GO's mode"
             cells = got.setdefault(src, {})
-            assert idx not in cells, f"duplicate RESULT flit: tile {src} cell {idx}"
-            cells[idx] = to_signed32(int(dut.res_acc.value))
+            assert idx not in cells, f"duplicate RESULT flit: tile {src} index {idx}"
+            cells[idx] = [to_signed(data >> (8 * j), 8) for j in range(N)] if q8 else to_signed(data, 8 * N)
             count += 1
             if count == expected_total:
                 return got
     raise AssertionError(f"result collection timed out: {count}/{expected_total} flits")
 
 
-async def run_gemm(dut, A, B, tiles):
+async def run_gemm(dut, A, B, tiles, rq=None):
     """C = A @ B over the mesh. A is 8 x K, B is K x Ncols (K a multiple of 8,
-    K <= 8*KMAX, Ncols a multiple of 8). Returns (C, total k_chunks issued)."""
+    K <= 8*KMAX, Ncols a multiple of 8). With rq = (m, sh, relu) the tiles
+    requantize on-chip and C is int8 (model/fixedpoint.py's requant of the
+    product). Returns (C, total k_chunks issued)."""
     A = np.asarray(A, dtype=np.int64)
     B = np.asarray(B, dtype=np.int64)
     M, K = A.shape
@@ -142,23 +152,28 @@ async def run_gemm(dut, A, B, tiles):
     k_chunks = K // N
     jobs = list(range(B.shape[1] // N))
     C = np.zeros((N, B.shape[1]), dtype=np.int64)
+    per_tile = N if rq else N * N
     for w in range(0, len(jobs), len(tiles)):
         wave = list(zip(jobs[w : w + len(tiles)], tiles))
         flits = []
         for j, (x, y) in wave:
             flits += operand_flits(x, y, A, B[:, N * j : N * j + N], k_chunks)
-            flits.append(go_flit(x, y, k_chunks, *HOST))  # GO last: per-destination FIFO order
-        collector = cocotb.start_soon(collect_results(dut, N * N * len(wave)))
+            flits.append(go_flit(x, y, k_chunks, *HOST, rq))  # GO last: per-destination FIFO order
+        collector = cocotb.start_soon(collect_results(dut, per_tile * len(wave), q8=rq is not None))
         await inject(dut, flits)
         got = await collector
         expected_srcs = sorted((x, y) for _, (x, y) in wave)
         lens = {src: len(c) for src, c in got.items()}
-        assert sorted(got) == expected_srcs and all(n == N * N for n in lens.values()), (
-            f"wave {w // len(tiles)}: RESULT flits by source tile {lens}, expected 64 from each of {expected_srcs}"
+        assert sorted(got) == expected_srcs and all(n == per_tile for n in lens.values()), (
+            f"wave {w // len(tiles)}: RESULT flits by source tile {lens}, "
+            f"expected {per_tile} from each of {expected_srcs}"
         )
         for j, (x, y) in wave:
             cells = got[(x, y)]
-            C[:, N * j : N * j + N] = [[cells[i * N + c] for c in range(N)] for i in range(N)]
+            if rq:
+                C[:, N * j : N * j + N] = [cells[i] for i in range(N)]
+            else:
+                C[:, N * j : N * j + N] = [[cells[i * N + c] for c in range(N)] for i in range(N)]
     return C, k_chunks * len(jobs)
 
 

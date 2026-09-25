@@ -32,6 +32,8 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, RisingEdge
 
+from fixedpoint import quantize_multiplier, requant
+
 W = int(os.environ.get("MESH_W", "2"))
 H = int(os.environ.get("MESH_H", "2"))
 AW = int(os.environ.get("MESH_AW", "2"))
@@ -60,11 +62,13 @@ def nid(node):
     return y * W + x
 
 
+def to_signed(value: int, bits: int) -> int:
+    value &= (1 << bits) - 1
+    return value - (1 << bits) if value >> (bits - 1) else value
+
+
 def to_signed32(value: int) -> int:
-    value &= 0xFFFFFFFF
-    if value & 0x80000000:
-        value -= 0x100000000
-    return value
+    return to_signed(value, 32)
 
 
 def field(sig, i, width):
@@ -91,11 +95,15 @@ def make_flit(dest, wr_addr, a_col_lanes, b_row_lanes):
     return (payload << (2 * AW)) | ((y & AMASK) << AW) | (x & AMASK)
 
 
-def go_flit(dest, k_chunks, ret):
-    """GO flit: type=1, payload = {ret_y, ret_x, k_chunks[3:0]} -- a compute
-    descriptor carrying the result-return address."""
+def go_flit(dest, k_chunks, ret, rq=None):
+    """GO flit: type=1, a compute descriptor carrying the result-return
+    address and output mode: rq=None for raw int32 results, or (m, sh, relu)
+    for requantized int8 rows (see rtl/noc_node.v for the layout)."""
     (x, y), (rx, ry) = dest, ret
     payload = ((ry & AMASK) << (4 + AW)) | ((rx & AMASK) << 4) | (k_chunks & 0xF)
+    if rq is not None:
+        m, sh, relu = rq
+        payload |= (m << 16) | (sh << 32) | (int(relu) << 38) | (1 << 39)
     return (T_GO << (PW + 2 * AW)) | (payload << (2 * AW)) | ((y & AMASK) << AW) | (x & AMASK)
 
 
@@ -198,8 +206,8 @@ async def run_tiles(dut, io, nodes, k_chunks):
 
 
 async def collect_results(dut, expected_total):
-    """Collect RESULT flits delivered at every node, in arrival order:
-    {(dest, src): [(idx, acc), ...]}."""
+    """Collect RESULT/RESULT8 flits delivered at every node, in arrival order:
+    {(dest, src): [(q8, idx, data), ...]}."""
     streams = {}
     count = 0
     for _ in range(RESULT_TIMEOUT_CYCLES):
@@ -211,7 +219,7 @@ async def collect_results(dut, expected_total):
             i = nid(dest)
             if (valid >> i) & 1:
                 src = (field(dut.res_src_x, i, AW), field(dut.res_src_y, i, AW))
-                cell = (field(dut.res_idx, i, 6), to_signed32(field(dut.res_acc, i, 32)))
+                cell = (field(dut.res_q8, i, 1), field(dut.res_idx, i, 6), field(dut.res_data, i, 8 * N))
                 streams.setdefault((dest, src), []).append(cell)
                 count += 1
         if count == expected_total:
@@ -223,10 +231,33 @@ async def collect_results(dut, expected_total):
 
 
 def stream_to_matrix(stream):
-    """One 64-flit RESULT stream -> 8x8 matrix (each index exactly once)."""
-    cells = dict(stream)
+    """One raw block (N*N RESULT flits, one sign-extended int32 cell each)
+    -> NxN matrix. Each index must appear exactly once."""
+    assert all(q8 == 0 for q8, _, _ in stream), "RESULT8 flit in a raw stream"
+    cells = {idx: to_signed(data, 8 * N) for _, idx, data in stream}
     assert len(stream) == N * N and len(cells) == N * N, f"malformed stream: {len(stream)} flits"
     return np.array([[cells[i * N + j] for j in range(N)] for i in range(N)])
+
+
+def q8_stream_to_matrix(stream):
+    """One requantized block (N RESULT8 flits, one row of N int8 lanes each,
+    lane j = column j) -> NxN matrix. Each row must appear exactly once."""
+    assert all(q8 == 1 for q8, _, _ in stream), "raw RESULT flit in a requantized stream"
+    rows = {idx: [to_signed(data >> (8 * j), 8) for j in range(N)] for _, idx, data in stream}
+    assert len(stream) == N and sorted(rows) == list(range(N)), f"malformed stream: {len(stream)} flits"
+    return np.array([rows[i] for i in range(N)])
+
+
+# Requant configs spanning realistic scales, heavy saturation, sub-LSB
+# outputs, and sh = 0; with K=16 random int8 operands |acc| reaches ~2**18.
+RQ_CONFIGS = [
+    (*quantize_multiplier(1 / 2000), True),
+    (*quantize_multiplier(1 / 2000), False),
+    (*quantize_multiplier(1 / 150), False),
+    (*quantize_multiplier(1 / 150), True),
+    (*quantize_multiplier(1 / 60000), False),
+    (1, 0, False),
+]
 
 
 @cocotb.test()
@@ -324,20 +355,24 @@ async def test_every_node_injects_concurrently(dut):
     """All-to-all, fully packetized: every node at once sends operands and a
     GO to its point mirror (W-1-x, H-1-y), with itself as the return
     address. Every link carries operand traffic one way and result traffic
-    the other, and every node's RESULT port must receive exactly its
-    mirror's 64 cells, bit-exact."""
+    the other; half the tiles return raw int32 cells and half requantized
+    int8 rows, so both RESULT types share the mesh. Every node's RESULT port
+    must receive exactly its mirror's block, bit-exact."""
     io = await setup(dut)
     rng = random.Random(MESH_RANDOM_SEED ^ 0xA11)
     k_chunks = 2
     K = 8 * k_chunks
     mirror = {(x, y): (W - 1 - x, H - 1 - y) for x, y in NODES}
     mats = {node: (rand_mat(rng, N, K), rand_mat(rng, K, N)) for node in NODES}   # keyed by computing tile
+    rq = {node: RQ_CONFIGS[nid(node) % len(RQ_CONFIGS)] if nid(node) % 2 else None for node in NODES}
 
-    mon = cocotb.start_soon(collect_results(dut, NN * N * N))
+    expected_flits = sum(N if rq[node] else N * N for node in NODES)
+    mon = cocotb.start_soon(collect_results(dut, expected_flits))
     injectors = [
         cocotb.start_soon(inject(
             dut, io, src,
-            operand_flits(mirror[src], *mats[mirror[src]], k_chunks) + [go_flit(mirror[src], k_chunks, src)],
+            operand_flits(mirror[src], *mats[mirror[src]], k_chunks)
+            + [go_flit(mirror[src], k_chunks, src, rq[mirror[src]])],
         ))
         for src in NODES
     ]
@@ -348,8 +383,11 @@ async def test_every_node_injects_concurrently(dut):
     assert set(streams) == {(src, mirror[src]) for src in NODES}, f"unexpected streams: {sorted(streams)}"
     for src in NODES:
         tile = mirror[src]
-        got, exp = stream_to_matrix(streams[(src, tile)]), reference(*mats[tile])
-        assert np.array_equal(got, exp), f"tile {tile} -> node {src}:\n{got}\nvs\n{exp}"
+        if rq[tile]:
+            got, exp = q8_stream_to_matrix(streams[(src, tile)]), requant(reference(*mats[tile]), *rq[tile])
+        else:
+            got, exp = stream_to_matrix(streams[(src, tile)]), reference(*mats[tile])
+        assert np.array_equal(got, exp), f"tile {tile} -> node {src} (rq={rq[tile]}):\n{got}\nvs\n{exp}"
 
 
 @cocotb.test()
@@ -404,3 +442,65 @@ async def test_back_to_back_go_is_backpressured(dut):
     for r in range(2):
         got = stream_to_matrix(stream[r * N * N:(r + 1) * N * N])
         assert np.array_equal(got, exp), f"run {r}:\n{got}\nvs\n{exp}"
+
+
+@cocotb.test()
+async def test_requantized_results_are_packed_int8(dut):
+    """Issue #56: a GO with requant enabled returns its block as N RESULT8
+    flits (one row of N int8 lanes each) instead of N*N RESULT flits, the
+    lanes bit-exact to model/fixedpoint.py. Every remote tile runs a
+    different config -- realistic scales with and without ReLU, heavy
+    saturation at both rails, sub-LSB outputs, and sh = 0 -- all streaming
+    back to the host at once."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x56)
+    k_chunks = 2
+    K = 8 * k_chunks
+    targets = [node for node in NODES if node != HOST]
+    mats = {node: (rand_mat(rng, N, K), rand_mat(rng, K, N)) for node in targets}
+    rq = {node: RQ_CONFIGS[t % len(RQ_CONFIGS)] for t, node in enumerate(targets)}
+
+    flits = []
+    for node in targets:
+        flits += operand_flits(node, *mats[node], k_chunks)
+        flits.append(go_flit(node, k_chunks, HOST, rq[node]))
+
+    mon = cocotb.start_soon(collect_results(dut, len(targets) * N))
+    await inject(dut, io, HOST, flits)
+    streams = await mon
+
+    assert set(streams) == {(HOST, node) for node in targets}, f"unexpected streams: {sorted(streams)}"
+    seen = set()
+    for node in targets:
+        got = q8_stream_to_matrix(streams[(HOST, node)])
+        exp = requant(reference(*mats[node]), *rq[node])
+        assert np.array_equal(got, exp), f"tile {node} rq={rq[node]}:\n{got}\nvs\n{exp}"
+        seen |= set(exp.flatten().tolist())
+    assert {127, -128, 0} <= seen, "configs never reached both rails and zero"
+
+
+@cocotb.test()
+async def test_output_mode_is_per_go(dut):
+    """The output mode is latched per GO: one set of operands, then GOs for
+    raw, requantized, requantized with a different config, and raw again.
+    The four blocks must come back in order, each in its own format."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x57)
+    k_chunks = 2
+    K = 8 * k_chunks
+    A, B = rand_mat(rng, N, K), rand_mat(rng, K, N)
+    modes = [None, RQ_CONFIGS[0], RQ_CONFIGS[2], None]
+    flits = operand_flits(FAR, A, B, k_chunks) + [go_flit(FAR, k_chunks, HOST, mode) for mode in modes]
+
+    mon = cocotb.start_soon(collect_results(dut, sum(N if mode else N * N for mode in modes)))
+    await inject(dut, io, HOST, flits)
+    stream = (await mon)[(HOST, FAR)]
+
+    acc = reference(A, B)
+    pos = 0
+    for r, mode in enumerate(modes):
+        n = N if mode else N * N
+        part, pos = stream[pos:pos + n], pos + n
+        got = q8_stream_to_matrix(part) if mode else stream_to_matrix(part)
+        exp = requant(acc, *mode) if mode else acc
+        assert np.array_equal(got, exp), f"run {r} (rq={mode}):\n{got}\nvs\n{exp}"

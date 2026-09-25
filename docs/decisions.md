@@ -19,6 +19,26 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-25 -- Requantize on-chip in the result path, as a per-GO output mode with packed int8 rows
+
+**Context:** Requantization was caller-side (`pe.v` has no datapath for it), so every 8x8 block came back as 64 int32 RESULT flits converging on the host, and the baseline showed that stream saturating the host's LOCAL output at up to 85% (issue #56).
+**Options considered:**
+(1) Requantize inside each PE - rejected, it adds 64 multipliers per tile for a step that happens once per block.
+(2) One shared requant lane streaming a cell per cycle - rejected, results would still take 64 cycles per block at the tile.
+(3) N requant lanes in `noc_node`'s result-return engine, one output row per flit.
+**Decision:** (3).
+The GO descriptor gained an output mode (`rq_en`, `rq_relu`, a 16-bit multiplier `rq_m`, a 6-bit shift `rq_sh`); with `rq_en=0` a block still returns as 64 RESULT flits, so the last layer can keep raw logits.
+With `rq_en=1` it returns as 8 RESULT8 flits (a new flit type), each one row of 8 int8 lanes.
+Both RESULT types share one payload layout (`{src_y, src_x, idx, data[63:0]}`, raw cells sign-extended), and the host-side ports became `res_q8`/`res_data`.
+The math is `q = sat_int8(relu?((acc*m + 2^(sh-1)) >>> sh))` with `m` normalized into [2^15, 2^16), so the encoded scale keeps 16 significant bits; `rtl/requant.v` computes it in a 64-bit datapath, so every (m, sh) encoding has a defined result.
+`model/fixedpoint.py` is the single reference (encoder `quantize_multiplier` plus `requant`), shared by the model scripts and every testbench.
+The engine's offered flit is now registered, so the requant multiplies sit between registers instead of in front of the router crossbar; raw-mode timing is unchanged cycle for cycle.
+**Why:** Returning 8 flits instead of 64 attacks the measured bottleneck directly, and a per-GO mode keeps one datapath for hidden layers and logits.
+A 16-bit multiplier is far more precise than int8 needs: on MNIST the fixed-point requant matches the old float requant on all 320,000 hidden activations of the 10,000-image test set (accuracy unchanged at 94.82%).
+**Result:** fixed-work GEMMs with int8 output run 1.9x-3.3x faster at K=8 and 1.12x-1.20x at K=64 than the same GEMMs with int32 output, and MNIST layer 1 drops from 529 to 473 cycles (the baseline was regenerated to include both).
+At K=8 on 4 tiles the host's LOCAL output falls from 85% to 43% busy with no stalls left; the remaining cost is now operand loading through one injector and the 22-cycle wave slot per K-chunk, which is why large K gains little, and is what 4.1e targets.
+Tested by `tb/requant/` (21,224 vectors, including both saturation rails, ties, sh=0 and sh=63), new mesh tests for packed results and per-GO mode switching, RESULT8 flits mixed into the all-to-all test, and a planted rounding bug that fails both.
+
 ### 2026-09-24 -- The mesh is one generate-based WxH module with every node's ports exposed
 
 **Context:** 4.2's scaling study and command processor need meshes larger than the hand-wired `noc_mesh2x2`, whose 143 lines of per-link wiring grow with every node added (issue #55).

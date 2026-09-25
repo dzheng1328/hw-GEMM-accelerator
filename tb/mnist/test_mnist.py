@@ -24,6 +24,8 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
+from fixedpoint import quantize_multiplier, requant
+
 N = 8
 TOTAL_CYCLES = 3 * N - 2  # 22 -- see docs/decisions.md for the derivation
 
@@ -117,7 +119,7 @@ async def test_mnist_two_layer_pipeline(dut):
     labels = data["test_labels"]
     float_preds = data["float_model_preds"]
 
-    M1 = (s_input * s_W1) / s_hidden
+    m1, sh1 = quantize_multiplier((s_input * s_W1) / s_hidden)
 
     # ---- Layer 1: 64 -> 32, 4 N-blocks x 8 K-chunks ----
     H_pre = np.zeros((8, 32), dtype=np.int64)
@@ -129,10 +131,10 @@ async def test_mnist_two_layer_pipeline(dut):
         assert np.array_equal(got, expected), f"layer1 N-block {n} mismatch:\n{got}\nvs\n{expected}"
         H_pre[:, 8 * n : 8 * n + 8] = got
 
-    # ReLU applied directly on the int32 accumulator, then requantized to
-    # int8 for layer 2 -- exact, since M1 > 0 so ReLU commutes with the
-    # positive scale multiply.
-    H_int8 = np.clip(np.round(np.maximum(H_pre, 0) * M1), 0, 127).astype(np.int64)
+    # Requantize + ReLU to int8 for layer 2 with the fixed-point math the
+    # mesh's rtl/requant.v runs on-chip (this bare-array test has no requant
+    # datapath of its own, so it applies the same reference in Python).
+    H_int8 = requant(H_pre, m1, sh1, relu=True)
 
     # ---- Layer 2: 32 -> 16 (10 real + 6 padding), 2 N-blocks x 4 K-chunks ----
     logits_raw = np.zeros((8, 16), dtype=np.int64)

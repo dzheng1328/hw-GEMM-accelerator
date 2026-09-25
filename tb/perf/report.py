@@ -14,14 +14,14 @@ def pct(x):
 
 def render_table(records):
     lines = [
-        "| Region | K | N | Tiles | Cycles | MAC util (mesh) | MAC util (tiles used) "
+        "| Region | K | N | Tiles | Output | Cycles | MAC util (mesh) | MAC util (tiles used) "
         "| Busiest link | (0,0) LOCAL out | (0,0) LOCAL in | (0,0) LOCAL in stall |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for r in records:
         m = r["metrics"]
         lines.append(
-            f"| {r['name']} | {r['K']} | {r['N']} | {r['tiles']} | {r['cycles']} "
+            f"| {r['name']} | {r['K']} | {r['N']} | {r['tiles']} | {r.get('output', 'int32')} | {r['cycles']} "
             f"| {pct(m['util_mesh'])} | {pct(m['util_used'])} | {pct(m['max_link_occupancy'])} "
             f"| {pct(m['host_out_occupancy'])} | {pct(m['host_in_occupancy'])} | {pct(m['host_in_stall'])} |"
         )
@@ -52,7 +52,8 @@ def render_document(records):
         "The host sits at node (0,0).",
         "(0,0) LOCAL out is that router's delivery port: every RESULT flit reaches the host through it, along with tile (0,0)'s own operands.",
         "(0,0) LOCAL in is shared by host injection and tile (0,0)'s result stream, which has priority; its stall column is that result stream waiting for the router, since a held-off host is not counted as a router stall.",
-        "mnist_l1 has the same shape as gemm_K64_T4 and timing does not depend on data, so their rows match exactly.",
+        "Output int32 returns each 8x8 block as 64 RESULT flits; int8 requantizes on-chip and returns it as 8 RESULT8 flits (issue #56).",
+        "mnist_l1 has the same shape and output as gemm_K64_T4_q8 and timing does not depend on data, so their rows match exactly.",
         "",
         "## Regions",
         "",
