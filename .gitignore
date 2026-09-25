@@ -28,6 +28,7 @@ runs/
 # Model training artifacts (frozen model/mnist_quantized.npz IS committed)
 model/checkpoints/
 model/.mnist_cache/
+model/.cifar_cache/
 
 # Editor / OS
 .DS_Store
