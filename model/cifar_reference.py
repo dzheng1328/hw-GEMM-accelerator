@@ -3,7 +3,8 @@ ladder (spec section 4), the definition of correct results that the
 compiler's golden executor and then the RTL must equal bit-exactly.
 
 Every layer: int64 conv of int8 activations with int8 weights, plus the
-bias row times the layer's bias_val (the bias slot the DMA emits), then for
+layer's bias_val times the sum of its bias rows (one row per bias slot, in
+each of which the DMA emits bias_val), then for
 conv layers per-group requant + ReLU to int8 (model/fixedpoint.py), and
 for fc raw int32 logits. No floats and no PyTorch anywhere.
 
@@ -59,7 +60,7 @@ def run_int8(q, images_uint8):
     for layer in LAYERS:
         L = layer.name
         acc = conv_int(x, q[f"{L}_w"], layer.stride, layer.pad)
-        acc += (q[f"{L}_bias"].astype(np.int64) * int(q[f"{L}_bias_val"]))[None, :, None, None]
+        acc += (q[f"{L}_bias"].astype(np.int64).sum(axis=0) * int(q[f"{L}_bias_val"]))[None, :, None, None]
         check_int32(acc, L)
         if L == "fc":
             outs.append(acc.reshape(len(x), -1))

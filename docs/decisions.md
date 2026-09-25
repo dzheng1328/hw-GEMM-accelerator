@@ -19,6 +19,19 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-25 -- CIFAR-10 bias spans every trailing K slot, not one bias slot
+
+**Context:** the 4.2 spec carried each folded conv bias as one GEMM term: the DMA emits a constant int8 `bias_val` in one bias slot and the weights carry an int8 bias row, so one output channel's bias tops out at 127 * 127 = 16,129 accumulator units.
+The trained network (87.24% float) exceeds that in 14 channels: conv2 needs 16,648, conv5 16,772, and conv4 37,939 across 12 channels.
+Saturating to the one-slot limit, as the spec said, clips conv4's biases to as little as 43% and drops int8 accuracy on the 10,000 test images to 77.56%; without that limit the int8 scheme reaches 87.18%.
+**Options considered:** (1) saturate (costs 9.6 points); (2) widen `bias_val` past int8 (it is the A operand of the PE's int8 multiplier, so this means a wider datapath); (3) a bias slot count field in the BIAS register; (4) every slot from the end of the taps up to KS is a bias slot.
+**Decision:** (4).
+The DMA emits `bias_val` in every slot k with taps * Cin <= k < KS, and the weights carry one int8 bias row per slot, summing exactly to the quantized bias.
+The quantizer uses the free slots that pad K to a multiple of 8 (4 for conv1, 8 for the others) and grows K by 8 only if they cannot hold the bias; for this network no layer's K grows.
+**Why:** it needs no new register field and no wider datapath, only a `k >= bias_slot` compare in place of `k == bias_slot`, and the slots it uses were zero padding already, so it costs no cycles.
+Using every free slot also lowers `bias_val` (conv4: 38 instead of 299 for an unbounded single slot), which shrinks the bias rounding error.
+Result: 87.06% int8 against 87.24% float on all 10,000 test images, and 99.2% agreement with the float model on the 128 frozen images.
+
 ### 2026-09-25 -- Milestone 4.1 closes: measured before/after efficiency
 
 **Context:** the Phase 4 roadmap's 4.1 exit criterion is a before/after efficiency table from the measurement harness (4.1b), comparing the system as first measured against the system after 4.1c-f.

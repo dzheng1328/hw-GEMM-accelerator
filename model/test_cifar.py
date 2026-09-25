@@ -136,15 +136,32 @@ def test_dead_group_gets_a_valid_scale():
     assert not out["w"][8:].any() and len(out["m"]) == 2
 
 
-def test_choose_bias_val_is_smallest_that_fits():
-    assert cifar_quantize.choose_bias_val(np.array([100.0, -50.0]), "t") == 1
-    assert cifar_quantize.choose_bias_val(np.array([1000.0]), "t") == 8
-    assert cifar_quantize.choose_bias_val(np.zeros(4), "t") == 1
+def test_choose_bias_uses_free_slots_then_grows_by_8():
+    assert cifar_quantize.choose_bias(np.array([100.0, -50.0]), 4) == (1, 4)
+    assert cifar_quantize.choose_bias(np.array([1000.0]), 1) == (8, 1)
+    assert cifar_quantize.choose_bias(np.zeros(4), 8) == (1, 8)
+    # conv4 of the trained checkpoint: 37,939 fits 8 free slots at bias_val 38.
+    assert cifar_quantize.choose_bias(np.array([37939.0]), 8) == (38, 8)
+    # Past 127 * 127 per slot, K grows by a whole chunk of 8.
+    assert cifar_quantize.choose_bias(np.array([127.0 * 127 * 5]), 4) == (53, 12)
 
 
-def test_choose_bias_val_rejects_unrepresentable_bias():
-    with pytest.raises(ValueError, match="conv9"):
-        cifar_quantize.choose_bias_val(np.array([127.0 * 127 * 2]), "conv9")
+@pytest.mark.parametrize("n_slots", [1, 3, 8])
+def test_split_bias_sums_exactly_within_int8(n_slots):
+    total = np.array([0, 1, -1, 127 * n_slots, -127 * n_slots, 5 * n_slots + 2, -(5 * n_slots + 2)])
+    rows = cifar_quantize.split_bias(total, n_slots)
+    assert rows.shape == (n_slots, len(total)) and rows.dtype == np.int8
+    assert np.array_equal(rows.astype(np.int64).sum(axis=0), total)
+    assert np.ptp(rows.astype(np.int64), axis=0).max() <= 1
+
+
+def test_quantize_layer_spreads_a_large_bias_over_the_free_slots():
+    W = np.full((8, 4, 3, 3), 0.127)  # s_w = 0.001
+    b = np.array([0.03] + [0.0] * 7)  # 0.03 / (0.001 * 0.001) = 30,000 > 127 * 127
+    out = cifar_quantize.quantize_layer(W, b, 0.001, 0.05, True, 4, 8, "t")
+    assert out["bias"].shape == (4, 8)  # 36 tap slots leave 4 bias slots to reach 40
+    total = int(out["bias_val"]) * int(out["bias"].astype(np.int64).sum(axis=0)[0])
+    assert out["bias_val"] <= 127 and abs(total - 30000) <= out["bias_val"]
 
 
 def test_activation_scale_rejects_dead_layer():
@@ -158,4 +175,20 @@ def test_quantize_layer_pads_and_encodes():
     out = cifar_quantize.quantize_layer(W, b, 0.02, None, False, 4, 16, "fc")
     assert out["w"].shape == (16, 4, 3, 3) and out["w"].dtype == np.int8
     assert not out["w"][10:].any() and not out["w"][:, 3].any()
-    assert out["bias"].shape == (16,) and "m" not in out
+    assert out["bias"].shape == (4, 16) and "m" not in out  # 36 tap slots leave 4
+
+
+def test_reference_adds_bias_val_times_the_summed_bias_rows():
+    q = {}
+    for layer in cifar_reference.LAYERS:
+        cin = 1 << (layer.cin - 1).bit_length()
+        cout = -(-layer.cout // 16) * 16 if layer.name == "fc" else layer.cout
+        q[f"{layer.name}_w"] = np.zeros((cout, cin, layer.ksize, layer.ksize), dtype=np.int8)
+        q[f"{layer.name}_bias"] = np.zeros((3, cout), dtype=np.int8)
+        q[f"{layer.name}_bias_val"] = 1
+        q[f"{layer.name}_m"] = np.full(cout // 8, 1 << 14)
+        q[f"{layer.name}_sh"] = np.full(cout // 8, 15)
+    q["fc_bias"][:, 2] = [100, -30, 7]
+    q["fc_bias_val"] = 5
+    logits = cifar_reference.run_int8(q, np.zeros((1, 3, 32, 32), dtype=np.uint8))[-1]
+    assert logits[0, 2] == 5 * (100 - 30 + 7) and not np.delete(logits[0], 2).any()

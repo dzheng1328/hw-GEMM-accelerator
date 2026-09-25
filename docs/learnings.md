@@ -24,6 +24,17 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-25 -- The CIFAR-10 quantizer was committed before it ever ran on a trained checkpoint
+
+**Phase:** Phase 4
+**Problem:** Checking int8 against float accuracy after training finished, `model/cifar_quantize.py` failed outright: "conv2: bias needs bias_val 132 > 127".
+Its unit tests passed, and it had been committed while the network was still training.
+**Cause:** The one-slot bias encoding caps a bias at 127 * 127 accumulator units, and real folded BatchNorm biases go past it (conv4 needs 2.35x the cap).
+The code raised where the spec said to saturate, so the spec and code disagreed; saturating would have silently cost 9.6 points of accuracy (77.56% against 87.24% float).
+Synthetic unit-test weights never produce biases that large.
+**Fix:** Spread the bias over every trailing K slot (see `docs/decisions.md`, same date); int8 is now 87.06%.
+**Takeaway:** Run a model pipeline stage end to end on the real trained weights before committing it; synthetic tests do not exercise real value ranges.
+
 ### 2026-09-24 -- Per-node buses cannot be driven field by field from cocotb, and a comment starting with "Verilator" is a pragma
 
 **Phase:** Phase 4
