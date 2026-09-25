@@ -12,16 +12,24 @@ def pct(x):
     return f"{100 * x:.1f}%"
 
 
+def compute_per_block(r):
+    """Tile busy cycles per 8x8 output block: the compute phase alone, from
+    start to done, excluding operand loading and result streaming."""
+    busy = sum(n["busy_cyc"] for n in r["counters"].values())
+    return busy / (r["N"] // 8)
+
+
 def render_table(records):
     lines = [
-        "| Region | K | N | Tiles | Output | Cycles | MAC util (mesh) | MAC util (tiles used) "
+        "| Region | K | N | Tiles | Output | Cycles | Compute cycles/block | MAC util (mesh) | MAC util (tiles used) "
         "| Busiest link | (0,0) LOCAL out | (0,0) LOCAL in | (0,0) LOCAL in stall |",
-        "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for r in records:
         m = r["metrics"]
         lines.append(
             f"| {r['name']} | {r['K']} | {r['N']} | {r['tiles']} | {r.get('output', 'int32')} | {r['cycles']} "
+            f"| {compute_per_block(r):.0f} "
             f"| {pct(m['util_mesh'])} | {pct(m['util_used'])} | {pct(m['max_link_occupancy'])} "
             f"| {pct(m['host_out_occupancy'])} | {pct(m['host_in_occupancy'])} | {pct(m['host_in_stall'])} |"
         )
@@ -48,6 +56,7 @@ def render_document(records):
         "Regenerate with `cd tb/perf && make baseline`; compare a change against it with `cd tb/perf && make compare`.",
         "Every region is checked bit-exact against NumPy before it is recorded.",
         "MAC utilization is fed MACs over 64 MACs per cycle per tile, against every tile in the mesh and against the tiles the region used.",
+        "Compute cycles/block is tile busy cycles (start to done) per 8x8 output block: the compute phase without operand loading or result streaming.",
         "Link occupancy is flits moved per cycle on one directed link.",
         "The host sits at node (0,0).",
         "(0,0) LOCAL out is that router's delivery port: every RESULT flit reaches the host through it, along with tile (0,0)'s own operands.",
@@ -67,21 +76,25 @@ def render_document(records):
 def render_compare(before, after):
     base = {r["name"]: r for r in before}
     lines = [
-        "| Region | Cycles before | Cycles after | Speedup | MAC util (mesh) before | MAC util (mesh) after |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Region | Cycles before | Cycles after | Speedup | Compute/block before | Compute/block after "
+        "| Compute speedup | MAC util (mesh) before | MAC util (mesh) after |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for r in after:
         b = base.get(r["name"])
         util_after = pct(r["metrics"]["util_mesh"])
+        comp_after = compute_per_block(r)
         if b is None:
-            lines.append(f"| {r['name']} | - | {r['cycles']} | new | - | {util_after} |")
+            lines.append(f"| {r['name']} | - | {r['cycles']} | new | - | {comp_after:.0f} | - | - | {util_after} |")
         else:
+            comp_before = compute_per_block(b)
             lines.append(
                 f"| {r['name']} | {b['cycles']} | {r['cycles']} | {b['cycles'] / r['cycles']:.2f}x "
+                f"| {comp_before:.0f} | {comp_after:.0f} | {comp_before / comp_after:.2f}x "
                 f"| {pct(b['metrics']['util_mesh'])} | {util_after} |"
             )
     after_names = {r["name"] for r in after}
-    lines += [f"| {n} | {base[n]['cycles']} | - | dropped | - | - |" for n in base if n not in after_names]
+    lines += [f"| {n} | {base[n]['cycles']} | - | dropped | - | - | - | - | - |" for n in base if n not in after_names]
     return "\n".join(lines) + "\n"
 
 

@@ -70,8 +70,10 @@ def test_make_record_carries_meta_and_counters():
     assert r["metrics"]["cycles"] == 100
 
 
-def rec(name, cycles, util):
+def rec(name, cycles, util, busy=100):
+    # N=32 is 4 output blocks; busy cycles split over two nodes.
     return {"name": name, "workload": "gemm", "K": 8, "N": 32, "tiles": 1, "cycles": cycles,
+            "counters": {"0,0": {"busy_cyc": busy}, "1,0": {"busy_cyc": 3 * busy}},
             "metrics": {"util_mesh": util, "util_used": util, "max_link_occupancy": 0.5,
                         "host_in_occupancy": 0.25, "host_in_stall": 0.0, "host_out_occupancy": 0.75}}
 
@@ -80,12 +82,12 @@ def test_render_table_row():
     q8 = {**rec("gemm_K8_T1_q8", 99, 0.071), "output": "int8"}
     out = render_table([rec("gemm_K8_T1", 1234, 0.071), q8])
     # Records without an output field predate on-chip requant: raw int32.
-    assert "| gemm_K8_T1 | 8 | 32 | 1 | int32 | 1234 | 7.1% | 7.1% | 50.0% | 75.0% | 25.0% | 0.0% |" in out
+    assert "| gemm_K8_T1 | 8 | 32 | 1 | int32 | 1234 | 100 | 7.1% | 7.1% | 50.0% | 75.0% | 25.0% | 0.0% |" in out
     assert "| gemm_K8_T1_q8 | 8 | 32 | 1 | int8 | 99 |" in out
     assert "(0,0) LOCAL out" in out.splitlines()[0]
 
 
 def test_render_compare_speedup_and_new_rows():
-    out = render_compare([rec("a", 1000, 0.1)], [rec("a", 500, 0.2), rec("b", 10, 0.3)])
-    assert "| a | 1000 | 500 | 2.00x | 10.0% | 20.0% |" in out
-    assert "| b | - | 10 | new | - | 30.0% |" in out
+    out = render_compare([rec("a", 1000, 0.1, busy=200)], [rec("a", 500, 0.2, busy=80), rec("b", 10, 0.3)])
+    assert "| a | 1000 | 500 | 2.00x | 200 | 80 | 2.50x | 10.0% | 20.0% |" in out
+    assert "| b | - | 10 | new | - | 100 | - | - | 30.0% |" in out
