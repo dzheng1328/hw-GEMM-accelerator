@@ -77,8 +77,11 @@ def rec(name, cycles, util):
 
 
 def test_render_table_row():
-    out = render_table([rec("gemm_K8_T1", 1234, 0.071)])
-    assert "| gemm_K8_T1 | 8 | 32 | 1 | 1234 | 7.1% | 7.1% | 50.0% | 75.0% | 25.0% | 0.0% |" in out
+    q8 = {**rec("gemm_K8_T1_q8", 99, 0.071), "output": "int8"}
+    out = render_table([rec("gemm_K8_T1", 1234, 0.071), q8])
+    # Records without an output field predate on-chip requant: raw int32.
+    assert "| gemm_K8_T1 | 8 | 32 | 1 | int32 | 1234 | 7.1% | 7.1% | 50.0% | 75.0% | 25.0% | 0.0% |" in out
+    assert "| gemm_K8_T1_q8 | 8 | 32 | 1 | int8 | 99 |" in out
     assert "(0,0) LOCAL out" in out.splitlines()[0]
 
 

@@ -15,6 +15,7 @@ VERILOG_SOURCES = $(PWD)/../../rtl/pe.v \
                   $(PWD)/../../rtl/router.v \
                   $(PWD)/../../rtl/flit_buf.v \
                   $(PWD)/../../rtl/node_perf.v \
+                  $(PWD)/../../rtl/requant.v \
                   $(PWD)/../../rtl/noc_node.v \
                   $(PWD)/../../rtl/noc_pair.v
 

@@ -1,10 +1,12 @@
 """Evaluate the frozen quantized model's real accuracy on the full
 10,000-image MNIST test set.
 
-Replicates the exact int8 datapath already proven bit-exact against the
-hardware tile in tb/mnist/test_mnist.py (same quantize/relu/requantize math
-as model/quantize.py's quantize_tensor()), but over every test image instead
-of the 8 frozen demo images. torch is used only for the downsample step,
+Replicates the exact int8 datapath the hardware runs: the fixed-point
+requantize + ReLU of model/fixedpoint.py, which rtl/requant.v matches
+bit-exactly (tb/requant/, tb/mesh/, tb/perf/), over every test image instead
+of the 8 frozen demo images. It also reports the float-multiplier requant
+the fixed-point one replaced, as a check that the 16-bit encoding costs no
+accuracy. torch is used only for the downsample step,
 matching train.py/quantize.py's own convention -- everything else is plain
 NumPy/int64.
 """
@@ -14,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from fixedpoint import quantize_multiplier, requant
 from mnist_data import load_mnist
 from train import downsample
 
@@ -40,11 +43,13 @@ def main():
     # overflow risk at this scale -- see docs/decisions.md's associativity
     # argument). ReLU on the pre-quant accumulator, then requantize to int8.
     acc1 = q_input @ W1  # (10000, 32)
-    h_int8 = np.clip(np.round(np.maximum(acc1, 0) * M1), 0, 127).astype(np.int64)
+    m1, sh1 = quantize_multiplier(M1)
+    h_int8 = requant(acc1, m1, sh1, relu=True)
+    h_float_m = np.clip(np.round(np.maximum(acc1, 0) * M1), 0, 127).astype(np.int64)
 
     # Layer 2: int64 matmul, argmax over the first 10 real (non-padding) columns.
-    acc2 = h_int8 @ W2  # (10000, 16)
-    preds = np.argmax(acc2[:, :10], axis=1)
+    preds = np.argmax((h_int8 @ W2)[:, :10], axis=1)
+    preds_float_m = np.argmax((h_float_m @ W2)[:, :10], axis=1)
 
     # Correctness gate: this from-scratch pipeline, restricted to the same 8
     # demo images quantize.py picked (first test-set occurrence of each digit
@@ -60,7 +65,12 @@ def main():
     )
 
     accuracy = float(np.mean(preds == test_labels))
-    print(f"quantized model accuracy on full 10,000-image MNIST test set: {accuracy * 100:.2f}%")
+    accuracy_float_m = float(np.mean(preds_float_m == test_labels))
+    print(f"requant multiplier M1={M1:.9f} encoded as m={m1}, sh={sh1} ({m1 * 2.0**-sh1:.9f})")
+    print(f"hidden activations differing from float-multiplier requant: "
+          f"{int(np.sum(h_int8 != h_float_m))}/{h_int8.size}")
+    print(f"quantized model accuracy on full 10,000-image MNIST test set: {accuracy * 100:.2f}% "
+          f"(float-multiplier requant: {accuracy_float_m * 100:.2f}%)")
 
 
 if __name__ == "__main__":

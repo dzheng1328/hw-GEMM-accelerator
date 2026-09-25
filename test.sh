@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run every cocotb test suite (rtl/pe.v, rtl/systolic_array.v, rtl/skew_feeder.v
 # via rtl/tile.v, rtl/operand_mem.v, rtl/gemm_sequencer.v via rtl/gemm_tile.v,
-# rtl/router.v, the two-node NoC via rtl/noc_pair.v, the WxH mesh via
+# rtl/router.v, rtl/requant.v, the two-node NoC via rtl/noc_pair.v, the WxH mesh via
 # rtl/noc_mesh.v at 2x2 and 4x3, MNIST, the perf harness), from any directory, in any
 # fresh shell (no need to `source .venv` or `cd` yourself first).
 #
@@ -30,6 +30,9 @@ make "$@"
 cd "$REPO_ROOT/tb/router"
 make "$@"
 
+cd "$REPO_ROOT/tb/requant"
+make "$@"
+
 cd "$REPO_ROOT/tb/noc"
 make "$@"
 
@@ -45,4 +48,5 @@ make "$@"
 cd "$REPO_ROOT/tb/perf"
 make "$@"
 
-python -m pytest -q "$REPO_ROOT/tb/test_check_results.py" "$REPO_ROOT/tb/perf/test_perflib.py"
+python -m pytest -q "$REPO_ROOT/tb/test_check_results.py" "$REPO_ROOT/tb/perf/test_perflib.py" \
+    "$REPO_ROOT/model/test_fixedpoint.py"

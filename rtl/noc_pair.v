@@ -67,7 +67,7 @@ module noc_pair #(
         .e_in_valid(w10_valid), .e_in_flit(w10_flit), .e_in_ready(w10_ready),
         .e_out_valid(e01_valid), .e_out_flit(e01_flit), .e_out_ready(e01_ready),
         // No RESULT sink on the pair -- results are read via acc_out.
-        .res_valid(), .res_src_x(), .res_src_y(), .res_idx(), .res_acc(),
+        .res_valid(), .res_q8(), .res_src_x(), .res_src_y(), .res_idx(), .res_data(),
         .start(start_0), .k_chunks(k_chunks_0),
         .busy(busy_0), .done(done_0), .acc_out(acc_out_0)
     );
@@ -87,7 +87,7 @@ module noc_pair #(
         .w_in_valid(e01_valid), .w_in_flit(e01_flit), .w_in_ready(e01_ready),
         .w_out_valid(w10_valid), .w_out_flit(w10_flit), .w_out_ready(w10_ready),
         // No RESULT sink on the pair -- results are read via acc_out.
-        .res_valid(), .res_src_x(), .res_src_y(), .res_idx(), .res_acc(),
+        .res_valid(), .res_q8(), .res_src_x(), .res_src_y(), .res_idx(), .res_data(),
         .start(start_1), .k_chunks(k_chunks_1),
         .busy(busy_1), .done(done_1), .acc_out(acc_out_1)
     );
