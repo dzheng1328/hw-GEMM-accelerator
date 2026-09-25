@@ -115,3 +115,47 @@ def test_quantize_input_is_exact_and_pads_a_zero_channel():
     q = cifar_reference.quantize_input(px)
     assert q.shape == (2, 4, 32, 32)
     assert np.array_equal(q[:, :3], px.astype(np.int64) - 128) and not q[:, 3].any()
+
+
+import cifar_quantize
+
+
+def test_group_weight_scales_per_group_and_per_tensor():
+    W = np.zeros((16, 2, 3, 3))
+    W[0, 0, 0, 0], W[9, 1, 2, 2] = 2.54, -1.27
+    assert np.allclose(cifar_quantize.group_weight_scales(W, True)[[0, 7, 8, 15]], [0.02, 0.02, 0.01, 0.01])
+    assert np.allclose(cifar_quantize.group_weight_scales(W, False), 0.02)
+
+
+def test_dead_group_gets_a_valid_scale():
+    W = np.zeros((16, 2, 3, 3))
+    W[0, 0, 0, 0] = 1.0  # group 1 (channels 8..15) is all zero
+    s = cifar_quantize.group_weight_scales(W, True)
+    assert np.all(s > 0) and np.all(np.isfinite(s))
+    out = cifar_quantize.quantize_layer(W, np.zeros(16), 0.01, 0.05, True, 2, 16, "t")
+    assert not out["w"][8:].any() and len(out["m"]) == 2
+
+
+def test_choose_bias_val_is_smallest_that_fits():
+    assert cifar_quantize.choose_bias_val(np.array([100.0, -50.0]), "t") == 1
+    assert cifar_quantize.choose_bias_val(np.array([1000.0]), "t") == 8
+    assert cifar_quantize.choose_bias_val(np.zeros(4), "t") == 1
+
+
+def test_choose_bias_val_rejects_unrepresentable_bias():
+    with pytest.raises(ValueError, match="conv9"):
+        cifar_quantize.choose_bias_val(np.array([127.0 * 127 * 2]), "conv9")
+
+
+def test_activation_scale_rejects_dead_layer():
+    with pytest.raises(ValueError, match="conv3"):
+        cifar_quantize.activation_scale(np.zeros(1000), "conv3")
+
+
+def test_quantize_layer_pads_and_encodes():
+    rng = np.random.default_rng(2)
+    W, b = rng.normal(size=(10, 3, 3, 3)), rng.normal(size=10)
+    out = cifar_quantize.quantize_layer(W, b, 0.02, None, False, 4, 16, "fc")
+    assert out["w"].shape == (16, 4, 3, 3) and out["w"].dtype == np.int8
+    assert not out["w"][10:].any() and not out["w"][:, 3].any()
+    assert out["bias"].shape == (16,) and "m" not in out
