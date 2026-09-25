@@ -79,3 +79,39 @@ def test_download_accepts_a_matching_checksum(tmp_path):
     dest = tmp_path / "cache" / "archive.tar.gz"
     cifar_data.download(src.as_uri(), dest, md5="321c3cf486ed509164edec1e1981fec8")
     assert dest.read_bytes() == b"payload"
+
+
+import cifar_reference
+
+
+def naive_conv(x, w, stride, pad):
+    n, c, h, wd = x.shape
+    co, _, k, _ = w.shape
+    ho, wo = (h + 2 * pad - k) // stride + 1, (wd + 2 * pad - k) // stride + 1
+    out = np.zeros((n, co, ho, wo), dtype=np.int64)
+    for b in range(n):
+        for o in range(co):
+            for oy in range(ho):
+                for ox in range(wo):
+                    for ci in range(c):
+                        for ky in range(k):
+                            for kx in range(k):
+                                iy, ix = oy * stride + ky - pad, ox * stride + kx - pad
+                                if 0 <= iy < h and 0 <= ix < wd:
+                                    out[b, o, oy, ox] += int(x[b, ci, iy, ix]) * int(w[o, ci, ky, kx])
+    return out
+
+
+@pytest.mark.parametrize("stride,pad,k,size", [(1, 1, 3, 8), (2, 1, 3, 8), (1, 0, 8, 8)])
+def test_conv_int_matches_naive(stride, pad, k, size):
+    rng = np.random.default_rng(stride * 10 + k)
+    x = rng.integers(-128, 128, (2, 4, size, size))
+    w = rng.integers(-128, 128, (8, 4, k, k))
+    assert np.array_equal(cifar_reference.conv_int(x, w, stride, pad), naive_conv(x, w, stride, pad))
+
+
+def test_quantize_input_is_exact_and_pads_a_zero_channel():
+    px = np.random.default_rng(1).integers(0, 256, (2, 3, 32, 32)).astype(np.uint8)
+    q = cifar_reference.quantize_input(px)
+    assert q.shape == (2, 4, 32, 32)
+    assert np.array_equal(q[:, :3], px.astype(np.int64) - 128) and not q[:, 3].any()
