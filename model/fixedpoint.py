@@ -35,12 +35,15 @@ def quantize_multiplier(M: float) -> tuple[int, int]:
 
 
 def requant(acc, m: int, sh: int, relu: bool) -> np.ndarray:
-    """Requantize int32 accumulators to int8, bit-exact to rtl/requant.v."""
+    """Requantize int32 accumulators to int8, bit-exact to rtl/requant.v.
+
+    int64 is exact here: |acc| < 2**31 and m < 2**16 give |acc * m| < 2**47,
+    and the rounding term is at most 2**62, so the sum stays below 2**63."""
     if not (0 <= m < (1 << M_BITS) and 0 <= sh < (1 << SH_BITS)):
         raise ValueError(f"(m={m}, sh={sh}) out of range")
-    # Python ints: acc * m reaches 2**47 and the rounding term 2**62, which
-    # int64 would hold, but object ints make overflow impossible to get wrong.
-    acc = np.asarray(acc, dtype=np.int64).astype(object)
-    y = (acc * m + ((1 << sh) >> 1)) >> sh
+    acc = np.asarray(acc, dtype=np.int64)
+    if acc.size and (acc.max() >= 2**31 or acc.min() < -(2**31)):
+        raise ValueError("accumulator outside int32")
+    y = (acc * np.int64(m) + np.int64((1 << sh) >> 1)) >> np.int64(sh)
     lo = 0 if relu else -128
     return np.clip(y, lo, 127).astype(np.int64)
