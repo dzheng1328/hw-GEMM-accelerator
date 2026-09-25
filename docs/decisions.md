@@ -19,6 +19,41 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-25 -- Milestone 4.1 closes: measured before/after efficiency
+
+**Context:** the Phase 4 roadmap's 4.1 exit criterion is a before/after efficiency table from the measurement harness (4.1b), comparing the system as first measured against the system after 4.1c-f.
+**Result:** the same fixed-work GEMMs, 4.1b baseline (raw int32 results, the only mode then) against today with on-chip int8 output (what every hidden layer now uses), measured by `tb/perf/`:
+
+| GEMM 8xKx32 | Tiles | 4.1b cycles | Now (int8 out) | Speedup | MAC util before | MAC util now |
+|---|---:|---:|---:|---:|---:|---:|
+| K=8 | 1 | 477 | 181 | 2.64x | 1.7% | 4.4% |
+| K=8 | 4 | 312 | 77 | 4.05x | 2.6% | 10.4% |
+| K=32 | 1 | 837 | 373 | 2.24x | 3.8% | 8.6% |
+| K=32 | 4 | 402 | 205 | 1.96x | 8.0% | 15.6% |
+| K=64 | 1 | 1317 | 629 | 2.09x | 4.9% | 10.2% |
+| K=64 | 4 | 529 | 365 | 1.45x | 12.1% | 17.5% |
+
+Every one of the 12 sweep shapes is 1.45x-4.05x faster (full table in `docs/perf/baseline.md` and PR #67), MNIST layer 1 went from 529 to 365 cycles, and compute per block went from 22 + 22k to 18 + 8k cycles for k K-chunks.
+**What still limits the system:** every operand still enters through one host injector, so more tiles stop helping once loading dominates (K=64 on 4 tiles gains least); a tile cannot load its next operands while computing, because `operand_mem` has one buffer (the #44 decision rejected ping-pong banks until something needed prefetch); and all results still converge on one corner.
+These are 4.2's inputs: a command processor with its own memory and DMA can feed several edges, and double-buffered operand memory becomes worth its area once a scheduler can keep it full.
+
+### 2026-09-25 -- Keep-accumulating GO flag: K beyond one operand load
+
+**Context:** `operand_mem` holds 64 slots, so a tile's dot product was capped at K=64 per output block (issue #58).
+**Options considered:**
+(1) A bigger operand memory - rejected, it only moves the cap and costs SRAM area in every tile.
+(2) Reading partial sums out and adding them in software - rejected, it multiplies result traffic, the cost 4.1d just removed.
+(3) Two GO flags: `acc_keep` (bit 40) starts a run without clearing the accumulators, and `no_ret` (bit 41) keeps the result in the tile instead of streaming it.
+**Decision:** (3). A K-long dot product becomes rounds of at most 64: load, GO(`no_ret`), load, GO(`acc_keep`, `no_ret`), ..., load, GO(`acc_keep`), with the output mode (raw or requantized) on the last GO.
+`gemm_sequencer` gained an `accumulate` input that skips RESET and goes straight to RUN; skipping the reset needs no flush, because a run only ends after its exact drain (2026-09-25, K streaming), when every column it streamed has left the array.
+No new backpressure was needed: a round's OPERAND flits are already held while the tile is busy, and its GO while it is busy or streaming.
+**Why:** It lifts the K cap with no memory growth and no extra traffic, and it reuses the #44 backpressure as the round-to-round handshake.
+**Tests:** `tb/gemm/test_accumulate_across_rounds` (K=152 as 8+3+8 chunks, then a fresh run that must clear); `tb/mesh/test_k_beyond_one_load` (K=128, 192, and an uneven 8+3+5 split on three tiles at once, raw and requantized, every round injected in one burst, then 200 quiet cycles proving `no_ret` sent nothing); `tb/mesh/test_acc_keep_go_waits_for_result_stream` (an `acc_keep` GO right behind a returning GO must wait for the partial sum to finish streaming).
+Removing the GO's wait on the result stream fails that last test (and three older ones); ignoring `no_ret` fails the K>64 test.
+**Result:** K=128 GEMMs are now in the perf sweep: each 8x8 block costs 162 compute cycles (82 + 80, the second round skipping reset).
+The perf host injects rounds round-major across tiles: job-major order parked a tile's round 2 at its held LOCAL port and blocked the single injector behind it, which cost 52% (947 vs 623 cycles for K=128 on 4 tiles, int8 output).
+A real scheduler has to know that its traffic order interacts with backpressure; 4.2's command processor inherits that lesson.
+
 ### 2026-09-25 -- Stream every K-chunk back to back: the 22-cycle wave gap was never needed
 
 **Context:** `gemm_sequencer` gave each K-chunk a 3N-2 = 22-cycle wave slot but fed data for only 8 of those cycles, so the array was fed at most 36% of its compute phase (issue #57).

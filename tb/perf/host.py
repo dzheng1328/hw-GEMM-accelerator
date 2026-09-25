@@ -14,7 +14,8 @@ Scheduling (deliberately simple -- this measures today's system, not a
 tuned host): C = A @ B is split into 8x8 output-block jobs, dealt to the
 given tiles in waves. Per wave, each tile's operands then its GO are
 injected back-to-back (a tile computes while the next one loads), then the
-host waits for every RESULT flit of the wave.
+host waits for every RESULT flit of the wave. A K longer than a tile's
+operand memory runs as rounds, injected round-major across the wave.
 """
 
 import cocotb
@@ -62,26 +63,44 @@ def make_flit(dest_x, dest_y, wr_addr, a_col_lanes, b_row_lanes):
     return (payload << (2 * AW)) | ((dest_y & 3) << AW) | (dest_x & 3)
 
 
-def go_flit(dest_x, dest_y, k_chunks, ret_x, ret_y, rq=None):
+def go_flit(dest_x, dest_y, k_chunks, ret_x, ret_y, rq=None, acc_keep=False, no_ret=False):
     """GO flit: type=1, {ret_y, ret_x, k_chunks} plus the output mode: rq=None
-    for raw int32 results, or (m, sh, relu) for requantized int8 rows (layout
-    in rtl/noc_node.v)."""
+    for raw int32 results, or (m, sh, relu) for requantized int8 rows;
+    acc_keep continues the previous run's sums and no_ret keeps the result in
+    the tile (layout in rtl/noc_node.v)."""
     payload = ((ret_y & 3) << 6) | ((ret_x & 3) << 4) | (k_chunks & 0xF)
     if rq is not None:
         m, sh, relu = rq
         payload |= (m << 16) | (sh << 32) | (int(relu) << 38) | (1 << 39)
+    payload |= (int(acc_keep) << 40) | (int(no_ret) << 41)
     return (T_GO << (PW + 2 * AW)) | (payload << (2 * AW)) | ((dest_y & 3) << AW) | (dest_x & 3)
 
 
-def operand_flits(dest_x, dest_y, A, B_block, k_chunks):
-    """Slot-write flits for one job: slot k*N+c holds A[:, 8k+c] and B_block[8k+c, :]."""
+def operand_flits(dest_x, dest_y, A, B_block, k_chunks, k0=0):
+    """Slot-write flits for one load: slot k*N+c holds A[:, k0+8k+c] and
+    B_block[k0+8k+c, :]."""
     flits = []
     for k in range(k_chunks):
         for c in range(N):
-            a_col = [A[i][N * k + c] for i in range(N)]
-            b_row = [B_block[N * k + c][j] for j in range(N)]
+            a_col = [A[i][k0 + N * k + c] for i in range(N)]
+            b_row = [B_block[k0 + N * k + c][j] for j in range(N)]
             flits.append(make_flit(dest_x, dest_y, k * N + c, a_col, b_row))
     return flits
+
+
+def job_rounds(dest_x, dest_y, A, B_block, k_chunks, rq):
+    """One output block's operands and GOs, as a list of rounds. K beyond the
+    tile's KMAX chunks is split into load + GO rounds (issue #58): later
+    rounds keep accumulating, and only the last returns the result. Each GO
+    follows its own operands (per-destination FIFO order); a round's operands
+    are held at the tile by backpressure until the previous round finishes."""
+    out = []
+    rounds = [min(KMAX, k_chunks - k) for k in range(0, k_chunks, KMAX)]
+    for r, kc in enumerate(rounds):
+        last = r == len(rounds) - 1
+        out.append(operand_flits(dest_x, dest_y, A, B_block, kc, k0=N * KMAX * r)
+                   + [go_flit(dest_x, dest_y, kc, *HOST, rq if last else None, acc_keep=r > 0, no_ret=not last)])
+    return out
 
 
 async def reset_dut(dut, cycles=3):
@@ -141,24 +160,27 @@ async def collect_results(dut, expected_total, q8):
 
 
 async def run_gemm(dut, A, B, tiles, rq=None):
-    """C = A @ B over the mesh. A is 8 x K, B is K x Ncols (K a multiple of 8,
-    K <= 8*KMAX, Ncols a multiple of 8). With rq = (m, sh, relu) the tiles
+    """C = A @ B over the mesh. A is 8 x K, B is K x Ncols (K and Ncols
+    multiples of 8; K beyond 8*KMAX runs as several rounds per block). With
+    rq = (m, sh, relu) the tiles
     requantize on-chip and C is int8 (model/fixedpoint.py's requant of the
     product). Returns (C, total k_chunks issued)."""
     A = np.asarray(A, dtype=np.int64)
     B = np.asarray(B, dtype=np.int64)
     M, K = A.shape
-    assert M == N and B.shape[0] == K and K % N == 0 and K // N <= KMAX and B.shape[1] % N == 0
+    assert M == N and B.shape[0] == K and K % N == 0 and B.shape[1] % N == 0
     k_chunks = K // N
     jobs = list(range(B.shape[1] // N))
     C = np.zeros((N, B.shape[1]), dtype=np.int64)
     per_tile = N if rq else N * N
     for w in range(0, len(jobs), len(tiles)):
         wave = list(zip(jobs[w : w + len(tiles)], tiles))
-        flits = []
-        for j, (x, y) in wave:
-            flits += operand_flits(x, y, A, B[:, N * j : N * j + N], k_chunks)
-            flits.append(go_flit(x, y, k_chunks, *HOST, rq))  # GO last: per-destination FIFO order
+        # Round-major order: every tile's round r before any tile's round r+1.
+        # Job-major order would park round 2 at the first tile's LOCAL port
+        # (held while round 1 computes) and block the single injector behind
+        # it, starving every other tile of operands.
+        per_job = [job_rounds(x, y, A, B[:, N * j : N * j + N], k_chunks, rq) for j, (x, y) in wave]
+        flits = [f for rnd in zip(*per_job) for part in rnd for f in part]
         collector = cocotb.start_soon(collect_results(dut, per_tile * len(wave), q8=rq is not None))
         await inject(dut, flits)
         got = await collector

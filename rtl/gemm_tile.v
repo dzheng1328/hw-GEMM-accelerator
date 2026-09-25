@@ -12,10 +12,13 @@
 //   3. Read acc_out when `done` goes high: the 8x8 int32 result
 //      C_block = sum over K-chunks of A_chunk @ B_chunk.
 //
-// The write port is shaped like a NoC/DMA delivery interface on purpose -- a
-// router writing operand slots here is the next Phase 2 step. Requantization
-// (M1 scale + ReLU between layers) has no datapath in pe.v and stays a
-// documented boundary, still done by the caller.
+// K beyond the memory's N*KMAX slots: reload the slots after `done` and
+// pulse `start` again with `accumulate` high; the run adds onto the sums
+// already in the array instead of clearing them.
+//
+// The write port is shaped like a NoC/DMA delivery interface on purpose;
+// rtl/noc_node.v drives it from OPERAND flits. Requantization lives in
+// noc_node's result path (rtl/requant.v), not here.
 module gemm_tile #(
     parameter N              = 8,
     parameter KMAX           = 8,
@@ -43,6 +46,7 @@ module gemm_tile #(
     // Compute handshake.
     input  wire                          start,
     input  wire [3:0]                    k_chunks,
+    input  wire                          accumulate,  // with start: keep the accumulators
     output wire                          busy,
     output wire                          done,
     output wire                          feeding,  // real data entering the array this cycle (perf counters)
@@ -74,6 +78,7 @@ module gemm_tile #(
         .rst        (rst),
         .start      (start),
         .k_chunks   (k_chunks),
+        .accumulate (accumulate),
         .rd_addr    (rd_addr),
         .rd_en      (rd_en),
         .tile_reset (tile_reset),
