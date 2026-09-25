@@ -62,11 +62,12 @@ async def load_operands(dut, A_full, B_full, k_chunks):
     dut.wr_en.value = 0
 
 
-async def run_nblock(dut, A_full, B_full, k_chunks):
+async def run_nblock(dut, A_full, B_full, k_chunks, accumulate=False):
     """Load operands through the write port, pulse start, wait for done, return
-    the 8x8 result."""
+    the 8x8 result. accumulate=True adds onto the previous run's sums."""
     await load_operands(dut, A_full, B_full, k_chunks)
     dut.k_chunks.value = k_chunks
+    dut.accumulate.value = int(accumulate)
 
     # One-cycle start pulse.
     dut.start.value = 1
@@ -89,6 +90,7 @@ async def reset_dut(dut, cycles=2):
     dut.rst.value = 1
     dut.start.value = 0
     dut.k_chunks.value = 0
+    dut.accumulate.value = 0
     dut.wr_en.value = 0
     dut.wr_addr.value = 0
     dut.wr_a_col.value = 0
@@ -156,3 +158,31 @@ async def test_back_to_back_nblocks(dut):
         B = [[rng.randint(-128, 127) for _ in range(N)] for _ in range(16)]
         got = await run_nblock(dut, A, B, k_chunks=2)
         check(dut, got, A, B, f"back_to_back(block={block})")
+
+
+@cocotb.test()
+async def test_accumulate_across_rounds(dut):
+    """Issue #58: K longer than operand_mem holds (N*KMAX = 64), split into
+    rounds. Each round reloads the slots and starts with accumulate=1, adding
+    onto the previous round's sums: rounds of 8, 3, and 8 chunks give K=152,
+    bit-exact. A following run with accumulate=0 must clear them again."""
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())
+    await reset_dut(dut)
+
+    rng = random.Random(GEMM_RANDOM_SEED ^ 0x58)
+    rounds = [8, 3, 8]
+    K = 8 * sum(rounds)
+    A = [[rng.randint(-128, 127) for _ in range(K)] for _ in range(N)]
+    B = [[rng.randint(-128, 127) for _ in range(N)] for _ in range(K)]
+    k0 = 0
+    for r, k_chunks in enumerate(rounds):
+        k1 = k0 + 8 * k_chunks
+        got = await run_nblock(dut, [row[k0:k1] for row in A], B[k0:k1], k_chunks, accumulate=r > 0)
+        check(dut, got, [row[:k1] for row in A], B[:k1], f"accumulate(round={r}, K={k1})")
+        k0 = k1
+
+    A2 = [[rng.randint(-128, 127) for _ in range(8)] for _ in range(N)]
+    B2 = [[rng.randint(-128, 127) for _ in range(N)] for _ in range(8)]
+    got = await run_nblock(dut, A2, B2, 1)
+    check(dut, got, A2, B2, "fresh run after accumulating")

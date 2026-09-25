@@ -23,6 +23,13 @@
 //                     [38]          rq_relu    ReLU before saturation
 //                     [39]          rq_en      0: raw int32 results
 //                                              1: requantized int8 results
+//                     [40]          acc_keep   add onto the accumulators the
+//                                              previous run left, no reset
+//                                              (issue #58: K beyond one load)
+//                     [41]          no_ret     keep the result in the tile:
+//                                              no RESULT stream (a partial
+//                                              sum a later acc_keep GO
+//                                              continues)
 //   type 2 RESULT   one raw accumulator cell: data = acc32 sign-extended.
 //   type 3 RESULT8  one requantized ROW: data = N int8 lanes, lane j is
 //                   column j (rtl/requant.v; math in model/fixedpoint.py).
@@ -149,6 +156,7 @@ module noc_node #(
     // GO-decode registers (declared early: they gate LOCAL delivery below).
     reg        go_pulse;
     reg [3:0]  go_k;
+    reg        go_acc;
 
     // Result-return engine state (declared early: it muxes the LOCAL input).
     reg  [1:0]      rr_state;   // 0 idle / 1 wait-fall / 2 wait-rise / 3 stream
@@ -241,6 +249,7 @@ module noc_node #(
         if (rst) begin
             go_pulse <= 1'b0;
             go_k     <= 4'd0;
+            go_acc   <= 1'b0;
             rr_ret_x <= {AW{1'b0}};
             rr_ret_y <= {AW{1'b0}};
             rq_m     <= 16'd0;
@@ -251,6 +260,7 @@ module noc_node #(
             go_pulse <= 1'b0;
             if (go_deliver) begin
                 go_k     <= payload[3:0];
+                go_acc   <= payload[40];
                 rr_ret_x <= payload[4 +: AW];
                 rr_ret_y <= payload[4+AW +: AW];
                 rq_m     <= payload[31:16];
@@ -263,10 +273,10 @@ module noc_node #(
     end
 
     // ---- Result-return engine ----
-    // Armed by a GO; waits for the tile's (level-held) done to fall as the
-    // new run starts, then rise when it completes, then streams the block to
-    // the return address via the LOCAL input mux: N*N RESULT flits (raw), or
-    // N RESULT8 flits (requantized, one row each).
+    // Armed by a GO without no_ret; waits for the tile's (level-held) done
+    // to fall as the new run starts, then rise when it completes, then
+    // streams the block to the return address via the LOCAL input mux: N*N
+    // RESULT flits (raw), or N RESULT8 flits (requantized, one row each).
     //
     // The offered flit is registered: the edge that enters streaming loads
     // flit 0 and each accepted flit loads the next, so the requant lanes'
@@ -303,7 +313,7 @@ module noc_node #(
             rr_flit  <= {FW{1'b0}};
         end else begin
             case (rr_state)
-                2'd0: if (go_deliver) rr_state <= 2'd1;
+                2'd0: if (go_deliver && !payload[41]) rr_state <= 2'd1;
                 2'd1: if (!done)      rr_state <= 2'd2;   // run underway
                 2'd2: if (done) begin
                     rr_state <= 2'd3;
@@ -324,6 +334,7 @@ module noc_node #(
     // ---- Tile ----
     wire       start_eff = start | go_pulse;
     wire [3:0] k_eff     = go_pulse ? go_k : k_chunks;
+    wire       acc_eff   = go_pulse && go_acc;   // direct starts always clear
 
     wire       tile_feeding;
 
@@ -336,6 +347,7 @@ module noc_node #(
         .wr_b_row (wr_b_row),
         .start    (start_eff),
         .k_chunks (k_eff),
+        .accumulate(acc_eff),
         .busy     (busy),
         .done     (done),
         .feeding  (tile_feeding),

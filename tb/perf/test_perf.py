@@ -119,10 +119,11 @@ def save_records():
 async def test_gemm_sweep(dut):
     """Strong scaling: an 8 x K x 32 GEMM (4 jobs, fixed work) for each K on
     1, 2, and 4 tiles, one measured region per configuration, with raw int32
-    results and again with on-chip requantized int8 results (_q8)."""
+    results and again with on-chip requantized int8 results (_q8). K=128
+    exceeds a tile's 64 operand slots, so each block runs as two rounds."""
     await start(dut)
     rng = random.Random(SEED ^ 0x10)
-    for K in (8, 16, 32, 64):
+    for K in (8, 16, 32, 64, 128):
         A, B = rand_i8(rng, 8, K), rand_i8(rng, K, 32)
         # Spread outputs over the int8 range: |acc| is about 5000 * sqrt(K).
         rq = (*quantize_multiplier(1 / (80 * K**0.5)), False)

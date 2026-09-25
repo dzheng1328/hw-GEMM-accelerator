@@ -95,15 +95,18 @@ def make_flit(dest, wr_addr, a_col_lanes, b_row_lanes):
     return (payload << (2 * AW)) | ((y & AMASK) << AW) | (x & AMASK)
 
 
-def go_flit(dest, k_chunks, ret, rq=None):
+def go_flit(dest, k_chunks, ret, rq=None, acc_keep=False, no_ret=False):
     """GO flit: type=1, a compute descriptor carrying the result-return
     address and output mode: rq=None for raw int32 results, or (m, sh, relu)
-    for requantized int8 rows (see rtl/noc_node.v for the layout)."""
+    for requantized int8 rows. acc_keep adds onto the previous run's sums
+    instead of clearing them; no_ret keeps the result in the tile (see
+    rtl/noc_node.v for the layout)."""
     (x, y), (rx, ry) = dest, ret
     payload = ((ry & AMASK) << (4 + AW)) | ((rx & AMASK) << 4) | (k_chunks & 0xF)
     if rq is not None:
         m, sh, relu = rq
         payload |= (m << 16) | (sh << 32) | (int(relu) << 38) | (1 << 39)
+    payload |= (int(acc_keep) << 40) | (int(no_ret) << 41)
     return (T_GO << (PW + 2 * AW)) | (payload << (2 * AW)) | ((y & AMASK) << AW) | (x & AMASK)
 
 
@@ -228,6 +231,27 @@ async def collect_results(dut, expected_total):
         f"result collection timed out: got {count}/{expected_total} flits "
         f"({ {k: len(v) for k, v in streams.items()} })"
     )
+
+
+async def assert_no_results(dut, cycles):
+    """No RESULT flit may arrive anywhere for `cycles` cycles."""
+    for _ in range(cycles):
+        await FallingEdge(dut.clk)
+        assert int(dut.res_valid.value) == 0, "unexpected RESULT flit"
+
+
+def round_flits(dest, A, B, rounds, ret, rq=None):
+    """A K > 64 dot product as load + GO rounds of `rounds` chunks each: the
+    first GO clears the accumulators, later ones keep them (acc_keep), and
+    only the last returns the result (the others set no_ret)."""
+    flits, k0 = [], 0
+    for r, k_chunks in enumerate(rounds):
+        k1 = k0 + 8 * k_chunks
+        flits += operand_flits(dest, [row[k0:k1] for row in A], [row for row in B[k0:k1]], k_chunks)
+        last = r == len(rounds) - 1
+        flits.append(go_flit(dest, k_chunks, ret, rq if last else None, acc_keep=r > 0, no_ret=not last))
+        k0 = k1
+    return flits
 
 
 def stream_to_matrix(stream):
@@ -504,3 +528,58 @@ async def test_output_mode_is_per_go(dut):
         got = q8_stream_to_matrix(part) if mode else stream_to_matrix(part)
         exp = requant(acc, *mode) if mode else acc
         assert np.array_equal(got, exp), f"run {r} (rq={mode}):\n{got}\nvs\n{exp}"
+
+
+@cocotb.test()
+async def test_k_beyond_one_load(dut):
+    """Issue #58: dot products longer than a tile's 64 operand slots, split
+    into load + GO rounds (acc_keep on later rounds, no_ret on all but the
+    last). Every round's operands and GO go out in one burst per tile, so
+    round r+1's OPERAND flits reach the tile while round r computes and must
+    be held by the #44 backpressure, and its GO likewise. K = 128, 192, and
+    an uneven 8+3+5 chunk split, raw and requantized, on three tiles at once;
+    exactly one result block per tile may come back."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x58)
+    plans = {(W - 1, 0): ([8, 8], None), (0, H - 1): ([8, 8, 8], RQ_CONFIGS[0]), FAR: ([8, 3, 5], None)}
+    mats = {}
+    flits = []
+    for node, (rounds, rq) in plans.items():
+        K = 8 * sum(rounds)
+        mats[node] = (rand_mat(rng, N, K), rand_mat(rng, K, N))
+        flits += round_flits(node, *mats[node], rounds, HOST, rq)
+
+    mon = cocotb.start_soon(collect_results(dut, sum(N if rq else N * N for _, rq in plans.values())))
+    await inject(dut, io, HOST, flits)
+    streams = await mon
+    await assert_no_results(dut, 200)
+
+    assert set(streams) == {(HOST, node) for node in plans}, f"unexpected streams: {sorted(streams)}"
+    for node, (rounds, rq) in plans.items():
+        acc = reference(*mats[node])
+        got = q8_stream_to_matrix(streams[(HOST, node)]) if rq else stream_to_matrix(streams[(HOST, node)])
+        exp = requant(acc, *rq) if rq else acc
+        assert np.array_equal(got, exp), f"tile {node} K={8 * sum(rounds)}:\n{got}\nvs\n{exp}"
+
+
+@cocotb.test()
+async def test_acc_keep_go_waits_for_result_stream(dut):
+    """#44 GO gating meets acc_keep: round 1's GO returns its partial sum,
+    and round 2's operands and acc_keep GO follow immediately. The operands
+    may land once the tile is idle, but the GO must wait until the partial
+    sum has finished streaming -- starting round 2 early would add into the
+    accumulators while they are still being read out. Both streams must be
+    exact: the K=64 partial, then the K=128 total."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x59)
+    A, B = rand_mat(rng, N, 128), rand_mat(rng, 128, N)
+    flits = operand_flits(FAR, [row[:64] for row in A], B[:64], 8) + [go_flit(FAR, 8, HOST)]
+    flits += operand_flits(FAR, [row[64:] for row in A], B[64:], 8) + [go_flit(FAR, 8, HOST, acc_keep=True)]
+
+    mon = cocotb.start_soon(collect_results(dut, 2 * N * N))
+    await inject(dut, io, HOST, flits)
+    stream = (await mon)[(HOST, FAR)]
+
+    partial = reference([row[:64] for row in A], B[:64])
+    assert np.array_equal(stream_to_matrix(stream[:N * N]), partial), "round 1 partial sum"
+    assert np.array_equal(stream_to_matrix(stream[N * N:]), reference(A, B)), "round 2 total"

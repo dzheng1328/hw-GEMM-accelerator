@@ -10,6 +10,13 @@
 //   IDLE --start--> RESET (clear accumulators) --> RUN (k_chunks*N columns)
 //        --> DRAIN (let the last column finish) --> DONE (done=1, result valid)
 //
+// With `accumulate` high at start, RESET is skipped and the run adds onto the
+// accumulators the previous run left (issue #58), so a dot product longer
+// than operand_mem holds is split across several load + start rounds. That
+// is safe with no flush: a run ends only after DRAIN, when every column it
+// streamed has left the array (the drain bound below), so the next run meets
+// an empty pipeline and the skew registers already hold zeros.
+//
 // Why a continuous stream is exact (issue #57; full proof in
 // docs/decisions.md, 2026-09-25): stream position s is read at RUN cycle s,
 // and both of its operands reach PE(i,j) at the same cycle s + RD_LATENCY +
@@ -48,6 +55,7 @@ module gemm_sequencer #(
     input  wire                          rst,        // sync system reset -> force IDLE
     input  wire                          start,      // pulse to run one N-block
     input  wire [3:0]                    k_chunks,   // K-chunks in this N-block (1..KMAX)
+    input  wire                          accumulate, // with start: keep the accumulators (no reset)
     output reg  [$clog2(N*KMAX)-1:0]     rd_addr,    // -> operand_mem read address (chunk*N + col)
     output wire                          rd_en,      // -> operand_mem: rd_addr is a real read this cycle
     output reg                           tile_reset, // -> tile.reset (pulsed once per N-block)
@@ -123,8 +131,13 @@ module gemm_sequencer #(
             aux_cnt    <= 5'd0;
             busy       <= 1'b1;
             done       <= 1'b0;
-            tile_reset <= 1'b1;   // begin clearing the accumulators
-            state      <= S_RESET;
+            if (accumulate) begin
+                tile_reset <= 1'b0;   // keep the previous run's sums
+                state      <= S_RUN;
+            end else begin
+                tile_reset <= 1'b1;   // begin clearing the accumulators
+                state      <= S_RESET;
+            end
         end
     endtask
 
