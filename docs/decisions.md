@@ -19,6 +19,22 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-25 -- Stream every K-chunk back to back: the 22-cycle wave gap was never needed
+
+**Context:** `gemm_sequencer` gave each K-chunk a 3N-2 = 22-cycle wave slot but fed data for only 8 of those cycles, so the array was fed at most 36% of its compute phase (issue #57).
+The slot came from the 2026-07-05 tiling proof, which showed spacing greater than 2(N-1) makes cross-chunk products impossible.
+**Proof that no spacing is needed:** let RUN cycle s read stream position s (global K index, chunk*N + column).
+`operand_mem` returns it RD_LATENCY cycles later, `skew_feeder` delays A's lane i by i and B's lane j by j, and inside the array A moves one hop east and B one hop south per cycle.
+So at cycle t, PE(i,j) sees A[i][t - RD_LATENCY - i - j] from the west and B[t - RD_LATENCY - j - i][j] from the north: both operands carry the same stream position s = t - RD_LATENCY - i - j.
+Every product a PE ever forms is therefore A[i][s]*B[s][j] for one s, and positions outside the stream are zero-padded, so the accumulator ends at exactly sum_s A[i][s]*B[s][j] = (A@B)[i][j] over the whole K, whatever gaps separate the columns.
+The 2026-07-05 argument was sufficient but not necessary; the only real separation requirement is between independent outputs, which each N-block's reset already provides.
+**Decision:** RUN streams all k_chunks*N columns on consecutive cycles, and DRAIN is cut to its exact minimum.
+The last position s = L-1 is visible in PE(N-1,N-1)'s accumulator at RUN cycle L-1 + RD_LATENCY + 2(N-1) + PE_ACC_LATENCY, and `done` is first visible DRAIN_CYCLES+1 cycles after RUN ends, so DRAIN_CYCLES = 2(N-1) + PE_ACC_LATENCY + RD_LATENCY - 2 = 15 (it was 19, with unexplained slack).
+**Why:** Every chunk now costs N cycles instead of 3N-2, and the drain carries no guesswork.
+Both claims are tested, not just derived: `tb/gemm/` runs every chunk count 1..8 bit-exact and reads the result on the first cycle `done` is visible, so a drain one cycle shorter fails all three of its tests (tried).
+**Result:** compute cycles per 8x8 block (tile busy, start to done, from the perf counters) went from 22 + 22k to 18 + 8k for k chunks: 44 to 26 at K=8 (1.69x) and 198 to 82 at K=64 (2.41x), where the array is now fed 78% of the compute phase.
+End to end, fixed-work GEMMs run 1.06x-1.74x faster, MNIST layer 1 drops from 473 to 365 cycles (1.30x) and layer 2 from 274 to 214 (1.28x); the gain is largest where compute dominates (1 tile, large K, int8 output), and smallest on 4 tiles with int32 output, where result streaming to the host still dominates.
+
 ### 2026-09-25 -- Requantize on-chip in the result path, as a per-GO output mode with packed int8 rows
 
 **Context:** Requantization was caller-side (`pe.v` has no datapath for it), so every 8x8 block came back as 64 int32 RESULT flits converging on the host, and the baseline showed that stream saturating the host's LOCAL output at up to 85% (issue #56).

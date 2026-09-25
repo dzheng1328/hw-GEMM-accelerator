@@ -2,21 +2,23 @@
 
 // rtl/gemm_sequencer.v -- the tile's control FSM. Replaces the Python
 // compute_nblock() orchestration in the testbench: given the operands for one
-// N-block, it drives rtl/tile.v through k_chunks back-to-back K-dimension waves
-// (accumulating with NO reset between them) and raises `done` when the 8x8
-// int32 result is settled in the array's accumulators.
+// N-block, it streams all k_chunks*N K-columns into rtl/tile.v back to back,
+// one per cycle (accumulating with NO reset between chunks), and raises `done`
+// when the 8x8 int32 result is settled in the array's accumulators.
 //
 // One `start` pulse == one N-block == one compute_nblock() call:
-//   IDLE --start--> RESET (clear accumulators) --> RUN (k_chunks waves)
-//        --> DRAIN (let the last wave finish) --> DONE (done=1, result valid)
+//   IDLE --start--> RESET (clear accumulators) --> RUN (k_chunks*N columns)
+//        --> DRAIN (let the last column finish) --> DONE (done=1, result valid)
 //
-// Per-wave schedule is the proven 3N-2 = 22-cycle spacing from the Phase 1
-// tiling proof (docs/decisions.md, 2026-07-05): each chunk presents its 8
-// unskewed columns/rows to the tile over the first N cycles (feed_valid high),
-// then pads with feed_valid low for the rest of the 22-cycle window. That
-// spacing (> 2(N-1)) is exactly what makes cross-chunk contamination
-// algebraically impossible, so back-to-back chunks accumulate cleanly without a
-// reset. rtl/skew_feeder.v does the actual skew/zero-pad; this FSM only decides
+// Why a continuous stream is exact (issue #57; full proof in
+// docs/decisions.md, 2026-09-25): stream position s is read at RUN cycle s,
+// and both of its operands reach PE(i,j) at the same cycle s + RD_LATENCY +
+// i + j (A is skewed by i and travels j hops east, B is skewed by j and
+// travels i hops south). So every product a PE ever forms is A[i][s]*B[s][j]
+// for a single s, whatever the spacing between columns. The old 3N-2 =
+// 22-cycle gap between K-chunks was never needed; only independent outputs
+// need separating, and each N-block gets its own reset for that.
+// rtl/skew_feeder.v does the actual skew/zero-pad; this FSM only decides
 // *which* operands to present *when*.
 //
 // Operands live in rtl/operand_mem.v; the FSM addresses it via rd_addr =
@@ -54,19 +56,17 @@ module gemm_sequencer #(
     output reg                           done        // latches high once the result is valid
 );
 
-    localparam P            = 3*N - 2;  // 22 -- one wave's cycle budget (matches feed_wave)
     localparam RST_CYCLES   = 2;        // cycles to hold tile_reset at N-block start
-    // Provable minimum is 2*(N-1) + PE_ACC_LATENCY: (N-1) cycles of skew in
-    // rtl/skew_feeder.v ahead of the array, PLUS (N-1) cycles of skew inside
-    // the array itself (rtl/systolic_array.v), PLUS PE_ACC_LATENCY cycles to
-    // accumulate -- two separate skew stages, not one. (2*N + PE_ACC_LATENCY)
-    // keeps the same generous slack the original 2*N had over that minimum.
-    // RD_LATENCY is added on top: operand_mem's registered read means the
-    // last chunk's real data reaches the array RD_LATENCY cycles after the
-    // address-generation counter below finishes issuing addresses for it
-    // (see the feed_valid_pipe comment), so the drain window must cover
-    // that extra trailing delay too.
-    localparam DRAIN_CYCLES = 2*N + PE_ACC_LATENCY + RD_LATENCY;
+    // The exact minimum, no slack. With RUN cycles numbered from 0 and L
+    // columns streamed, the last column (s = L-1) lands in PE(N-1,N-1)'s
+    // accumulator, visible at cycle L-1 + RD_LATENCY + 2(N-1) +
+    // PE_ACC_LATENCY: operand_mem's registered read, the skew_feeder's N-1
+    // stage skew, N-1 hops across the array, then the PE's MAC pipeline.
+    // DRAIN spans cycles L .. L+DRAIN_CYCLES-1 and `done` (registered in
+    // S_DONE) is first visible at L+DRAIN_CYCLES+1, which must be >= that
+    // last accumulate: hence the -2. Verified tight: one cycle less fails
+    // tb/gemm/ (docs/decisions.md, 2026-09-25).
+    localparam DRAIN_CYCLES = 2*(N-1) + PE_ACC_LATENCY + RD_LATENCY - 2;
 
     localparam S_IDLE  = 3'd0,
                S_RESET = 3'd1,
@@ -75,22 +75,19 @@ module gemm_sequencer #(
                S_DONE  = 3'd4;
 
     reg [2:0] state;
-    reg [4:0] c_cyc;       // 0..P-1, cycle within the current wave
+    reg [4:0] c_cyc;       // 0..N-1, column within the current K-chunk
     reg [3:0] chunk_idx;   // which K-chunk is being fed
     reg [3:0] k_chunks_r;  // latched k_chunks for this run
     reg [4:0] aux_cnt;     // shared reset/drain counter
 
     // ---- Combinational operand addressing ----
-    // Read slot addr = chunk_idx*N + col, where the active column index is c_cyc
-    // during the feed window (clamped otherwise so the address stays in range).
-    // rd_col_valid marks a cycle where rd_addr is a real (non-padding) column;
-    // it is NOT what drives feed_valid -- see the pipe below.
-    reg  [4:0] col_idx;
+    // Read slot addr = chunk_idx*N + c_cyc: every RUN cycle reads one real
+    // column. rd_col_valid marks those cycles; it is NOT what drives
+    // feed_valid -- see the pipe below.
     reg        rd_col_valid;
     always @* begin
-        col_idx      = (c_cyc < N) ? c_cyc : 5'd0;
-        rd_col_valid = (state == S_RUN) && (c_cyc < N);
-        rd_addr      = chunk_idx * N + col_idx;
+        rd_col_valid = (state == S_RUN);
+        rd_addr      = chunk_idx * N + c_cyc;
     end
 
     // ---- feed_valid pipe ----
@@ -166,7 +163,7 @@ module gemm_sequencer #(
                 S_RUN: begin
                     busy       <= 1'b1;
                     tile_reset <= 1'b0;
-                    if (c_cyc == P - 1) begin
+                    if (c_cyc == N - 1) begin
                         c_cyc <= 5'd0;
                         if (chunk_idx == k_chunks_r - 1) begin
                             aux_cnt <= 5'd0;

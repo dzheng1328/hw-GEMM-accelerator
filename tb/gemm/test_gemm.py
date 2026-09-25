@@ -6,8 +6,10 @@ tb/mnist/test_mnist.py: we preload the operand buffers, pulse `start`, wait for
 `done`, and read the 8x8 int32 result -- the FSM does all the K-chunk
 sequencing (accumulate back-to-back, no reset between chunks) itself. A pass
 means the hardware tiled matmul matches an untiled NumPy A@B bit-for-bit, which
-(by integer-add associativity) is a direct proof the K-chunk accumulation and
-the 22-cycle wave spacing are contamination-free.
+(by integer-add associativity) is a direct proof that streaming every K-chunk
+back to back, with no gap between chunks, is contamination-free. Results are
+read on the first cycle `done` is visible, so a drain one cycle too short
+fails here (docs/decisions.md, 2026-09-25).
 """
 
 import random
@@ -122,14 +124,15 @@ async def test_single_chunk_identity(dut):
 @cocotb.test()
 async def test_tiled_gemm_random_k(dut):
     """Random int8 A (8 x 8K) and B (8K x 8) for several K, tiled across K
-    chunks by the FSM, checked vs NumPy A@B. K>1 is the real test of the
-    no-reset K-accumulation and the 22-cycle anti-contamination spacing."""
+    chunks by the FSM, checked vs NumPy A@B, for every chunk count 1..KMAX.
+    K>1 is the real test of the no-reset K-accumulation across chunks
+    streamed back to back."""
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())
     await reset_dut(dut)
 
     rng = random.Random(GEMM_RANDOM_SEED)
-    for k_chunks in (1, 2, 3, 4, 8):
+    for k_chunks in range(1, KMAX + 1):
         for trial in range(4):
             K = 8 * k_chunks
             A = [[rng.randint(-128, 127) for _ in range(K)] for _ in range(N)]
