@@ -1,6 +1,6 @@
 # Milestone 4.2 design: on-chip command processor and compiler for CIFAR-10
 
-Status: approved 2026-09-25; 4.2a (model side) landed in PR #74, 4.2b (compiler) in progress.
+Status: approved 2026-09-25; 4.2a (model side) landed in PR #74, 4.2b (compiler and golden executor) in `compiler/`.
 Tracking issue: #59.
 Builds on milestone 4.1 (issues #53-#58): WxH mesh, on-chip requant with packed int8 results, back-to-back K streaming, keep-accumulating GO flags.
 
@@ -55,7 +55,7 @@ If the float model lands below 80%, channel widths grow before any hardware assu
 
 ### Shape constraints (guaranteed by the compiler, documented in `compiler/isa.py`)
 
-- Cin, H, W, and Wout are powers of two; Wout is at least 8 or exactly 1.
+- Cin, H, W, and Wout are powers of two; Wout is at least 8 or exactly 1, and Wout = 1 requires Hout = 1 (only lane 0 is valid).
 - H * W and W are multiples of 8 bytes, so every channel plane and row starts word-aligned.
 - KSIZE is at most 8; Cout is a multiple of 8 and at most 512 (64 groups).
 - A layer's weights fit the weight memory and its activations fit the activation memory.
@@ -73,6 +73,9 @@ All three are behavioral in simulation and loaded by `$readmemh` from compiler-e
 | Activations | 64 bits, even/odd banks | 128K words (1 MB) | per bank 1 read (DMA gather) + 1 write (write-back) | Input images, per-layer activation buffers (CHW, int8), logits (int64 words) |
 
 Splitting weights from activations lets the DMA fetch one A word and one 16-byte B window every cycle with no arbitration, while write-back uses its own write port.
+
+Activation memory map (compiler-chosen): every image's input from word 0, then one buffer per intermediate layer (reused by every image), then every image's final output.
+Word byte order is little-endian: byte j of a word is bits [8j+7:8j], so lane j of a RESULT8 row and byte j of an A word land on byte j.
 
 ### Registers
 
@@ -110,6 +113,8 @@ Hardware-defined indices (the rest are free for the program):
 
 BLOCK flags: [26] acc_keep, [25] no_ret, [24] requant (RESULT8), [23] relu.
 (ky0, kx0) is the tap of the round's first slot, supplied by the compiler so the DMA never divides by KSIZE; the starting channel is (64 * round) mod Cin, a mask.
+The tap advances each time the channel wraps to 0.
+A round that starts at or past the first bias slot carries (ky0, kx0) = (0, 0), since the DMA ignores the tap there (the fc layer's round 64 would otherwise need ky0 = 8).
 
 BLOCK executes as:
 
@@ -135,9 +140,17 @@ Because a block's 8 pixels lie in one output row (Wout >= 8) or in a single lane
 - An entry pops when its block's last flit is written (8 RESULT8 flits or 64 RESULT flits); tiles return blocks in order, so the head entry always matches.
 - An outstanding-block counter (incremented at a returning GO, decremented at pop) is what WAIT and END wait on.
 
+### Ordering rules
+
+The hardware relies on these and does not check them; `compiler/golden.py` faults on any violation.
+
+- A BLOCK finishes reading registers and memory before the next command executes, so later ADDs cannot disturb it.
+- A BLOCK must not read an activation word that an outstanding returning BLOCK (one not yet covered by a WAIT or END) writes.
+- Two outstanding BLOCKs must not write the same activation word (different tiles return in no fixed order).
+
 ### Errors
 
-An invalid opcode, a tile outside the mesh, or a LOOP while a loop is active sets a sticky `error` output and `error_pc`, stops fetch, and in simulation calls `$fatal`.
+An invalid opcode, a tile outside the mesh, a LOOP while a loop is active, a LOOP with count 0, or an ENDLOOP with no active loop sets a sticky `error` output and `error_pc`, stops fetch, and in simulation calls `$fatal`.
 A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 
 ## 3. RTL structure
@@ -164,9 +177,10 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 
 - `isa.py`: command encoding, register map, shape constraints; the single source for the compiler, the golden executor, and the testbench disassembler.
 - `lower.py`: layers to groups x pixel blocks x rounds, memory allocation, weight packing (A words, bias rows, Cin padding), register values.
-- `schedule.py`: static round-robin tile assignment for a given WxH, round-major emission, WAIT between layers, LOOP over images.
+- `schedule.py`: static round-robin tile assignment for a given WxH in waves of W * H blocks, each wave emitted round-major (all of a block's rounds on one tile, nothing else on that tile in between), a WAIT after every layer but the last, the whole network in one LOOP over images.
 - `emit.py`: program, weight, and activation hex images.
-- `golden.py`: an ISA-level executor that runs the emitted program on the memory image with the gather, requant, and write-back semantics above.
+- `golden.py`: an ISA-level executor that runs the emitted program on the memory image with the gather, requant, and write-back semantics above, and faults on the errors and ordering-rule violations above.
+- `build.py` ties lowering, scheduling, and input packing together; `check_cifar.py` runs level 2 below on all 128 frozen images for several mesh shapes.
 
 ### Verification ladder (each level bit-exact against the level above)
 

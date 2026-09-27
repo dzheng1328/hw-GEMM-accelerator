@@ -19,6 +19,30 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-27 -- The golden executor enforces the ordering rules; schedule in waves of W*H blocks, round-major
+
+**Context:** 4.2b needs an ISA-level golden executor (level 2 of the verification ladder) that the RTL's final memory must equal.
+The obvious executor runs one command at a time and finishes each BLOCK at once, but the RTL runs blocks on several tiles concurrently and writes results back later.
+Such an executor gives the right answer for a program that forgets a WAIT, while the RTL would read stale activations: the bug would first appear as an RTL mismatch in 4.2d/e, far from its cause.
+**Options considered:** (1) a synchronous executor that ignores ordering; (2) a cycle-level executor that models tile latency; (3) a synchronous executor that tracks which activation words outstanding returning BLOCKs will write.
+**Decision:** (3).
+Golden records, per activation word, the returning BLOCK that writes it until the next WAIT or END, and faults when a BLOCK reads such a word or a second outstanding BLOCK writes it.
+The spec now states these as ordering rules the hardware relies on, alongside two more faults (LOOP with count 0, ENDLOOP with no active loop).
+The schedule gives each layer's blocks to the tiles round-robin in waves of W*H and emits each wave round-major, so every block's rounds run in order on one tile with nothing else on it in between (its accumulator holds the partial sum).
+**Why:** (3) catches every ordering bug the compiler can make at compile-test time, at the cost of one array lookup per gather; (2) would duplicate the RTL's timing and still only catch the races a given timing happens to expose.
+Negative tests prove each fault fires (`compiler/test_golden.py`).
+**Result:** `python compiler/check_cifar.py`, golden against the direct NumPy reference on all 128 frozen images (every image's logits, and the last image's activations at every layer):
+
+| Mesh | Commands | Golden vs reference | Seconds |
+|---|---:|---|---:|
+| 1x1 | 2460 | bit-exact | 9.2 |
+| 2x2 | 2460 | bit-exact | 9.5 |
+| 4x3 | 2460 | bit-exact | 9.5 |
+| 4x4 | 2460 | bit-exact | 9.4 |
+
+int8 accuracy on the 128 images is 88.28%, agreeing with the float model on 99.22%.
+The program is the same length for every mesh: 2370 BLOCKs plus register setup, WAITs, and the image loop, well inside the 4K-word program memory.
+
 ### 2026-09-25 -- CIFAR-10 bias spans every trailing K slot, not one bias slot
 
 **Context:** the 4.2 spec carried each folded conv bias as one GEMM term: the DMA emits a constant int8 `bias_val` in one bias slot and the weights carry an int8 bias row, so one output channel's bias tops out at 127 * 127 = 16,129 accumulator units.
