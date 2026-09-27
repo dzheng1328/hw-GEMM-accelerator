@@ -6,7 +6,7 @@ Every layer: int64 conv of int8 activations with int8 weights, plus the
 layer's bias_val times the sum of its bias rows (one row per bias slot, in
 each of which the DMA emits bias_val), then for
 conv layers per-group requant + ReLU to int8 (model/fixedpoint.py), and
-for fc raw int32 logits. No floats and no PyTorch anywhere.
+for the last layer (fc) raw int32 logits. No floats and no PyTorch anywhere.
 
 Run as a script to report int8 vs float accuracy on all 10,000 test
 images."""
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from cifar_spec import INPUT_OFFSET, LAYERS
+from cifar_spec import INPUT_OFFSET, LAYERS, Layer  # noqa: F401 (Layer re-exported for callers)
 from fixedpoint import requant
 
 NPZ_PATH = Path(__file__).parent / "cifar_quantized.npz"
@@ -52,18 +52,20 @@ def check_int32(acc, name):
     return acc
 
 
-def run_int8(q, images_uint8):
-    """Int8 activations of every conv layer (int64 arrays), then the int32
-    logits (N, 16)."""
-    x = quantize_input(images_uint8)
+def run_layers(q, layers, x):
+    """Run a conv stack on int8 activations x (N, Cin, H, W). Every layer
+    but the last requantizes (per 8-channel group) with ReLU to int8; the
+    last returns its raw int32 accumulators. Returns every layer's output
+    as int64 (N, C, H, W)."""
+    x = np.asarray(x, dtype=np.int64)
     outs = []
-    for layer in LAYERS:
+    for i, layer in enumerate(layers):
         L = layer.name
         acc = conv_int(x, q[f"{L}_w"], layer.stride, layer.pad)
         acc += (q[f"{L}_bias"].astype(np.int64).sum(axis=0) * int(q[f"{L}_bias_val"]))[None, :, None, None]
         check_int32(acc, L)
-        if L == "fc":
-            outs.append(acc.reshape(len(x), -1))
+        if i == len(layers) - 1:
+            outs.append(acc)
             break
         y = np.empty_like(acc)
         for g, (m, sh) in enumerate(zip(q[f"{L}_m"], q[f"{L}_sh"])):
@@ -71,6 +73,13 @@ def run_int8(q, images_uint8):
         outs.append(y)
         x = y
     return outs
+
+
+def run_int8(q, images_uint8):
+    """Int8 activations of every conv layer (int64 arrays), then the int32
+    logits (N, 16)."""
+    outs = run_layers(q, LAYERS, quantize_input(images_uint8))
+    return outs[:-1] + [outs[-1].reshape(len(images_uint8), -1)]
 
 
 def predict(q, images_uint8):

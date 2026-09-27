@@ -19,7 +19,7 @@ SIM_ROOT  := $(REPO_ROOT)/sim/$(SIM)$(if $(filter 1,$(WAVES)),-waves)
 
 # Testbenches import model/fixedpoint.py, the one definition of the
 # requantization math the RTL must match.
-export PYTHONPATH := $(REPO_ROOT)/model$(if $(PYTHONPATH),:$(PYTHONPATH))
+export PYTHONPATH := $(REPO_ROOT)/model:$(REPO_ROOT)/compiler$(if $(PYTHONPATH),:$(PYTHONPATH))
 
 # cocotb 1.9's Makefile flow only checks that results.xml exists, so a failed
 # test still exited 0. Recipes expand this at run time, and override beats the

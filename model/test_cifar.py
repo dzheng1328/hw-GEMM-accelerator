@@ -192,3 +192,23 @@ def test_reference_adds_bias_val_times_the_summed_bias_rows():
     q["fc_bias_val"] = 5
     logits = cifar_reference.run_int8(q, np.zeros((1, 3, 32, 32), dtype=np.uint8))[-1]
     assert logits[0, 2] == 5 * (100 - 30 + 7) and not np.delete(logits[0], 2).any()
+
+
+def test_run_layers_last_layer_is_raw_whatever_its_name():
+    rng = np.random.default_rng(3)
+    layers = [cifar_reference.Layer("a", 4, 8, 3, 1, 1), cifar_reference.Layer("b", 8, 8, 3, 1, 1)]
+    q = {}
+    for L in layers:
+        q[f"{L.name}_w"] = rng.integers(-5, 6, (8, L.cin, 3, 3)).astype(np.int8)
+        q[f"{L.name}_bias"] = np.zeros((4, 8), dtype=np.int8)
+        q[f"{L.name}_bias_val"] = 1
+        q[f"{L.name}_m"], q[f"{L.name}_sh"] = np.array([1 << 14]), np.array([15])
+    x = rng.integers(-128, 128, (2, 4, 8, 8))
+    outs = cifar_reference.run_layers(q, layers, x)
+    assert outs[0].min() >= 0 and outs[0].max() <= 127
+    assert np.array_equal(outs[1], cifar_reference.conv_int(outs[0], q["b_w"], 1, 1))
+
+
+def test_frozen_int8_predictions_are_reproduced():
+    q = np.load(cifar_reference.NPZ_PATH)
+    assert np.array_equal(cifar_reference.predict(q, q["test_images"]), q["int8_preds"])
