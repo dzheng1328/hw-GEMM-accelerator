@@ -32,20 +32,25 @@ async def reset(dut):
 
 class Layer:
     """One random single-layer network, lowered, with a Golden holding the
-    same memories and registers the harness is loaded with."""
+    same memories and registers the harness is loaded with. in_words moves
+    the input up that many words (IN_BASE = 8 * in_words), as for any layer
+    after the first."""
 
-    def __init__(self, rng, shape, spec):
+    def __init__(self, rng, shape, spec, in_words=0):
         q, layers = random_net(np.random.default_rng(rng.randrange(1 << 30)), shape, [spec])
         x = np.random.default_rng(rng.randrange(1 << 30)).integers(-128, 128, (1,) + shape)
         self.lw = lower(q, layers, shape, 1)
         self.plan = self.lw.layers[0]
-        self.act = pack_inputs(self.lw, x)
+        self.in_words = in_words
+        self.act = np.concatenate([np.zeros(in_words, dtype="<u8"), pack_inputs(self.lw, x)])
+        self.regs = self.plan.regs()
+        self.regs[isa.IN_BASE] = 8 * in_words
         self.golden = Golden(1, 1, [], self.lw.weights, self.act)
-        for reg, value in self.plan.regs().items():
+        for reg, value in self.regs.items():
             self.golden.regs[reg] = value
 
     async def load(self, dut):
-        for addr in range(self.lw.mem.input_words):
+        for addr in range(self.in_words, self.in_words + self.lw.mem.input_words):
             dut.act_we.value, dut.act_waddr.value, dut.act_wdata.value = 1, addr, int(self.act[addr])
             await RisingEdge(dut.clk)
         dut.act_we.value = 0
@@ -55,7 +60,7 @@ class Layer:
         dut.wt_we.value = 0
 
     def drive_regs(self, dut):
-        r = self.plan.regs()
+        r = self.regs
         dut.in_base.value = r[isa.IN_BASE]
         dut.w_base.value = r[isa.W_BASE]
         dut.cin_log2.value, dut.h_log2.value = r[isa.CIN_LOG2], r[isa.H_LOG2]
@@ -175,6 +180,32 @@ async def test_fixed_edge_shapes_match_golden(dut):
 
 
 @cocotb.test()
+async def test_nonzero_in_base_and_every_bank_rotation(dut):
+    """IN_BASE at word offsets 1-3 (later layers never start at 0): with
+    offset 0 these put the stride-2 three-word windows in all four banks."""
+    await reset(dut)
+    rng = random.Random(15)
+    for off in IN_OFFSETS:
+        for shape, spec in FIXED[:2]:
+            layer = Layer(rng, shape, spec, in_words=off)
+            await layer.load(dut)
+            p = layer.plan
+            blocks = [layer.block(rng, rng.randrange(p.groups), pb, 0) for pb in range(p.pixel_blocks)]
+            compare(*await run_blocks(dut, layer, blocks, rng))
+
+
+@cocotb.test()
+async def test_mid_tap_rounds_with_cin_above_64(dut):
+    """Cin 128: odd rounds start at channel 64, halfway through a tap."""
+    await reset(dut)
+    rng = random.Random(16)
+    layer = Layer(rng, *FIXED[3])
+    await layer.load(dut)
+    blocks = [layer.block(rng, 0, pb, r) for pb in (0, layer.plan.pixel_blocks - 1) for r in (1, 3, 17)]
+    compare(*await run_blocks(dut, layer, blocks, rng))
+
+
+@cocotb.test()
 async def test_random_shapes_match_golden(dut):
     await reset(dut)
     rng = random.Random(11)
@@ -212,19 +243,38 @@ async def test_one_slot_per_cycle_without_backpressure(dut):
     assert len(cycles) == 65 and cycles[-1] - cycles[0] == 64, f"{len(cycles)} flits over cycles {cycles[0]}..{cycles[-1]}"
 
 
+# Input word offsets for the IN_BASE tests: a first layer lowers to IN_BASE 0,
+# but later layers start anywhere, so every word offset mod 4 is exercised.
+IN_OFFSETS = (1, 2, 3)
+
+
+def three_word_rotations(plan, in_base):
+    """Bank rotations (window start word mod 4) of the slots whose valid lanes
+    really span three words, for a stride-2 layer at byte address in_base."""
+    rots = set()
+    for pb in range(plan.pixel_blocks):
+        oy, ox0 = divmod(8 * pb, plan.wout)
+        for ky in range(plan.ksize):
+            for kx in range(plan.ksize):
+                iy = plan.stride * oy + ky - plan.pad
+                ix = [plan.stride * (ox0 + l) + kx - plan.pad for l in range(8)]
+                ix = [v for v in ix if 0 <= v < plan.w]
+                if not 0 <= iy < plan.h or not ix:
+                    continue
+                first, last = in_base + iy * plan.w + ix[0], in_base + iy * plan.w + ix[-1]
+                if (last >> 3) - (first >> 3) == 2:
+                    ix0 = plan.stride * ox0 + kx - plan.pad
+                    rots.add(((in_base + iy * plan.w + ix0) >> 3) % 4)
+    return rots
+
+
 @cocotb.test()
 async def test_every_bank_rotation_occurs(dut):
-    """Stride-2 windows start at every word mod 4, so all four bank
-    rotations of the three-word window are exercised (spec: four banks).
-    Pure Python coverage check on the fixed conv2 shape."""
-    rng = random.Random(14)
-    p = Layer(rng, *FIXED[1]).plan
-    starts = set()
-    for pb in range(p.pixel_blocks):
-        oy, ox0 = divmod(8 * pb, p.wout)
-        for ky in range(3):
-            for kx in range(3):
-                iy, ix0 = 2 * oy + ky - 1, 2 * ox0 + kx - 1
-                if 0 <= iy < p.h:
-                    starts.add(((p.in_base + iy * p.w + ix0) >> 3) % 4)
-    assert starts == {0, 1, 2, 3}
+    """Across the IN_BASE offsets the tests run, stride-2 windows whose valid
+    lanes span three words start in every bank (spec: four banks), so every
+    rotation's third word carries real data. Pure Python coverage check."""
+    p = Layer(random.Random(14), *FIXED[1]).plan
+    rots = set()
+    for off in (0,) + IN_OFFSETS:
+        rots |= three_word_rotations(p, 8 * off)
+    assert rots == {0, 1, 2, 3}, f"three-word windows only in rotations {sorted(rots)}"
