@@ -45,6 +45,9 @@ make lint-configs
 cd "$REPO_ROOT/tb/flit_pack"
 make "$@"
 
+cd "$REPO_ROOT/tb/dma_gather"
+make "$@"
+
 cd "$REPO_ROOT/tb/mnist"
 make "$@"
 
