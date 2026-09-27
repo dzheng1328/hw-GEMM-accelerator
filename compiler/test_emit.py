@@ -21,6 +21,6 @@ def test_emit_writes_readmemh_images(tmp_path):
 
     assert words("program.hex") == b.program
     assert words("weights.hex") == [int(w) for w in b.lowered.weights]
-    even, odd = words("act_even.hex"), words("act_odd.hex")
-    assert len(even) == len(odd) == -(-len(b.act) // 2)
-    assert even[1] == int(b.act[2]) and odd[0] == int(b.act[1])
+    banks = [words(f"act_bank{i}.hex") for i in range(4)]
+    assert all(len(bank) == -(-len(b.act) // 4) for bank in banks)
+    assert banks[2][1] == int(b.act[6]) and banks[1][0] == int(b.act[1]) and banks[3][2] == int(b.act[11])

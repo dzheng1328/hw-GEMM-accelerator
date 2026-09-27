@@ -82,3 +82,9 @@ def test_pack_inputs_lays_images_out_chw():
     assert np.array_equal(act[: x.size], x.reshape(-1))
     with pytest.raises(ValueError, match="shape"):
         pack_inputs(lw, x[:1])
+
+
+def test_too_many_weights_for_weight_memory(monkeypatch):
+    monkeypatch.setattr(isa, "WEIGHT_WORDS", 17119)
+    with pytest.raises(ValueError, match="weight memory"):
+        cifar()

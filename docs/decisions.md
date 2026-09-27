@@ -19,6 +19,17 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-27 -- Activation memory is four word-interleaved banks, not even/odd
+
+**Context:** the 4.2 spec had the DMA fetch each slot's B row in one cycle from two activation banks (even and odd words), on the claim that a slot's window is at most 16 bytes.
+The window is at most 15 bytes, but at stride 2 those bytes can span three consecutive words, and the first and third share a bank: one bank would need two reads in one cycle.
+Found by the 4.2b whole-branch review before any gather RTL existed and confirmed by measurement: 47 of conv2's 282 live (pixel block, tap) pairs span three words (conv4's happen not to).
+**Options considered:** (1) two banks, and a second DMA cycle for slots that span three words; (2) a second read port per bank; (3) four banks interleaved by word (bank = word mod 4).
+**Decision:** (3).
+**Why:** any three consecutive words fall in three different banks, so every slot still takes one cycle with no stall path in `dma_gather.v`; capacity is unchanged, and the cost is a 4-to-3 word select instead of 2-to-2.
+(1) adds a data-dependent stall to the DMA's otherwise fixed one-slot-per-cycle pipeline, and (2) needs two read ports per bank, while the sky130 macro the project already uses (`sky130_sram_512b_1rw_64x64`) has a single read-write port.
+The golden executor now faults on a slot whose valid lanes span more than three words, and `compiler/emit.py` writes one hex image per bank.
+
 ### 2026-09-27 -- The golden executor enforces the ordering rules; schedule in waves of W*H blocks, round-major
 
 **Context:** 4.2b needs an ISA-level golden executor (level 2 of the verification ladder) that the RTL's final memory must equal.

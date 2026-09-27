@@ -70,9 +70,9 @@ All three are behavioral in simulation and loaded by `$readmemh` from compiler-e
 |---|---|---|---|---|
 | Program | 64 bits | 4K words | 1 read (fetch) | Commands |
 | Weights | 64 bits | 32K words (256 KB) | 1 read (DMA A words) | Per group, per slot: one word = 8 output channels' int8 weights |
-| Activations | 64 bits, even/odd banks | 128K words (1 MB) | per bank 1 read (DMA gather) + 1 write (write-back) | Input images, per-layer activation buffers (CHW, int8), logits (int64 words) |
+| Activations | 64 bits, four word-interleaved banks (bank = word mod 4) | 128K words (1 MB) | per bank 1 read (DMA gather) + 1 write (write-back) | Input images, per-layer activation buffers (CHW, int8), logits (int64 words) |
 
-Splitting weights from activations lets the DMA fetch one A word and one 16-byte B window every cycle with no arbitration, while write-back uses its own write port.
+Splitting weights from activations lets the DMA fetch one A word and one B window of up to three consecutive words every cycle with no arbitration, while write-back uses its own write port.
 
 Activation memory map (compiler-chosen): every image's input from word 0, then one buffer per intermediate layer (reused by every image), then every image's final output.
 Word byte order is little-endian: byte j of a word is bits [8j+7:8j], so lane j of a RESULT8 row and byte j of an A word land on byte j.
@@ -130,7 +130,9 @@ For slot k < taps * Cin with tap = k >> CIN_LOG2, c = k & (Cin - 1), ky = tap / 
 - Lane l = input[c][iy][ix] if the lane is valid (Wout > 1, or l = 0 when Wout = 1) and 0 <= iy < H and 0 <= ix < W; otherwise 0.
 - A bias slot (first bias slot <= k < KS) gives bias_val on valid lanes and 0 elsewhere.
 
-Because a block's 8 pixels lie in one output row (Wout >= 8) or in a single lane (Wout = 1), a slot's valid lanes read bytes ix0, ix0 + STRIDE, ... of one input row: a window of at most 16 bytes, which the even/odd banks deliver in one cycle.
+Because a block's 8 pixels lie in one output row (Wout >= 8) or in a single lane (Wout = 1), a slot's valid lanes read bytes ix0, ix0 + STRIDE, ... of one input row: at most 15 bytes, which span at most three consecutive words.
+Four word-interleaved banks put any three consecutive words in three different banks, so one cycle delivers every slot.
+Two even/odd banks, the first design, cannot: at stride 2 the first and third of three words share a bank, and 47 of conv2's 282 live (pixel block, tap) pairs span three words.
 
 ### Write-back
 
@@ -147,6 +149,8 @@ The hardware relies on these and does not check them; `compiler/golden.py` fault
 - A BLOCK finishes reading registers and memory before the next command executes, so later ADDs cannot disturb it.
 - A BLOCK must not read an activation word that an outstanding returning BLOCK (one not yet covered by a WAIT or END) writes.
 - Two outstanding BLOCKs must not write the same activation word (different tiles return in no fixed order).
+- A BLOCK's (ky0, kx0) is its round's first tap, (64 * round >> CIN_LOG2) as (ky, kx) with both below KSIZE, or (0, 0) for a round that starts at or past the first bias slot; the DMA loads them into separate ky/kx counters.
+- A slot's valid lanes lie within three consecutive activation words (the shape rules guarantee it).
 
 ### Errors
 
@@ -163,7 +167,7 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 - `rtl/flit_pack.v`: builds OPERAND and GO flits from the gathered slot and BLOCK fields, drives node (0,0)'s injection port, and holds the pipeline on `inj_ready` low through a skid buffer.
 - `rtl/writeback.v`: per-tile write-back FIFOs, RESULT/RESULT8 decoding, activation memory writes, the outstanding-block counter.
 - `rtl/cmd_perf.v`: free-running counters in the `node_perf` style: total cycles, DMA slot cycles, injection stall cycles, WAIT stall cycles, write-back words.
-- Memories: `rtl/sim_mem.v`, a parameterized behavioral 1R1W memory with `$readmemh`, instantiated for program, weights, and the two activation banks.
+- Memories: `rtl/sim_mem.v`, a parameterized behavioral 1R1W memory with `$readmemh`, instantiated for program, weights, and the four activation banks.
 
 ## 4. Compiler and verification
 
@@ -178,7 +182,7 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 - `isa.py`: command encoding, register map, shape constraints; the single source for the compiler, the golden executor, and the testbench disassembler.
 - `lower.py`: layers to groups x pixel blocks x rounds, memory allocation, weight packing (A words, bias rows, Cin padding), register values.
 - `schedule.py`: static round-robin tile assignment for a given WxH in waves of W * H blocks, each wave emitted round-major (all of a block's rounds on one tile, nothing else on that tile in between), a WAIT after every layer but the last, the whole network in one LOOP over images.
-- `emit.py`: program, weight, and activation hex images.
+- `emit.py`: program, weight, and activation hex images (one per activation bank).
 - `golden.py`: an ISA-level executor that runs the emitted program on the memory image with the gather, requant, and write-back semantics above, and faults on the errors and ordering-rule violations above.
 - `build.py` ties lowering, scheduling, and input packing together; `check_cifar.py` runs level 2 below on all 128 frozen images for several mesh shapes.
 

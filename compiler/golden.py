@@ -97,6 +97,7 @@ class Golden:
             raise GoldenError(pc, f"round {b.round} is outside KS={ks} (a positive multiple of 8)")
         if self.regs[isa.KSIZE] == 0:
             raise GoldenError(pc, "KSIZE is 0")
+        self._check_tap(pc, b, k0)
         a = self._a_words(pc, b, ks, k0, n)
         bmat = self._gather(pc, b, k0, n)
         tile = (b.tile_x, b.tile_y)
@@ -107,6 +108,18 @@ class Golden:
         self.acc[tile] = acc
         if not b.no_ret:
             self._write_back(pc, b, acc)
+
+    def _check_tap(self, pc, b, k0):
+        """(ky0, kx0) must be the tap of the round's first slot, each below
+        KSIZE, or (0, 0) for a round that starts in the bias slots: the DMA
+        loads them into separate ky/kx counters and never checks them."""
+        ksize, bias_start = self.regs[isa.KSIZE], self.regs[isa.BIAS] & 0xFFFF
+        if k0 < bias_start:
+            want = divmod(k0 >> self.regs[isa.CIN_LOG2], ksize)
+        else:
+            want = (0, 0)
+        if (b.ky0, b.kx0) != want:
+            raise GoldenError(pc, f"BLOCK tap ({b.ky0}, {b.kx0}) does not start round {b.round}; expected {want}")
 
     def _a_words(self, pc, b, ks, k0, n):
         """(n, 8): row k is slot k's A column, lane i = output channel 8g + i."""
@@ -138,6 +151,11 @@ class Golden:
         read = is_tap & lane_ok & (iy >= 0) & (iy < (1 << h_log2)) & (ix >= 0) & (ix < (1 << w_log2))
         addr = R[isa.IN_BASE] + (c[:, None] << (h_log2 + w_log2)) + (iy << w_log2) + ix
         out = np.zeros((n, 8), np.int64)
+        words = addr >> 3
+        span = np.where(read, words, -1).max(axis=1) - np.where(read, words, 1 << 62).min(axis=1)
+        if (span >= isa.ACT_BANKS - 1).any():
+            k = k0 + int(np.argmax(span >= isa.ACT_BANKS - 1))
+            raise GoldenError(pc, f"slot {k} reads more than 3 consecutive words, past the one-cycle bank window")
         ra = addr[read]
         if ra.size:
             if ra.max() >= len(self.act):

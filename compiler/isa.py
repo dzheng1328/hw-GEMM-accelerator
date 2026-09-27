@@ -22,6 +22,9 @@ REG_MASK = 0xFFFF_FFFF
 PROGRAM_WORDS = 4096
 WEIGHT_WORDS = 32768
 ACT_WORDS = 131072
+# Word-interleaved (bank = word mod 4): a stride-2 gather window spans at
+# most 3 consecutive words, which then sit in 3 different banks.
+ACT_BANKS = 4
 SLOTS_PER_ROUND = 64
 TILE = 8
 MAX_MESH = 8
