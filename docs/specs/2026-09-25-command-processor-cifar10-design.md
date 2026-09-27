@@ -1,6 +1,6 @@
 # Milestone 4.2 design: on-chip command processor and compiler for CIFAR-10
 
-Status: approved 2026-09-25; 4.2a (model side) landed in PR #74, 4.2b (compiler and golden executor) in `compiler/`.
+Status: approved 2026-09-25; 4.2a (model side) landed in PR #74, 4.2b (compiler and golden executor) in PR #76, 4.2c (`dma_gather.v`, `flit_pack.v`, `sim_mem.v`) on `feature/dma-gather`.
 Tracking issue: #59.
 Builds on milestone 4.1 (issues #53-#58): WxH mesh, on-chip requant with packed int8 results, back-to-back K streaming, keep-accumulating GO flags.
 
@@ -164,10 +164,14 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
   Ports: `clk`, `rst`, `start`, `done`, `error`, `error_pc`.
 - `rtl/cmd_seq.v`: fetch, decode, registers, loop stack, WAIT/END, error detection; hands one BLOCK at a time to the DMA and waits for write-back credit.
 - `rtl/dma_gather.v`: slot counters (tap, channel, bias), address generation, registered memory reads, byte shift and stride select, lane and row masks; one slot per cycle, stallable.
+  Interface: the BLOCK fields and the layer registers are inputs that cmd_seq holds stable from `start` until `done`, narrowed to the bits used (`in_base[19:0]`, `stride2` for STRIDE == 2, `bias_start`/`bias_val` split from BIAS); the DMA latches only its counters, and cmd_seq meets the ordering rule "a BLOCK finishes reading registers before the next command executes" by not executing the next command until `done`.
+  It emits a beat stream: one OPERAND beat {slot, A word, B row} per slot, then one GO beat carrying k_chunks; `done` pulses in the cycle the GO beat is accepted.
+  Three stages under one global stall (`adv = !out_valid || out_ready`): S0 counters and combinational addresses (the three consecutive words of the slot's window go to the four banks, bank b reading word wb + ((b - wb) mod 4)), S1 memory data rotated into a 24-byte window, shifted by the byte offset, and lane-selected at stride 1 or 2 under the masks, S2 the output register; the memories hold their read data while `re` (= adv) is low.
 - `rtl/flit_pack.v`: builds OPERAND and GO flits from the gathered slot and BLOCK fields, drives node (0,0)'s injection port, and holds the pipeline on `inj_ready` low through a skid buffer.
+  Flits are formatted before the skid (`rtl/flit_buf.v`), so the BLOCK fields may change as soon as `done` pulses, and the DMA's `out_ready` depends only on the skid's registered occupancy.
 - `rtl/writeback.v`: per-tile write-back FIFOs, RESULT/RESULT8 decoding, activation memory writes, the outstanding-block counter.
 - `rtl/cmd_perf.v`: free-running counters in the `node_perf` style: total cycles, DMA slot cycles, injection stall cycles, WAIT stall cycles, write-back words.
-- Memories: `rtl/sim_mem.v`, a parameterized behavioral 1R1W memory with `$readmemh`, instantiated for program, weights, and the four activation banks.
+- Memories: `rtl/sim_mem.v`, a parameterized behavioral 1R1W memory with `$readmemh` (registered read that holds while `re` is low; a same-address read and write return the old word), instantiated for program, weights, and the four activation banks.
 
 ## 4. Compiler and verification
 
@@ -195,7 +199,7 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 ### Tests
 
 - pytest: `compiler/test_*.py` (encoding round trips, lowering of small layers, golden vs direct reference on random small nets and on CIFAR).
-- cocotb unit suites: `tb/dma_gather/` (random shapes, strides, pads, edges, bias slots, stalls), `tb/writeback/` (FIFO order, credit stall, raw and int8 writes), `tb/cmd_seq/` (decode, ADD, LOOP, WAIT, END, errors, plus a `make error-check` negative test that the error path stops the run).
+- cocotb unit suites: `tb/flit_pack/` (formatting, backpressure, one flit per cycle), `tb/dma_gather/` (random shapes, strides, pads, edges, bias slots, stalls), `tb/writeback/` (FIFO order, credit stall, raw and int8 writes), `tb/cmd_seq/` (decode, ADD, LOOP, WAIT, END, errors, plus a `make error-check` negative test that the error path stops the run).
 - `tb/accel/`: random small conv stacks compiled and run end to end on 2x2 and 4x3, memory equal to golden; an 8-image CIFAR run in `./test.sh`; `make cifar` runs all 128 images and records accuracy in `docs/perf/`.
 
 ## 5. Scaling study
@@ -209,8 +213,8 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 |---|---|---|
 | 4.2a | CIFAR-10 model, quantization, NumPy int8 reference | Float accuracy at least 80%; int8 accuracy on 10,000 images reported |
 | 4.2b | ISA, compiler, golden executor | Golden equals the direct reference bit-exactly on 128 images for several WxH |
-| 4.2c | `dma_gather.v`, `flit_pack.v` | Bit-exact against the golden gather on random shapes; one slot per cycle without backpressure |
-| 4.2d | `cmd_seq.v`, `writeback.v`, `cmd_perf.v`, `sim_mem.v`, `accel.v` | Random conv stacks pass end to end on 2x2 and 4x3; error path proven fatal |
+| 4.2c | `dma_gather.v`, `flit_pack.v`, `sim_mem.v` | Bit-exact against the golden gather on random shapes; one slot per cycle without backpressure |
+| 4.2d | `cmd_seq.v`, `writeback.v`, `cmd_perf.v`, `accel.v` | Random conv stacks pass end to end on 2x2 and 4x3; error path proven fatal |
 | 4.2e | CIFAR-10 on the chip | 128 images bit-exact at every layer; accuracy vs labels and float recorded |
 | 4.2f | Scaling study | 1x1 through 4x4 measured; corner saturation identified and explained |
 

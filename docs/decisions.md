@@ -19,6 +19,19 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-27 -- DMA front end: stable-input contract, three-stage global-stall pipeline, formatting before the skid
+
+**Context:** 4.2c builds `rtl/dma_gather.v` and `rtl/flit_pack.v`, the part of the command processor that turns one BLOCK into OPERAND and GO flits at node (0,0), and must sustain one slot per cycle.
+Three interface choices shape it and everything 4.2d connects to it.
+**Options considered:** (1) the DMA latches every register and BLOCK field at `start`, or the caller holds them stable until `done`; (2) a skid buffer between each pipeline stage, or one global stall for the whole pipeline; (3) format flits after the skid buffer (the skid carries raw beats), or before it.
+**Decision:** hold inputs stable until `done`; one global stall (`adv = !out_valid || out_ready`) with memories that hold their read data while stalled; format before the skid, reusing `rtl/flit_buf.v`.
+**Why:** cmd_seq must not run the next command before a BLOCK finishes reading registers anyway (a spec ordering rule), so holding its outputs costs nothing, while latching would add about 120 flip-flops to duplicate state cmd_seq already holds.
+A global stall is correct here because the only backpressure source is `flit_pack`'s skid, whose `in_ready` depends only on its registered occupancy, so the stall path stays short; per-stage skids would double the pipeline registers for no throughput gain.
+Formatting before the skid means the BLOCK fields are free to change the moment `done` pulses, which is exactly when cmd_seq moves on.
+**Result:** bit-exact against `Golden.operands` on 5 edge shapes (CIFAR conv1, conv2, fc, Cin 128, 1x1 stride 2) and 12 random shapes under Verilator and Icarus; 65 flits (64 OPERAND + GO) in 65 consecutive cycles; unchanged under random 35% injection backpressure.
+Planted bugs in the stride-2 lane select, the bank-address carry, and the Wout = 1 bias mask each fail the suite.
+Generic Yosys synthesis: 3893 cells, 193 flip-flops, no latches.
+
 ### 2026-09-27 -- Activation memory is four word-interleaved banks, not even/odd
 
 **Context:** the 4.2 spec had the DMA fetch each slot's B row in one cycle from two activation banks (even and odd words), on the claim that a slot's window is at most 16 bytes.
