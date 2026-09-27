@@ -137,3 +137,20 @@ def test_a_gather_wider_than_three_words_faults():
     Golden(1, 1, window_program(2), [], []).run()
     with pytest.raises(GoldenError, match="3 consecutive words"):
         Golden(1, 1, window_program(4), [], []).run()
+
+
+def test_operands_are_what_a_block_accumulates():
+    q, layers, x, b = net_build("wide", (1, 1), n_images=1)
+    g = Golden(1, 1, [], b.lowered.weights, b.act)
+    L = b.lowered.layers[0]
+    for reg, value in L.regs().items():
+        g.regs[reg] = value
+    blk = isa.Block(0, 0, 0, 3, 2, *L.round_start_tap(2))
+    a, bm = g.operands(blk)
+    assert a.shape == bm.shape == (64, 8)
+    # Round 2 of the Cin-128 layer starts at slot 128: tap 1 = (ky 0, kx 1),
+    # channels 0..63. Pixel block 3 of the 8x8 output is row oy = 3, ox = 0..7,
+    # so slot 5 reads channel 5 at iy = 2*3 + 0 - 1 = 5, ix = 2*ox + 1 - 1.
+    xi = x[0].astype(np.int64)
+    assert np.array_equal(bm[5], xi[5, 5, 2 * np.arange(8)])
+    assert np.array_equal(a[5], q["l0_w"][0:8, 5, 0, 1])

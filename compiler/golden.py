@@ -90,16 +90,7 @@ class Golden:
     def _block(self, pc, b):
         if b.tile_x >= self.mesh[0] or b.tile_y >= self.mesh[1]:
             raise GoldenError(pc, f"tile ({b.tile_x}, {b.tile_y}) is outside the {self.mesh[0]}x{self.mesh[1]} mesh")
-        ks = self.regs[isa.KS]
-        k0 = isa.SLOTS_PER_ROUND * b.round
-        n = min(isa.SLOTS_PER_ROUND, ks - k0)
-        if ks % isa.TILE or n <= 0:
-            raise GoldenError(pc, f"round {b.round} is outside KS={ks} (a positive multiple of 8)")
-        if self.regs[isa.KSIZE] == 0:
-            raise GoldenError(pc, "KSIZE is 0")
-        self._check_tap(pc, b, k0)
-        a = self._a_words(pc, b, ks, k0, n)
-        bmat = self._gather(pc, b, k0, n)
+        a, bmat = self.operands(b, pc)
         tile = (b.tile_x, b.tile_y)
         acc = self.acc.get(tile, np.zeros((8, 8), np.int64)) if b.acc_keep else np.zeros((8, 8), np.int64)
         acc = acc + a.T @ bmat
@@ -108,6 +99,20 @@ class Golden:
         self.acc[tile] = acc
         if not b.no_ret:
             self._write_back(pc, b, acc)
+
+    def operands(self, b, pc=0):
+        """(a, bmat), each (n, 8) int64: the A columns and B rows the DMA
+        streams for BLOCK b's round under the current registers and memories
+        (row k = slot 64 * round + k). Faults like the BLOCK itself would."""
+        ks = self.regs[isa.KS]
+        k0 = isa.SLOTS_PER_ROUND * b.round
+        n = min(isa.SLOTS_PER_ROUND, ks - k0)
+        if ks % isa.TILE or n <= 0:
+            raise GoldenError(pc, f"round {b.round} is outside KS={ks} (a positive multiple of 8)")
+        if self.regs[isa.KSIZE] == 0:
+            raise GoldenError(pc, "KSIZE is 0")
+        self._check_tap(pc, b, k0)
+        return self._a_words(pc, b, ks, k0, n), self._gather(pc, b, k0, n)
 
     def _check_tap(self, pc, b, k0):
         """(ky0, kx0) must be the tap of the round's first slot, each below
