@@ -29,3 +29,10 @@ def cifar_build(q, images_uint8, mesh_w, mesh_h):
     from cifar_spec import LAYERS
 
     return build(q, LAYERS, quantize_input(images_uint8), mesh_w, mesh_h)
+
+
+def run_golden(b):
+    """Final activation memory bytes after running b on the golden executor."""
+    from golden import Golden
+
+    return Golden(*b.mesh, b.program, b.lowered.weights, b.act).run()
