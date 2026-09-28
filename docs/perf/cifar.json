@@ -1,0 +1,20 @@
+{
+  "images": 128,
+  "int8_accuracy": 0.8828125,
+  "float_accuracy": 0.875,
+  "float_agreement": 0.9921875,
+  "reference_agreement": 1.0,
+  "mesh": "2x2",
+  "cycles": 18742977,
+  "cycles_per_image": 146429.5078125,
+  "slot_utilization": 0.9022225231349321,
+  "counters": {
+    "run_cyc": 18742977,
+    "blocks": 303360,
+    "slot_cyc": 16910336,
+    "inj_stall_cyc": 568160,
+    "wait_cyc": 40283,
+    "credit_cyc": 0,
+    "wb_words": 671744
+  }
+}

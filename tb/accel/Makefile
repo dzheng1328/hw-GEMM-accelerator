@@ -8,6 +8,7 @@
 #   make error-check                      a program for a wider mesh must stop the run
 #   make stray-check                      a RESULT away from (0,0) must stop the run (Icarus)
 #   make lint-configs                     lint sizes no run covers
+#   make cifar                            all 128 CIFAR-10 images; writes docs/perf/cifar.{json,md}
 
 include $(PWD)/../common.mk
 
@@ -47,7 +48,7 @@ COCOTB_RESULTS_FILE = $(SIM_BUILD)/results_$(or $(ACCEL_CASE),$(ACCEL_PROBE),non
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 .DEFAULT_GOAL := cases
-.PHONY: cases error-check stray-check lint-configs
+.PHONY: cases error-check stray-check lint-configs cifar
 
 cases:
 	@for c in $(or $(ACCEL_CASES),$$(python $(PWD)/cases.py list)); do \
@@ -89,3 +90,12 @@ lint-configs:
 	  verilator --lint-only -Wall $$(echo $$cfg | tr _ ' ') $(TB_DIR)/lint_waivers.vlt \
 	      $(filter-out %/accel_tb.v,$(VERILOG_SOURCES)) --top-module accel || exit 1; \
 	done
+
+# All 128 frozen CIFAR-10 test images; records accuracy and cycles in
+# docs/perf/ only if the run passes.
+PERF_DOCS = $(REPO_ROOT)/docs/perf
+cifar:
+	@mkdir -p $(SIM_BUILD)
+	$(MAKE) --no-print-directory cases ACCEL_CASES=cifar128 CIFAR_RESULTS=$(SIM_BUILD)/cifar128.json
+	cp $(SIM_BUILD)/cifar128.json $(PERF_DOCS)/cifar.json
+	python $(PWD)/cifar_report.py $(PERF_DOCS)/cifar.json > $(PERF_DOCS)/cifar.md
