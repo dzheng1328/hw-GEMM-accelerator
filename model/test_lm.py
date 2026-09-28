@@ -68,6 +68,25 @@ def test_leftover_part_file_is_not_counted_as_a_finished_shard(tmp_path, monkeyp
     assert tinystories_data._shard_bin_done(Path("data03.json"))
 
 
+def test_load_tokens_memmaps_train_and_val_from_streamed_shards(tmp_path, monkeypatch):
+    monkeypatch.setattr(tinystories_data, "TOK_DIR", tmp_path)
+    fake_shards = [Path(f"data0{i}.json") for i in range(3)]
+    monkeypatch.setattr(tinystories_data, "shard_paths", lambda: fake_shards)
+    shards = [np.arange(i * 10, i * 10 + 10, dtype=np.uint16) for i in range(3)]
+    for i, s in enumerate(shards):
+        s.tofile(tmp_path / f"data0{i}.bin")
+    # a leftover .part from an interrupted build must not be mistaken for the finished train.bin
+    (tmp_path / "train.bin.part").write_bytes(b"stale, from an interrupted run")
+
+    train = tinystories_data.load_tokens("train")
+    val = tinystories_data.load_tokens("val")
+
+    assert isinstance(train, np.memmap) and isinstance(val, np.memmap)
+    assert np.array_equal(train, np.concatenate(shards[1:]))
+    assert np.array_equal(val, shards[0])
+    assert not (tmp_path / "train.bin.part").exists()
+
+
 def test_sample_windows_are_contiguous_slices():
     tokens = np.arange(10_000, dtype=np.uint16)
     w = tinystories_data.sample_windows(tokens, 5, np.random.default_rng(1))
@@ -78,6 +97,7 @@ def test_sample_windows_are_contiguous_slices():
 import torch
 
 import lm_net
+import lm_train
 
 
 def test_storynet_shapes_and_parameter_count():
@@ -120,3 +140,78 @@ def test_probe_path_equals_fast_path():
     names = {"resid", "normf", "logits"} | {f"l{i}.{n}" for i in range(lm_spec.N_LAYERS)
                                            for n in ("norm1", "q", "k", "v", "score", "att", "norm2", "g", "u", "h")}
     assert set(probe.samples) == names
+
+
+def test_accumulate_grads_matches_one_full_batch_backward():
+    torch.manual_seed(0)
+    model = lm_net.StoryNet()
+    windows = torch.randint(0, lm_spec.VOCAB, (lm_train.BATCH_SIZE, 17))  # short context, fast
+
+    model.zero_grad(set_to_none=True)
+    mean_loss = lm_train.accumulate_grads(model, windows)
+    accum_grads = {n: p.grad.clone() for n, p in model.named_parameters()}
+
+    model.zero_grad(set_to_none=True)
+    _, full_loss = model(windows[:, :-1], windows[:, 1:])
+    full_loss.backward()
+
+    assert abs(mean_loss - full_loss.item()) < 1e-6
+    for n, p in model.named_parameters():
+        assert torch.allclose(accum_grads[n], p.grad, atol=1e-6), n
+
+
+def _tiny_train_data(monkeypatch):
+    # A short context keeps these tests fast; StoryNet.forward slices its RoPE
+    # table to the sequence length, so shrinking lm_net's/tinystories_data's
+    # module-level CTX (not lm_spec's) is enough -- no other shapes depend on it.
+    monkeypatch.setattr(lm_net, "CTX", 16)
+    monkeypatch.setattr(tinystories_data, "CTX", 16)
+    train_tokens = np.arange(20_000, dtype=np.uint16) % lm_spec.VOCAB
+    val_windows = tinystories_data.sample_windows(
+        np.arange(2_000, dtype=np.uint16) % lm_spec.VOCAB, 4, np.random.default_rng(1)
+    )
+    return train_tokens, val_windows
+
+
+def test_resume_gives_bit_identical_weights_to_an_uninterrupted_run(tmp_path, monkeypatch):
+    train_tokens, val_windows = _tiny_train_data(monkeypatch)
+
+    straight_dir = tmp_path / "straight"
+    lm_train.train(6, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=straight_dir)
+
+    # Pause after 3 iterations by flipping the same module flag the SIGTERM/SIGINT handler sets.
+    resumed_dir = tmp_path / "resumed"
+    orig_accumulate_grads = lm_train.accumulate_grads
+    calls = {"n": 0}
+
+    def stop_after_three(model, w):
+        calls["n"] += 1
+        loss = orig_accumulate_grads(model, w)
+        if calls["n"] == 3:
+            lm_train._STOP = True
+        return loss
+
+    # Direct assignment (not monkeypatch.setattr): monkeypatch.undo() would also
+    # revert the CTX patches from _tiny_train_data, which must stay in effect
+    # for the resume call below.
+    lm_train.accumulate_grads = stop_after_three
+    log = lm_train.train(6, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=resumed_dir)
+    assert log == [] and lm_train._STOP is True
+    lm_train.accumulate_grads = orig_accumulate_grads
+    lm_train._STOP = False
+
+    lm_train.train(6, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=resumed_dir, resume=True)
+
+    straight_weights = torch.load(straight_dir / "lm_float.pt", weights_only=True)
+    resumed_weights = torch.load(resumed_dir / "lm_float.pt", weights_only=True)
+    assert straight_weights.keys() == resumed_weights.keys()
+    for k in straight_weights:
+        assert torch.equal(straight_weights[k], resumed_weights[k]), k
+
+
+def test_resume_with_different_total_iters_raises(tmp_path, monkeypatch):
+    train_tokens, val_windows = _tiny_train_data(monkeypatch)
+    out_dir = tmp_path / "run"
+    lm_train.train(2, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir)
+    with pytest.raises(SystemExit):
+        lm_train.train(3, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir, resume=True)

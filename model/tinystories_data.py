@@ -101,13 +101,30 @@ def pretokenize() -> None:
         pool.map(_pretokenize_shard, todo)
 
 
-def load_tokens(split: str) -> np.ndarray:
-    """All training shards (1-49) concatenated, or the validation shard (0)."""
+def _build_tokens_bin(dest: Path, shards: list[Path]) -> None:
+    """Stream `shards` into dest, one shard at a time (never more than one in
+    RAM), then rename into place atomically -- same convention as the
+    per-shard .bin writes in _pretokenize_shard."""
+    part = dest.with_name(dest.name + ".part")
+    with open(part, "wb") as out:
+        for shard in shards:
+            with open(shard, "rb") as src:
+                shutil.copyfileobj(src, out, 1 << 20)
+    part.rename(dest)
+
+
+def load_tokens(split: str) -> np.memmap:
+    """All training shards (1-49) concatenated, or the validation shard (0),
+    as a read-only memmap over a cached train.bin / val.bin (built once by
+    streaming the per-shard .bin files, never held fully in RAM)."""
     paths = sorted(TOK_DIR.glob("data*.bin"))
     if len(paths) != len(shard_paths()):
         raise FileNotFoundError("run `python model/tinystories_data.py` to pretokenize first")
-    chosen = [paths[VAL_SHARD]] if split == "val" else paths[:VAL_SHARD] + paths[VAL_SHARD + 1 :]
-    return np.concatenate([np.fromfile(p, dtype=np.uint16) for p in chosen])
+    dest = TOK_DIR / ("val.bin" if split == "val" else "train.bin")
+    if not dest.exists():
+        shards = [paths[VAL_SHARD]] if split == "val" else paths[:VAL_SHARD] + paths[VAL_SHARD + 1 :]
+        _build_tokens_bin(dest, shards)
+    return np.memmap(dest, dtype=np.uint16, mode="r")
 
 
 def sample_windows(tokens: np.ndarray, n: int, rng: np.random.Generator) -> np.ndarray:
