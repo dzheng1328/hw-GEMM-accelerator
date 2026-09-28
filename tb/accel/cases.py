@@ -62,6 +62,16 @@ def case_net(name):
     return q, layers, rng.integers(-128, 128, (n_images,) + shape)
 
 
+def cycle_budget(slots, wb_words, tiles):
+    """Cycles a case gets before the test calls it hung. Node (0,0) injects
+    at most one OPERAND slot and delivers at most one result word per cycle,
+    and each tile computes its share of the slots while it cannot load more;
+    measured runs take 0.9-1.2x (slots + words written back) on 2x2 and up,
+    and 2.3x on one tile, so this ends a deadlocked run within about three
+    times its real length."""
+    return 2 * (slots + wb_words) + 2 * slots // tiles + 10_000
+
+
 def is_cifar(name):
     """N for a case named cifarN, else None."""
     if name.startswith("cifar") and name[5:].isdigit() and 1 <= int(name[5:]) <= N_CIFAR_IMAGES:

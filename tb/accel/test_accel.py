@@ -86,7 +86,7 @@ async def test_case_matches_golden(dut):
     b = cases.case_build(CASE, *MESH)
     g = Tracer(*MESH, b.program, b.lowered.weights, b.act)
     want = g.run().view(np.uint64)[: b.lowered.mem.total_words]
-    cycles = await run(dut, 40 * g.slots + 10_000)
+    cycles = await run(dut, cases.cycle_budget(g.slots, g.wb_words, MESH[0] * MESH[1]))
     got = read_act(dut, len(want))
     bad = np.flatnonzero(got != want)
     assert not bad.size, (f"{bad.size} of {len(want)} activation words differ; first word {bad[0]}: "
