@@ -7,6 +7,7 @@ tokenizer model (model/tok512.model) is committed."""
 
 import json
 import os
+import shutil
 import tarfile
 from multiprocessing import Pool
 from pathlib import Path
@@ -30,8 +31,12 @@ EVAL_SEED = 1234
 
 def shard_paths() -> list[Path]:
     if not SHARD_DIR.exists():
+        part = SHARD_DIR.with_name(SHARD_DIR.name + ".part")
+        if part.exists():
+            shutil.rmtree(part)
         with tarfile.open(download(URL, ARCHIVE, sha256=ARCHIVE_SHA256)) as tar:
-            tar.extractall(SHARD_DIR, filter="data")
+            tar.extractall(part, filter="data")
+        part.rename(SHARD_DIR)
     return sorted(SHARD_DIR.glob("data*.json"))
 
 
@@ -75,12 +80,23 @@ def _pretokenize_shard(path: Path) -> None:
 
     sp = spm.SentencePieceProcessor(model_file=str(TOKENIZER_PATH))
     ids = np.concatenate([np.array(encode_story(sp, s), dtype=np.uint16) for s in read_stories(path)])
-    ids.tofile(TOK_DIR / f"{path.stem}.bin")
+    part = TOK_DIR / f"{path.stem}.bin.part"
+    ids.tofile(part)
+    part.rename(TOK_DIR / f"{path.stem}.bin")
+
+
+def _shard_bin_done(path: Path) -> bool:
+    """A shard's pretokenized .bin is only ever created by renaming from a
+    completed .bin.part, so a leftover .part (interrupted run) never counts
+    as done -- only the final, whole-file .bin name does."""
+    return (TOK_DIR / f"{path.stem}.bin").exists()
 
 
 def pretokenize() -> None:
     TOK_DIR.mkdir(parents=True, exist_ok=True)
-    todo = [p for p in shard_paths() if not (TOK_DIR / f"{p.stem}.bin").exists()]
+    for stale in TOK_DIR.glob("*.bin.part"):
+        stale.unlink()
+    todo = [p for p in shard_paths() if not _shard_bin_done(p)]
     with Pool() as pool:
         pool.map(_pretokenize_shard, todo)
 

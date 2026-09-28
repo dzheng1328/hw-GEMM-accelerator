@@ -3,6 +3,7 @@ dataset or trains: tests use synthetic data, a tiny tokenizer trained in a
 temp dir, and (once frozen) model/lm_quantized.npz."""
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -57,6 +58,14 @@ def test_decode_splits_stories_at_bos(tiny_sp):
     pieces = [tiny_sp.id_to_piece(i) for i in range(tiny_sp.get_piece_size())]
     ids = tinystories_data.encode_story(tiny_sp, "the cat sat.") + tinystories_data.encode_story(tiny_sp, "Tom ran.")
     assert lm_tok.decode(pieces, ids) == "the cat sat."
+
+
+def test_leftover_part_file_is_not_counted_as_a_finished_shard(tmp_path, monkeypatch):
+    monkeypatch.setattr(tinystories_data, "TOK_DIR", tmp_path)
+    (tmp_path / "data03.bin.part").write_bytes(b"partial, from an interrupted run")
+    assert not tinystories_data._shard_bin_done(Path("data03.json"))
+    (tmp_path / "data03.bin").write_bytes(b"whole file, written by a completed rename")
+    assert tinystories_data._shard_bin_done(Path("data03.json"))
 
 
 def test_sample_windows_are_contiguous_slices():
