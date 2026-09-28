@@ -30,18 +30,20 @@ An entry fixed at issue keeps a later ADD from moving results still in flight, a
 Plusarg `$readmemh` is the spec's boot-image model, needs no test-only port on `accel`, and gives every case a freshly zeroed memory, so a word the RTL forgets to write cannot hide behind a previous case's value.
 **Result:** six cases (the compiler's `small` and `wide` nets and four random 2-3 layer stacks) are bit-exact against `compiler/golden.py` over the whole used activation memory, and the perf counters equal golden's BLOCK, slot, and write-back totals:
 
-| Case | BLOCKs | Slots | 2x2 cycles | 4x3 cycles |
-|---|---:|---:|---:|---:|
-| small (2 images) | 196 | 9248 | 11480 | 11174 |
-| wide (1 image) | 216 | 11968 | 13774 | 13470 |
-| rand0 | 120 | 5568 | 6920 | 6778 |
-| rand1 | 128 | 1536 | 5533 | 5225 |
-| rand2 | 112 | 3456 | 5869 | 5653 |
-| rand3 | 168 | 9024 | 10420 | 10304 |
+| Case | BLOCKs | Slots | Words written back | 2x2 cycles | 4x3 cycles |
+|---|---:|---:|---:|---:|---:|
+| small (2 images) | 196 | 9248 | 1024 | 11480 | 11174 |
+| wide (1 image) | 216 | 11968 | 1216 | 13774 | 13470 |
+| rand0 | 120 | 5568 | 768 | 6920 | 6778 |
+| rand1 | 128 | 1536 | 4608 | 5533 | 5225 |
+| rand2 | 112 | 3456 | 2432 | 5869 | 5653 |
+| rand3 | 168 | 9024 | 768 | 10420 | 10304 |
 
 `small` takes 23352 cycles on 1x1.
-From 2x2 on, runs are bound by the single injection port at node (0,0), at 80-89% slot utilization on the K-heavy cases; `rand1`'s short-K layers show the per-BLOCK overhead (DMA pipeline fill plus the GO beat) at 28%.
-That is the saturation 4.2f measures.
+Node (0,0) has two single-flit-per-cycle ports, and each case saturates one of them.
+The K-heavy cases are bound by injection: 80-89% of cycles carry an OPERAND slot from 2x2 on.
+Cases with raw-output conv layers are bound by result delivery: a raw block returns 64 RESULT flits through (0,0)'s LOCAL output, one per cycle, so `rand1` spends at least 4608 of its 5533 cycles receiving results, and its slot utilization is 28%.
+Adding tiles barely helps either kind (2x2 to 4x3 saves 1-6%); which corner port saturates, and when, is what 4.2f measures.
 Planted bugs in the fetch address during a BLOCK, the no_ret credit exemption, the RESULT8 row select, the FIFO read pointer, and the raw write-back step each fail a suite.
 Generic Yosys synthesis, no latches: `cmd_seq` 2181 cells (539 flip-flops), `writeback` at 4x3 3709 cells (1074 flip-flops).
 
