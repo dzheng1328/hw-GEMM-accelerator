@@ -58,7 +58,7 @@ module cmd_seq #(
     output reg                 error,
     output reg  [PC_W-1:0]     error_pc,
     output wire                busy,          // running (rtl/cmd_perf.v)
-    output wire                wait_stall,    // WAIT or END waiting on write-back
+    output wire                wait_stall,    // WAIT or END waiting on write-back or the DMA to drain
     output wire                credit_stall,  // returning BLOCK waiting on a full FIFO
     // Program memory read port.
     output wire                prog_re,

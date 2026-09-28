@@ -29,6 +29,11 @@ def combine(records):
             raise ValueError(f"{r['mesh']}: RTL predictions differ from the NumPy reference")
         if sum(r["mesh_perf"]["feed_cyc"]) != r["counters"]["slot_cyc"]:
             raise ValueError(f"{r['mesh']}: tiles fed a different number of slots than the DMA sent")
+        c = r["counters"]
+        categorized = c["slot_cyc"] + c["blocks"] + c["inj_stall_cyc"] + c["wait_cyc"] + c["credit_cyc"]
+        if categorized > c["run_cyc"]:
+            raise ValueError(f"{r['mesh']}: categorized cycles ({categorized}) exceed run cycles "
+                              f"({c['run_cyc']}) -- Other would be negative")
     return records
 
 

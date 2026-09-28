@@ -53,6 +53,13 @@ def test_combine_refuses_feeds_that_do_not_match_the_slots_sent():
         combine([bad])
 
 
+def test_combine_refuses_categorized_cycles_exceeding_run_cycles():
+    bad = record("2x2", 4, 5_900, 90)
+    bad["counters"]["wait_cyc"] = 1_000_000  # would make "Other" negative
+    with pytest.raises(ValueError, match="exceed run cycles"):
+        combine([bad])
+
+
 def test_combine_refuses_a_mesh_twice():
     with pytest.raises(ValueError, match="same mesh"):
         combine(RECORDS + [RECORDS[0]])
