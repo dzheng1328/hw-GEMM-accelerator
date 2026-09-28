@@ -24,6 +24,14 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-28 -- cocotb's Force on an internal net is a silent no-op under Verilator
+
+**Phase:** Phase 4 (4.2d)
+**Problem:** proving `accel.v`'s "RESULT delivered away from (0,0)" `$fatal` needs a RESULT at a node the command processor never addresses, so the negative test forces that node's `res_valid`. Under Verilator, cocotb only logged `vpi_put_value used with vpiForceFlag on non-forceable signal` and the test passed.
+**Cause:** Verilator forces only signals marked forceable (a `forceable` line in a `.vlt` file or a `/*verilator forceable*/` comment). Adding a `.vlt` by overriding `COMPILE_ARGS` on the make command line also drops cocotb's own Verilator flags, and the build fails with `Vtop.mk: No such file`.
+**Fix:** `make stray-check` in `tb/accel/` runs that probe under Icarus, where Force works, and passes only if the run dies with the check's message.
+**Takeaway:** a negative test must assert the specific failure message, not just a failure. Under Verilator, a Force needs the forceable marking or it does nothing.
+
 ### 2026-09-25 -- The CIFAR-10 quantizer was committed before it ever ran on a trained checkpoint
 
 **Phase:** Phase 4

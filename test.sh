@@ -2,8 +2,10 @@
 # Run every cocotb test suite (rtl/pe.v, rtl/systolic_array.v, rtl/skew_feeder.v
 # via rtl/tile.v, rtl/operand_mem.v, rtl/gemm_sequencer.v via rtl/gemm_tile.v,
 # rtl/router.v, rtl/requant.v, the two-node NoC via rtl/noc_pair.v, the WxH mesh via
-# rtl/noc_mesh.v at 2x2 and 4x3, MNIST, the perf harness), from any directory, in any
-# fresh shell (no need to `source .venv` or `cd` yourself first).
+# rtl/noc_mesh.v at 2x2 and 4x3, the command processor's front end, rtl/cmd_seq.v,
+# rtl/writeback.v, the accelerator end to end via rtl/accel.v at 2x2, 4x3, and 1x1,
+# MNIST, the perf harness), from any directory, in any fresh shell (no need to
+# `source .venv` or `cd` yourself first).
 #
 # Verilator by default; `SIM=icarus ./test.sh` runs the Icarus cross-check.
 # Extra arguments are passed through to every `make` (e.g. `./test.sh WAVES=1`).
@@ -47,6 +49,21 @@ make "$@"
 
 cd "$REPO_ROOT/tb/dma_gather"
 make "$@"
+
+cd "$REPO_ROOT/tb/cmd_seq"
+make "$@"
+
+cd "$REPO_ROOT/tb/writeback"
+make "$@"
+make orphan-check "$@"
+
+cd "$REPO_ROOT/tb/accel"
+make "$@"
+make MESH_W=4 MESH_H=3 MESH_AW=3 "$@"
+make MESH_W=1 MESH_H=1 ACCEL_CASES=small "$@"
+make error-check "$@"
+make stray-check
+make lint-configs
 
 cd "$REPO_ROOT/tb/mnist"
 make "$@"

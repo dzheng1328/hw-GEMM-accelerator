@@ -173,14 +173,21 @@ class Golden:
         out[~is_tap & lane_ok] = bias_val
         return out
 
-    def _write_back(self, pc, b, acc):
+    def result_words(self, b):
+        """Activation word addresses BLOCK b's results land at under the
+        current registers (spec: write-back): 8 RESULT8 rows, or 64 raw
+        cells in row-major order."""
         out, ostride = self.regs[isa.OUT_BASE], self.regs[isa.OSTRIDE]
         rows = 8 * b.group + np.arange(8)
         if b.requant:
-            words = out + rows * ostride + b.pixel_block
+            return out + rows * ostride + b.pixel_block
+        return (out + (rows[:, None] * ostride + b.pixel_block) * 8 + np.arange(8)[None, :]).reshape(-1)
+
+    def _write_back(self, pc, b, acc):
+        words = self.result_words(b)
+        if b.requant:
             data = np.ascontiguousarray(requant(acc, b.m, b.sh, b.relu).astype(np.int8)).view("<u8").reshape(-1)
         else:
-            words = (out + (rows[:, None] * ostride + b.pixel_block) * 8 + np.arange(8)[None, :]).reshape(-1)
             data = acc.reshape(-1).astype(np.int64).view("<u8")
         if words.max() >= isa.ACT_WORDS:
             raise GoldenError(pc, "write-back address past activation memory")
@@ -191,3 +198,31 @@ class Golden:
         self.pending[words] = pc
         self.pending_words.append(words)
         self.act.view("<u8")[words] = data
+
+
+class Tracer(Golden):
+    """A Golden that also records what the command processor's RTL must do,
+    for the testbenches. After run(): blocks holds every executed BLOCK as
+    (pc, block, registers, epoch, words) -- the 16 registers when it ran,
+    the number of WAITs and ENDs executed before it, and the activation
+    words it writes back (None for no_ret); slots and wb_words are the total
+    OPERAND slots streamed and words written back."""
+
+    def __init__(self, mesh_w, mesh_h, program, weights, act):
+        super().__init__(mesh_w, mesh_h, program, weights, act)
+        self.blocks, self.epoch, self.slots, self.wb_words = [], 0, 0, 0
+
+    def operands(self, b, pc=0):
+        a, bmat = super().operands(b, pc)
+        self.slots += len(a)
+        return a, bmat
+
+    def _block(self, pc, b):
+        super()._block(pc, b)
+        words = None if b.no_ret else self.result_words(b)
+        self.blocks.append((pc, b, tuple(self.regs), self.epoch, words))
+        self.wb_words += 0 if words is None else len(words)
+
+    def _retire(self):
+        super()._retire()
+        self.epoch += 1

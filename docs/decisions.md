@@ -19,6 +19,34 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-28 -- Command processor: read-ahead fetch, write-back entries fixed at issue, one simulator run per memory image
+
+**Context:** 4.2d connects the 4.2c front end (`dma_gather.v`, `flit_pack.v`) to a command sequencer and a result write-back, and puts the whole thing on the mesh as `rtl/accel.v`.
+Three choices shape it.
+**Options considered:** (1) a FETCH state before every command, or reading ahead from the program memory's registered read port; (2) write-back computing each word address from the live OUT_BASE and OSTRIDE registers, or an entry `{raw, base, step}` fixed when the BLOCK issues; (3) loading the memories through a host write port on `accel`, through cocotb writes by hierarchy, or by `$readmemh` from files named by plusargs, with one simulator run per case.
+**Decision:** read ahead; entries fixed at issue; plusarg `$readmemh`, one case per run.
+**Why:** with read-ahead the executing command is the memory's read data itself, so ADD, LOOP, and ENDLOOP take one cycle, and a BLOCK costs nothing extra because `flit_pack` formats the GO flit before its skid, which lets the next command's fetch overlap the GO's accept cycle.
+An entry fixed at issue keeps a later ADD from moving results still in flight, and leaves `writeback.v` only a 3-bit by 12-bit multiply per word.
+Plusarg `$readmemh` is the spec's boot-image model, needs no test-only port on `accel`, and gives every case a freshly zeroed memory, so a word the RTL forgets to write cannot hide behind a previous case's value.
+**Result:** six cases (the compiler's `small` and `wide` nets and four random 2-3 layer stacks) are bit-exact against `compiler/golden.py` over the whole used activation memory, and the perf counters equal golden's BLOCK, slot, and write-back totals:
+
+| Case | BLOCKs | Slots | Words written back | 2x2 cycles | 4x3 cycles |
+|---|---:|---:|---:|---:|---:|
+| small (2 images) | 196 | 9248 | 1024 | 11480 | 11174 |
+| wide (1 image) | 216 | 11968 | 1216 | 13774 | 13470 |
+| rand0 | 120 | 5568 | 768 | 6920 | 6778 |
+| rand1 | 128 | 1536 | 4608 | 5533 | 5225 |
+| rand2 | 112 | 3456 | 2432 | 5869 | 5653 |
+| rand3 | 168 | 9024 | 768 | 10420 | 10304 |
+
+`small` takes 23352 cycles on 1x1.
+Node (0,0) has two single-flit-per-cycle ports, and each case saturates one of them.
+The K-heavy cases are bound by injection: 80-89% of cycles carry an OPERAND slot from 2x2 on.
+Cases with raw-output conv layers are bound by result delivery: a raw block returns 64 RESULT flits through (0,0)'s LOCAL output, one per cycle, so `rand1` spends at least 4608 of its 5533 cycles receiving results, and its slot utilization is 28%.
+Adding tiles barely helps either kind (2x2 to 4x3 saves 1-6%); which corner port saturates, and when, is what 4.2f measures.
+Planted bugs in the fetch address during a BLOCK, the no_ret credit exemption, the RESULT8 row select, the FIFO read pointer, and the raw write-back step each fail a suite.
+Generic Yosys synthesis, no latches: `cmd_seq` 2181 cells (539 flip-flops), `writeback` at 4x3 3709 cells (1074 flip-flops).
+
 ### 2026-09-27 -- DMA front end: stable-input contract, three-stage global-stall pipeline, formatting before the skid
 
 **Context:** 4.2c builds `rtl/dma_gather.v` and `rtl/flit_pack.v`, the part of the command processor that turns one BLOCK into OPERAND and GO flits at node (0,0), and must sustain one slot per cycle.
