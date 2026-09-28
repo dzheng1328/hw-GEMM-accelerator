@@ -219,3 +219,40 @@ def test_resume_with_different_total_iters_raises(tmp_path, monkeypatch):
     lm_train.train(2, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir)
     with pytest.raises(SystemExit):
         lm_train.train(3, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir, resume=True)
+
+
+import lm_reference as ref
+
+
+def test_step_decode_equals_forward_seq():
+    q = ref.random_quantized(0)
+    tokens = np.random.default_rng(1).integers(0, lm_spec.VOCAB, (3, 20))
+    full = ref.forward_seq(q, tokens)
+    cache = ref.new_cache(3)
+    for t in range(20):
+        x = ref.embed_q(q, tokens[:, t : t + 1])
+        for l in range(lm_spec.N_LAYERS):
+            x = ref.block_q(q, l, x, t, cache)
+        assert (ref.logits_q(q, x)[:, 0] == full[:, t]).all(), f"position {t}"
+
+
+def test_forward_seq_is_int16_and_causal():
+    q = ref.random_quantized(2)
+    a = np.random.default_rng(3).integers(0, lm_spec.VOCAB, (1, 12))
+    b = a.copy()
+    b[0, 7:] = (b[0, 7:] + 5) % lm_spec.VOCAB
+    la, lb = ref.forward_seq(q, a), ref.forward_seq(q, b)
+    assert la.dtype == np.int64 and la.min() >= -32768 and la.max() <= 32767
+    assert (la[0, :7] == lb[0, :7]).all()
+
+
+def test_generate_copies_prompt_then_samples():
+    q = ref.random_quantized(4)
+    prompt = np.array([lm_spec.BOS, 10, 20, 30])
+    seeds = np.arange(1, lm_spec.BATCH + 1)
+    log = ref.generate(q, prompt, 12, 256, seeds)
+    assert log.shape == (13, lm_spec.BATCH)
+    assert (log[:4] == prompt[:, None]).all()
+    assert (ref.generate(q, prompt, 12, 256, seeds) == log).all()  # deterministic
+    greedy = ref.generate(q, prompt, 12, 0, seeds)
+    assert (greedy == greedy[:, :1]).all()  # temperature 0: every story identical
