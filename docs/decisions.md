@@ -18,6 +18,22 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-09-28 -- Milestone 4.3: our own Llama-style story model, 8 stories in parallel, attention on the mesh
+
+**Context:** 4.3's roadmap entry (a vector unit plus a tiny story model) needed a concrete target before a spec: how good the stories should be, whose model, how many run at once, and where attention and the nonlinear ops execute.
+**Options considered:** Story quality: a character-level toy, coherent TinyStories English, or the largest model simulation allows.
+Model: our own Llama-style, llama2.c's pretrained `stories260K` as is, or our own GPT-2 style.
+Batch: one story, 8 in parallel, or a per-program batch.
+Execution: (1) the mesh does every matmul and a vector unit does the rest, (2) the vector unit also does attention with its own MAC lanes, (3) vector ops in every tile's result path.
+**Decision:** Coherent TinyStories from a ~280K-parameter Llama-style model we train (RMSNorm, RoPE, SwiGLU, GQA, shaped like `stories260K`), 8 stories decoded in parallel, sampling with a temperature register (0 means argmax), and option (1) with an integer-only vector unit.
+The DMA refill fix from the scaling study moves into 4.3 as 4.3a; a portfolio app replaying the project's timeline becomes the milestone after 4.3, fed by a trace 4.3 exports.
+**Why:** Decoding one story uses 1 of the 8 B lanes; 8 stories fill all of them, so each weight flit feeds 8 stories.
+Training our own keeps quantization in our hands like CIFAR-10, and `stories260K`'s published loss is an outside benchmark.
+Attention is bandwidth-bound whichever unit runs it, so (2) adds a second compute engine for nothing, and (3) would need cross-tile reductions for row-wide ops.
+QK^T BLOCKs have only 8 slots, so the 3-cycle refill that costs CIFAR-10 5% would cost attention about 25%.
+The app waits for 4.3 because the story demo is its centerpiece and the architecture is still changing; the timeline it shows is already recorded in these logs, `docs/perf/`, and the PR history.
+Full design: `docs/specs/2026-09-28-tiny-lm-vector-unit-design.md`.
+
 
 ### 2026-09-28 -- Mesh scaling study: the corner saturates at 2x2, so the next lever is corner bandwidth, not tiles
 
