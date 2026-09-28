@@ -13,6 +13,7 @@ from cocotb.triggers import FallingEdge, RisingEdge
 import flits
 import isa
 from golden import Golden
+from hwview import dma_ports
 from lower import lower, pack_inputs
 from nets import random_net
 
@@ -60,14 +61,8 @@ class Layer:
         dut.wt_we.value = 0
 
     def drive_regs(self, dut):
-        r = self.regs
-        dut.in_base.value = r[isa.IN_BASE]
-        dut.w_base.value = r[isa.W_BASE]
-        dut.cin_log2.value, dut.h_log2.value = r[isa.CIN_LOG2], r[isa.H_LOG2]
-        dut.w_log2.value, dut.wout_log2.value = r[isa.W_LOG2], r[isa.WOUT_LOG2]
-        dut.stride2.value, dut.pad.value = int(r[isa.STRIDE] == 2), r[isa.PAD]
-        dut.ksize.value, dut.ks.value = r[isa.KSIZE], r[isa.KS]
-        dut.bias_start.value, dut.bias_val.value = r[isa.BIAS] & 0xFFFF, r[isa.BIAS] >> 16
+        for name, value in dma_ports(self.regs).items():
+            getattr(dut, name).value = value
 
     def block(self, rng, group, pb, rnd):
         ky0, kx0 = self.plan.round_start_tap(rnd)

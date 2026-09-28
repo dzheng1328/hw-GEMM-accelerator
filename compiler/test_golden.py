@@ -7,7 +7,7 @@ import pytest
 import isa
 from build import build, cifar_build, run_golden
 from cifar_reference import NPZ_PATH, run_int8, run_layers
-from golden import Golden, GoldenError
+from golden import Golden, GoldenError, Tracer
 from lower import read_buffer, read_output
 from nets import NETS, random_net
 
@@ -154,3 +154,35 @@ def test_operands_are_what_a_block_accumulates():
     xi = x[0].astype(np.int64)
     assert np.array_equal(bm[5], xi[5, 5, 2 * np.arange(8)])
     assert np.array_equal(a[5], q["l0_w"][0:8, 5, 0, 1])
+
+
+@pytest.mark.parametrize("name", sorted(NETS))
+def test_tracer_records_every_block_and_the_totals(name):
+    q, layers, x, b = net_build(name, (2, 2))
+    t = Tracer(*b.mesh, b.program, b.lowered.weights, b.act)
+    assert np.array_equal(t.run(), run_golden(b))
+    L, n = b.lowered.layers, len(x)
+    static = sum(isa.decode(w)[0] == isa.BLOCK for w in b.program)
+    assert len(t.blocks) == n * static
+    assert t.slots == n * sum(p.groups * p.pixel_blocks * p.ks for p in L)
+    assert t.wb_words == n * sum(p.out_words for p in L)
+    # A WAIT after every layer but the last, per image, then END.
+    assert t.epoch == n * (len(L) - 1) + 1
+    epochs = [e for _, _, _, e, _ in t.blocks]
+    assert epochs == sorted(epochs)
+    for pc, blk, regs, epoch, words in t.blocks:
+        assert (words is None) == blk.no_ret
+        assert len(regs) == isa.N_REGS
+
+
+def test_result_words_are_where_a_block_writes():
+    b = net_build("small", (1, 1), n_images=1)[-1]
+    act0 = np.asarray(b.act, dtype="<u8").copy()
+    t = Tracer(1, 1, b.program, b.lowered.weights, b.act)
+    act = t.run().view("<u8")
+    written = np.zeros(len(act), bool)
+    for *_, words in t.blocks:
+        if words is not None:
+            written[words] = True
+    changed = np.flatnonzero(act[: len(act0)] != act0)
+    assert written[changed].all(), "golden changed a word no BLOCK's result_words covers"
