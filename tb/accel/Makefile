@@ -37,7 +37,7 @@ SIM_BUILD = $(SIM_ROOT)/sim_build_accel_$(MESH_W)x$(MESH_H)_aw$(MESH_AW)
 CASE_DIR  = $(SIM_BUILD)/cases
 
 # One run is one case (ACCEL_CASE) or one probe (ACCEL_PROBE); test_accel.py reads both.
-export ACCEL_CASE ACCEL_PROBE
+export ACCEL_CASE ACCEL_PROBE CIFAR_RESULTS
 ifneq ($(ACCEL_CASE),)
 PLUSARGS += +program=$(CASE_DIR)/$(ACCEL_CASE)/program.hex +weights=$(CASE_DIR)/$(ACCEL_CASE)/weights.hex \
             $(foreach b,0 1 2 3,+act_bank$(b)=$(CASE_DIR)/$(ACCEL_CASE)/act_bank$(b).hex)

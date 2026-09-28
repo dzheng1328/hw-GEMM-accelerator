@@ -59,6 +59,8 @@ make orphan-check "$@"
 
 cd "$REPO_ROOT/tb/accel"
 make "$@"
+# CIFAR-10 on the chip: 8 frozen test images (make cifar runs all 128).
+make ACCEL_CASES=cifar8 "$@"
 make MESH_W=4 MESH_H=3 MESH_AW=3 "$@"
 make MESH_W=1 MESH_H=1 ACCEL_CASES=small "$@"
 make error-check "$@"
