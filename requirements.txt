@@ -5,6 +5,7 @@ pytest             # cocotb uses it for readable assertion-failure messages
 # Reference model (Phase 1 int8 MNIST model + quantization)
 torch>=2.1
 numpy>=1.24
+sentencepiece>=0.2   # 4.3 story model tokenizer (512-token BPE)
 
 # Physical design (Phase 3 OpenLane place & route)
 openlane==2.3.10

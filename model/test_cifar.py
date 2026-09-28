@@ -67,7 +67,7 @@ def test_download_rejects_a_checksum_mismatch(tmp_path):
     src = tmp_path / "src.bin"
     src.write_bytes(b"not the archive")
     dest = tmp_path / "cache" / "archive.tar.gz"
-    with pytest.raises(ValueError, match="MD5"):
+    with pytest.raises(ValueError, match="md5"):
         cifar_data.download(src.as_uri(), dest, md5="0" * 32)
     assert not dest.exists()
     assert not dest.with_name(dest.name + ".part").exists()
