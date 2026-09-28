@@ -215,6 +215,7 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 
 `make scaling` recompiles the 128-image program for 1x1, 2x1, 2x2, 3x3, and 4x4 meshes and records cycles per image, speedup, MAC utilization, the command processor's cycle breakdown, and node (0,0)'s port occupancy.
 `docs/perf/scaling.md` holds the table, a chart, and the explanation of where and why the corner saturates.
+Result (2026-09-28): the corner saturates at 2x2, since node (0,0)'s single injection port carries one 64-MAC slot per cycle, one tile's peak; `docs/decisions.md` records what that decides.
 
 ## 6. Delivery (sub-issues of #59, in dependency order)
 
