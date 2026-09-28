@@ -6,9 +6,9 @@
 // an OPERAND beat {slot, a, b} becomes an OPERAND flit to the BLOCK's tile,
 // and the GO beat a GO flit with the BLOCK's flags and requant (m, sh), the
 // round's k_chunks, and return address (0, 0) (flit layout: rtl/noc_node.v).
-// Flits are formatted before rtl/flit_buf.v's skid buffer, so the BLOCK
-// fields need only hold until the GO beat is accepted, and in_ready depends
-// only on the skid's registered occupancy.
+// The BLOCK fields arrive with each beat (rtl/dma_gather.v carries them as
+// its tag), and flits are formatted before rtl/flit_buf.v's skid buffer, so
+// in_ready depends only on the skid's registered occupancy.
 module flit_pack #(
     parameter AW    = 2,               // mesh coordinate width
     parameter ADDRW = 6,               // operand slot address bits
@@ -20,7 +20,7 @@ module flit_pack #(
 ) (
     input  wire             clk,
     input  wire             rst,
-    // BLOCK fields, stable until the GO beat is accepted.
+    // BLOCK fields, valid with each beat.
     input  wire [AW-1:0]    dest_x,
     input  wire [AW-1:0]    dest_y,
     input  wire             acc_keep,

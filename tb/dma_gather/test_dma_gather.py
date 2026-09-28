@@ -87,9 +87,26 @@ def drive_block(dut, b):
         getattr(dut, name).value = int(getattr(b, name))
 
 
-async def run_blocks(dut, layer, blocks, rng, ready_prob=1.0):
-    """Issue blocks back to back (each starts right after the previous
-    done); return (flits seen, flits expected)."""
+# Every input the caller must hold only until handoff.
+HELD_INPUTS = ("tile_x", "tile_y", "group", "pixel_block", "round", "ky0", "kx0", "acc_keep", "no_ret",
+               "requant", "relu", "sh", "m", "in_base", "w_base", "cin_log2", "h_log2", "w_log2",
+               "wout_log2", "stride2", "pad", "ksize", "ks", "bias_start", "bias_val")
+
+
+def scramble_inputs(dut, rng):
+    """Drive every BLOCK and register input to random bits: after handoff the
+    DMA must not read them again."""
+    for name in HELD_INPUTS:
+        sig = getattr(dut, name)
+        sig.value = rng.getrandbits(len(sig))
+
+
+async def run_blocks(dut, layer, blocks, rng, ready_prob=1.0, scramble=True):
+    """Issue blocks back to back: each is presented with start held until the
+    DMA's ready, and the next is presented right after the previous one's
+    handoff. With scramble on, every input is driven to garbage for 0-2
+    cycles between handoff and the next start (the new contract: inputs hold
+    only until handoff). Return (flits seen, flits expected)."""
     seen = []
 
     async def collect():
@@ -104,19 +121,27 @@ async def run_blocks(dut, layer, blocks, rng, ready_prob=1.0):
             dut.inj_ready.value = int(rng.random() < ready_prob)
 
     col, bp = cocotb.start_soon(collect()), cocotb.start_soon(backpressure())
-    layer.drive_regs(dut)
     want = []
     for b in blocks:
         want += layer.expected(b)
+        layer.drive_regs(dut)
         drive_block(dut, b)
         dut.start.value = 1
+        while True:
+            await FallingEdge(dut.clk)
+            if dut.ready.value:
+                break
         await RisingEdge(dut.clk)
         dut.start.value = 0
         while True:
             await FallingEdge(dut.clk)
-            if dut.done.value:
+            if dut.handoff.value:
                 break
         await RisingEdge(dut.clk)
+        if scramble:
+            scramble_inputs(dut, rng)
+            for _ in range(rng.randrange(3)):
+                await RisingEdge(dut.clk)
     bp.kill()
     dut.inj_ready.value = 1
     for _ in range(20):
@@ -236,6 +261,36 @@ async def test_one_slot_per_cycle_without_backpressure(dut):
         if dut.inj_valid.value:
             cycles.append(cycle)
     assert len(cycles) == 65 and cycles[-1] - cycles[0] == 64, f"{len(cycles)} flits over cycles {cycles[0]}..{cycles[-1]}"
+
+
+@cocotb.test()
+async def test_back_to_back_blocks_have_no_gap(dut):
+    """Without backpressure consecutive BLOCKs stream with no idle cycle: the
+    next BLOCK's first OPERAND flit directly follows the previous GO flit
+    (the 4.2 DMA idled 3 cycles per BLOCK refilling its pipeline). The next
+    BLOCK starts in the cycle S0 emits the previous GO beat, the edge that
+    overwrites the latched k_chunks and tag."""
+    await reset(dut)
+    rng = random.Random(17)
+    layer = Layer(rng, *FIXED[3])
+    await layer.load(dut)
+    blocks = pick_blocks(rng, layer, 4)
+    cycles = []
+
+    async def watch():
+        cycle = 0
+        while True:
+            await FallingEdge(dut.clk)
+            if dut.inj_valid.value:
+                cycles.append(cycle)
+            cycle += 1
+
+    w = cocotb.start_soon(watch())
+    seen, want = await run_blocks(dut, layer, blocks, rng, scramble=False)
+    w.kill()
+    compare(seen, want)
+    assert cycles[-1] - cycles[0] == len(want) - 1, (
+        f"{len(want)} flits spread over {cycles[-1] - cycles[0] + 1} cycles: a gap between BLOCKs")
 
 
 # Input word offsets for the IN_BASE tests: a first layer lowers to IN_BASE 0,
