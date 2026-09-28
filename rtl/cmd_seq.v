@@ -110,7 +110,7 @@ module cmd_seq #(
     // S_HALT: stopped by END (done) or a fault (error).
     localparam [1:0] S_IDLE = 2'd0, S_EXEC = 2'd1, S_BLOCK = 2'd2, S_HALT = 2'd3;
     localparam [PC_W-1:0] PC_ONE = 1;
-    localparam [3:0] W4 = W, H4 = H;
+    localparam [31:0] W32 = W, H32 = H;
 
     reg [1:0]      state;
     reg [PC_W-1:0] pc;           // address of prog_rdata, the executing command
@@ -151,9 +151,9 @@ module cmd_seq #(
     wire is_end     = (op == OP_END);
     wire exec       = (state == S_EXEC);
 
-    wire [6:0]     tile_lin = {4'd0, by} * {3'd0, W4} + {4'd0, bx};
+    wire [31:0]    tile_lin = {29'd0, by} * W32 + {29'd0, bx};
     wire [TIW-1:0] tile     = tile_lin[TIW-1:0];
-    wire           tile_out = ({1'b0, bx} >= W4) || ({1'b0, by} >= H4);
+    wire           tile_out = ({29'd0, bx} >= W32) || ({29'd0, by} >= H32);
     wire           unused_tile_lin = &{1'b0, tile_lin};
 
     wire bad_op   = !(is_add || is_block || is_wait || is_loop || is_endloop || is_end);

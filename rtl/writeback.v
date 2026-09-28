@@ -52,7 +52,7 @@ module writeback #(
 
     localparam NT = 1 << TIW;          // tile slots; slots >= NN never get entries
     localparam EW = 1 + WA + 12;       // entry: {raw, base, step}
-    localparam [3:0] W4 = W;
+    localparam [31:0] W32 = W;
 
     // Two entries per tile, at {tile, pointer}.
     reg [EW-1:0]  ent [0:2*NT-1];
@@ -61,8 +61,8 @@ module writeback #(
     reg [TIW+1:0] outstanding;         // entries anywhere, at most 2*NT
 
     // ---- Stage R: the delivered flit ----
-    wire [6:0] src_lin = {{(7-AW){1'b0}}, res_src_y} * {3'd0, W4} + {{(7-AW){1'b0}}, res_src_x};
-    wire       unused_src_lin = &{1'b0, src_lin};
+    wire [31:0] src_lin = {{(32-AW){1'b0}}, res_src_y} * W32 + {{(32-AW){1'b0}}, res_src_x};
+    wire        unused_src_lin = &{1'b0, src_lin};
     reg            r_valid, r_q8;
     reg  [TIW-1:0] r_tile;
     reg  [5:0]     r_idx;
