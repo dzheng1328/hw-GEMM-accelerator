@@ -7,7 +7,8 @@ run (rtl/accel.v's memories load their $readmemh images at time 0).
 The cocotb test rebuilds the same case (each is deterministic in its name)
 to run the golden executor. The fault probe wrong_mesh is the small net
 compiled for a mesh one column wider than the build's, so its first BLOCK
-to the extra column must stop the run."""
+to the extra column must stop the run. cifarN (1 <= N <= 128) is the frozen
+CIFAR-10 network on the first N test images of model/cifar_quantized.npz."""
 
 import sys
 import zlib
@@ -17,6 +18,7 @@ import numpy as np
 N_RANDOM = 4
 CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)]
 PROBES = ("wrong_mesh",)
+N_CIFAR_IMAGES = 128  # test images frozen in model/cifar_quantized.npz
 
 # (ksize, stride, pad) of the random stacks' conv layers.
 CONVS = ((3, 1, 1), (3, 2, 1), (1, 1, 0), (1, 2, 0))
@@ -60,10 +62,34 @@ def case_net(name):
     return q, layers, rng.integers(-128, 128, (n_images,) + shape)
 
 
+def cycle_budget(slots, wb_words, tiles):
+    """Cycles a case gets before the test calls it hung. Node (0,0) injects
+    at most one OPERAND slot and delivers at most one result word per cycle,
+    and each tile computes its share of the slots while it cannot load more;
+    measured runs take 0.9-1.2x (slots + words written back) on 2x2 and up,
+    and 2.3x on one tile, so this ends a deadlocked run within about three
+    times its real length."""
+    return 2 * (slots + wb_words) + 2 * slots // tiles + 10_000
+
+
+def is_cifar(name):
+    """N for a case named cifarN, else None."""
+    if name.startswith("cifar") and name[5:].isdigit() and 1 <= int(name[5:]) <= N_CIFAR_IMAGES:
+        return int(name[5:])
+    return None
+
+
 def case_build(name, w, h):
     """The case compiled for a WxH build (a wider mesh for wrong_mesh)."""
     from build import build
 
+    n = is_cifar(name)
+    if n is not None:
+        from build import cifar_build
+        from cifar_reference import NPZ_PATH
+
+        q = np.load(NPZ_PATH)
+        return cifar_build(q, q["test_images"][:n], w, h)
     if name == "wrong_mesh":
         return build(*case_net("small"), *((w + 1, h) if w < 8 else (w, h + 1)))
     if name not in CASES:

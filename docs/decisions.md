@@ -19,6 +19,26 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-28 -- CIFAR-10 runs on the chip; the testbench clock moves into Verilog
+
+**Context:** 4.2d's accelerator already ran one CIFAR-10 image bit-exact, so 4.2e was a harness problem: 128 images at 146K cycles each is 18.7M cycles, and under a cocotb Clock one image took 4.16 s (about 9 minutes for 128, before 4.2f multiplies that by five meshes).
+**Options considered:** (1) keep the cocotb Clock; (2) generate the clock in a Verilog harness module (`always #5`, Verilator `--timing`) and have `run()` wait on `done` instead of polling every cycle; (3) a hand-written Verilator C++ main outside cocotb.
+**Decision:** (2).
+**Why:** one image drops from 4.16 s to 0.85 s with the same cocotb test code under both simulators; (3) would fork the test flow and lose the golden comparison written in Python.
+Removing the per-cycle loop alone saved only about 16%: the Python callback on every clock edge was the cost.
+**Result:** `make cifar` runs all 128 frozen test images in 101 s wall time on a 2x2 mesh (`docs/perf/cifar.md`):
+
+| Metric | Value |
+|---|---:|
+| int8 accuracy (RTL logits vs labels) | 88.28% |
+| Float model accuracy (same images) | 87.50% |
+| RTL agrees with the float model | 99.22% |
+| Cycles per image | 146,430 |
+| OPERAND slot utilization | 90.2% |
+
+The final activation memory equals `compiler/golden.py`'s, and every image's logits and the last image's activations at every layer equal `model/cifar_reference.py`'s, so all three levels of the verification ladder agree.
+Eight images run in `./test.sh` on 2x2; on 4x3 the same eight take 143,906 cycles per image.
+
 ### 2026-09-28 -- Command processor: read-ahead fetch, write-back entries fixed at issue, one simulator run per memory image
 
 **Context:** 4.2d connects the 4.2c front end (`dma_gather.v`, `flit_pack.v`) to a command sequencer and a result write-back, and puts the whole thing on the mesh as `rtl/accel.v`.

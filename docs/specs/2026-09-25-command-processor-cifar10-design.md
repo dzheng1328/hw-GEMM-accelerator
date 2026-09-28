@@ -1,6 +1,6 @@
 # Milestone 4.2 design: on-chip command processor and compiler for CIFAR-10
 
-Status: approved 2026-09-25; 4.2a (model side) landed in PR #74, 4.2b (compiler and golden executor) in PR #76, 4.2c (`dma_gather.v`, `flit_pack.v`, `sim_mem.v`) in PR #77, 4.2d (`cmd_seq.v`, `writeback.v`, `cmd_perf.v`, `accel.v`) on `feature/command-processor`.
+Status: approved 2026-09-25; 4.2a (model side) landed in PR #74, 4.2b (compiler and golden executor) in PR #76, 4.2c (`dma_gather.v`, `flit_pack.v`, `sim_mem.v`) in PR #77, 4.2d (`cmd_seq.v`, `writeback.v`, `cmd_perf.v`, `accel.v`) in PR #78, 4.2e (CIFAR-10 on the chip, `docs/perf/cifar.md`) on `feature/cifar-on-chip`.
 Tracking issue: #59.
 Builds on milestone 4.1 (issues #53-#58): WxH mesh, on-chip requant with packed int8 results, back-to-back K streaming, keep-accumulating GO flags.
 
@@ -208,7 +208,8 @@ A RESULT flit delivered anywhere but node (0,0) is a simulation `$fatal`.
 - pytest: `compiler/test_*.py` (encoding round trips, lowering of small layers, golden vs direct reference on random small nets and on CIFAR).
 - cocotb unit suites: `tb/flit_pack/` (formatting, backpressure, one flit per cycle), `tb/dma_gather/` (random shapes, strides, pads, edges, bias slots, stalls), `tb/writeback/` (FIFO order, full and idle timing, raw and int8 writes, plus a `make orphan-check` negative test), `tb/cmd_seq/` (compiled programs against golden's BLOCK trace, ADD, LOOP, WAIT, END, credit stalls, restart, and every fault's `error_pc`, built with fatal faults off).
 - `tb/accel/`: random small conv stacks compiled and run end to end on 1x1, 2x2, and 4x3, one case per simulator run, memory equal to golden and the perf counters equal to golden's totals; `make error-check` (a program compiled for a wider mesh must stop the run) and `make stray-check` (a RESULT away from (0,0) must stop the run; Icarus only, since cocotb cannot force that net under Verilator).
-  4.2e adds an 8-image CIFAR run to `./test.sh` and `make cifar` for all 128 images, recording accuracy in `docs/perf/`.
+  The harness (`tb/accel/accel_tb.v`) generates the clock in Verilog, since a cocotb Clock made CIFAR-sized runs 5x slower under Verilator.
+  `cifarN` cases also check level 1 on the RTL's own memory (every image's logits and the last image's activations at every layer against `model/cifar_reference.py`) and compute accuracy from the RTL's logits; `./test.sh` runs `cifar8` on 2x2, and `make cifar` runs all 128 images and writes `docs/perf/cifar.json` and `docs/perf/cifar.md`.
 
 ## 5. Scaling study
 

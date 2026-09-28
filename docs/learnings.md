@@ -24,6 +24,14 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-28 -- A cocotb Clock dominates Verilator run time on long simulations
+
+**Phase:** Phase 4 (4.2e)
+**Problem:** one CIFAR-10 image (146K cycles) took 4.16 s in `tb/accel`, which put 128 images at about 9 minutes.
+**Cause:** cocotb 1.9's `Clock` runs a Python callback on every clock edge, and the test's `run()` added a `FallingEdge` await every cycle. Removing the loop saved only about 16%; the clock was the rest.
+**Fix:** `tb/accel/accel_tb.v` generates the clock with `always #5` (Verilator `--timing`), and `run()` awaits `First(RisingEdge(done), RisingEdge(error), Timer(...))`: 0.85 s per image, the same cycle counts, both simulators.
+**Takeaway:** for runs past about 100K cycles, generate the clock in Verilog and keep Python off the per-cycle path.
+
 ### 2026-09-28 -- cocotb's Force on an internal net is a silent no-op under Verilator
 
 **Phase:** Phase 4 (4.2d)
