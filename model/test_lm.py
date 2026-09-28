@@ -194,11 +194,15 @@ def test_resume_gives_bit_identical_weights_to_an_uninterrupted_run(tmp_path, mo
     # Direct assignment (not monkeypatch.setattr): monkeypatch.undo() would also
     # revert the CTX patches from _tiny_train_data, which must stay in effect
     # for the resume call below.
+    # try/finally: a failing assertion below must not leak the patched accumulate_grads
+    # or a stuck _STOP=True into later tests.
     lm_train.accumulate_grads = stop_after_three
-    log = lm_train.train(6, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=resumed_dir)
-    assert log == [] and lm_train._STOP is True
-    lm_train.accumulate_grads = orig_accumulate_grads
-    lm_train._STOP = False
+    try:
+        log = lm_train.train(6, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=resumed_dir)
+        assert log == [] and lm_train._STOP is True
+    finally:
+        lm_train.accumulate_grads = orig_accumulate_grads
+        lm_train._STOP = False
 
     lm_train.train(6, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=resumed_dir, resume=True)
 

@@ -134,7 +134,7 @@ def train(total_iters, *, device, train_tokens, val_windows, out_dir, eval_every
 
     start_iter, log = 0, []
     if resume:
-        state = torch.load(state_path, weights_only=False)
+        state = torch.load(state_path, map_location=device, weights_only=False)
         if state["total_iters"] != total_iters:
             raise SystemExit(
                 f"--resume: saved run has total_iters={state['total_iters']}, but --iters {total_iters} "
