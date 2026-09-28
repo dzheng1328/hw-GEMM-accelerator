@@ -73,3 +73,50 @@ def test_sample_windows_are_contiguous_slices():
     w = tinystories_data.sample_windows(tokens, 5, np.random.default_rng(1))
     assert w.shape == (5, lm_spec.CTX + 1) and w.dtype == np.int64
     assert (np.diff(w, axis=1) == 1).all()
+
+
+import torch
+
+import lm_net
+
+
+def test_storynet_shapes_and_parameter_count():
+    model = lm_net.StoryNet()
+    n = sum(p.numel() for p in model.parameters())
+    assert n == 278_528 + (2 * lm_spec.N_LAYERS + 1) * lm_spec.DIM  # weights + norm gains; tied output
+    logits, loss = model(torch.zeros(2, 5, dtype=torch.long), torch.zeros(2, 5, dtype=torch.long))
+    assert logits.shape == (2, 5, lm_spec.VOCAB) and loss.ndim == 0
+    assert model.output.weight is model.tok_embeddings.weight
+
+
+def test_rope_matches_complex_multiplication():
+    cos, sin = lm_net.rope_cos_sin(16)
+    x = torch.randn(1, 16, 2, lm_spec.HEAD_DIM)
+    y = lm_net.apply_rope(x, cos[None, :, None, :], sin[None, :, None, :])
+    xc = torch.view_as_complex(x.reshape(1, 16, 2, -1, 2).contiguous())
+    ref = torch.view_as_real(xc * torch.polar(torch.ones_like(cos), torch.atan2(sin, cos))[None, :, None, :]).flatten(-2)
+    assert torch.allclose(y, ref, atol=1e-5)
+
+
+def test_storynet_is_causal():
+    torch.manual_seed(0)
+    model = lm_net.StoryNet().eval()
+    a = torch.randint(0, lm_spec.VOCAB, (1, 12))
+    b = a.clone()
+    b[0, 8:] = (b[0, 8:] + 1) % lm_spec.VOCAB
+    with torch.no_grad():
+        la, lb = model(a)[0], model(b)[0]
+    assert torch.allclose(la[0, :8], lb[0, :8], atol=1e-5) and not torch.allclose(la[0, 8:], lb[0, 8:])
+
+
+def test_probe_path_equals_fast_path():
+    torch.manual_seed(1)
+    model = lm_net.StoryNet().eval()
+    x = torch.randint(0, lm_spec.VOCAB, (2, 10))
+    probe = lm_net.Probe()
+    with torch.no_grad():
+        fast, probed = model(x)[0], model(x, probe=probe)[0]
+    assert torch.allclose(fast, probed, atol=1e-5)
+    names = {"resid", "normf", "logits"} | {f"l{i}.{n}" for i in range(lm_spec.N_LAYERS)
+                                           for n in ("norm1", "q", "k", "v", "score", "att", "norm2", "g", "u", "h")}
+    assert set(probe.samples) == names
