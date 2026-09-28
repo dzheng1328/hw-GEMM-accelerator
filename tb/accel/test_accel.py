@@ -23,6 +23,9 @@ MESH = (int(os.environ.get("MESH_W", "2")), int(os.environ.get("MESH_H", "2")))
 CASE = os.environ.get("ACCEL_CASE", "")
 PROBE = os.environ.get("ACCEL_PROBE", "")
 COUNTERS = ("run_cyc", "blocks", "slot_cyc", "inj_stall_cyc", "wait_cyc", "credit_cyc", "wb_words")
+# rtl/node_perf.v counters at node (0,0), where every flit enters and every
+# RESULT leaves the mesh (router LOCAL input: injection + the tile's results).
+CORNER = ("lcl_in_xfer", "lcl_in_stall", "out_xfer_l", "out_xfer_n", "out_xfer_e", "out_stall_n", "out_stall_e")
 
 
 async def reset(dut):
@@ -47,6 +50,15 @@ async def run(dut, max_cycles):
     assert not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
     assert dut.done.value, f"no done within {max_cycles} cycles"
     return round((get_sim_time("ns") - t0 - 5) / 10)
+
+
+def mesh_perf(dut):
+    """node_perf counters for the scaling study: node (0,0)'s ports, and
+    every tile's feed (64-MAC) and busy cycles, in node order (x + W * y)."""
+    nodes = [dut.accel.mesh.g_node[i].node.g_perf.perf for i in range(MESH[0] * MESH[1])]
+    return {"corner": {n: int(getattr(nodes[0], n).value) for n in CORNER},
+            "feed_cyc": [int(p.feed_cyc.value) for p in nodes],
+            "busy_cyc": [int(p.busy_cyc.value) for p in nodes]}
 
 
 def read_act(dut, n_words):
@@ -101,7 +113,7 @@ async def test_case_matches_golden(dut):
     if n is not None:
         record = check_cifar(b, got, n)
         record.update(mesh=f"{MESH[0]}x{MESH[1]}", cycles=cycles, cycles_per_image=cycles / n,
-                      slot_utilization=g.slots / cycles, counters=counts)
+                      slot_utilization=g.slots / cycles, counters=counts, mesh_perf=mesh_perf(dut))
         dut._log.info("%s", record)
         if os.environ.get("CIFAR_RESULTS"):
             with open(os.environ["CIFAR_RESULTS"], "w") as f:

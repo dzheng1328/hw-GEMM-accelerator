@@ -19,6 +19,28 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-28 -- Mesh scaling study: the corner saturates at 2x2, so the next lever is corner bandwidth, not tiles
+
+**Context:** 4.2's exit criteria include a scaling study that shows where the memory corner becomes the bottleneck, and the 4.2 spec leaves it to that study to decide which deferred item comes first: double-buffered operand memory, more memory ports on the mesh edge, dynamic tile scheduling, or weight residency.
+`make -j5 scaling` in `tb/accel/` ran the 128-image CIFAR-10 program, recompiled per mesh, on 1x1, 2x1, 2x2, 3x3, and 4x4, every run bit-exact (`docs/perf/scaling.md`).
+
+| Mesh | Cycles per image | Speedup vs 1x1 | Corner injection busy | Corner injection stalled |
+|---|---:|---:|---:|---:|
+| 1x1 | 313,516 | 1.00x | 44.6% | 53.1% |
+| 2x1 | 163,419 | 1.92x | 83.9% | 11.8% |
+| 2x2 | 146,430 | 2.14x | 92.8% | 2.1% |
+| 3x3 | 145,415 | 2.16x | 92.9% | 1.9% |
+| 4x4 | 143,533 | 2.18x | 94.0% | 0.8% |
+
+The corner saturates at 2x2: 4x4 has four times the tiles and is 2.0% faster.
+Node (0,0) injects one flit per cycle, and one OPERAND flit (an A column and a B row) is 64 MACs, one tile's peak rate, so the whole mesh is capped at one busy tile's throughput: 134,482 injected flits per image, a floor that 4x4 comes within 6.3% of.
+**Options considered:** (1) more tiles; (2) double-buffered operand memory; (3) dynamic tile scheduling; (4) overlapping the DMA's pipeline refill across BLOCK boundaries; (5) more work per injected flit or more flits per cycle at the corner: operand reuse inside the tiles (weight residency, so a flit carries only activations), multicast of shared operands, or more edge memory ports.
+**Decision:** (5) is the only lever that raises the ceiling, and it comes first whenever throughput matters again; (4) is a cheap, bounded fix for the rest; (1), (2), and (3) wait.
+**Why:** (1) is measured to buy 2% from 4 to 16 tiles.
+(2) only helps a tile that is fed faster than it computes, which happens only on 1x1: from 2x2 up the injection port stalls 2% of cycles or less, because a second tile already loads while the first computes (2x1 is 1.92x over 1x1).
+(3) balances tile load, but with the corner 93-94% busy an idle tile costs nothing.
+(4) is the "Other" column: about 3.0 cycles per BLOCK on every mesh, 5% of run time, which matches `rtl/dma_gather.v`'s three-stage pipeline refilling because `cmd_seq` starts the next BLOCK only at the previous one's `done`.
+
 ### 2026-09-28 -- CIFAR-10 runs on the chip; the testbench clock moves into Verilog
 
 **Context:** 4.2d's accelerator already ran one CIFAR-10 image bit-exact, so 4.2e was a harness problem: 128 images at 146K cycles each is 18.7M cycles, and under a cocotb Clock one image took 4.16 s (about 9 minutes for 128, before 4.2f multiplies that by five meshes).
