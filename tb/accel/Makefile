@@ -9,6 +9,7 @@
 #   make stray-check                      a RESULT away from (0,0) must stop the run (Icarus)
 #   make lint-configs                     lint sizes no run covers
 #   make cifar                            all 128 CIFAR-10 images; writes docs/perf/cifar.{json,md}
+#   make scaling                          the same on 1x1 .. 4x4; writes docs/perf/scaling.{json,md}
 
 include $(PWD)/../common.mk
 
@@ -48,7 +49,7 @@ COCOTB_RESULTS_FILE = $(SIM_BUILD)/results_$(or $(ACCEL_CASE),$(ACCEL_PROBE),non
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 .DEFAULT_GOAL := cases
-.PHONY: cases error-check stray-check lint-configs cifar
+.PHONY: cases error-check stray-check lint-configs cifar scaling
 
 cases:
 	@for c in $(or $(ACCEL_CASES),$$(python $(PWD)/cases.py list)); do \
@@ -99,3 +100,25 @@ cifar:
 	$(MAKE) --no-print-directory cases ACCEL_CASES=cifar128 CIFAR_RESULTS=$(SIM_BUILD)/cifar128.json
 	cp $(SIM_BUILD)/cifar128.json $(PERF_DOCS)/cifar.json
 	python $(PWD)/cifar_report.py $(PERF_DOCS)/cifar.json > $(PERF_DOCS)/cifar.md
+
+# The mesh scaling study (issue #73): the CIFAR-10 program recompiled and run
+# on each mesh (every run bit-exact, as in make cifar), then one table, chart,
+# and explanation in docs/perf/ only if every run passes. Each mesh is its own
+# target, rerun every time (FORCE), so `make -j5 scaling` runs them at once.
+# SCALING_CASE=cifar8 is a quick look; the committed study is cifar128.
+# AW=2 fits meshes up to 4x4.
+SCALING_SHAPES ?= 1x1 2x1 2x2 3x3 4x4
+SCALING_CASE   ?= cifar128
+SCALING_DIR     = $(SIM_ROOT)/scaling_$(SCALING_CASE)
+SCALING_RUNS    = $(foreach s,$(SCALING_SHAPES),$(SCALING_DIR)/$(s).json)
+scaling: $(SCALING_RUNS)
+	python $(PWD)/scaling_report.py combine $(PERF_DOCS)/scaling.json $(SCALING_RUNS)
+	python $(PWD)/scaling_report.py render $(PERF_DOCS)/scaling.json > $(PERF_DOCS)/scaling.md
+
+$(SCALING_DIR)/%.json: FORCE
+	@mkdir -p $(SCALING_DIR); rm -f $@
+	$(MAKE) --no-print-directory cases MESH_W=$(word 1,$(subst x, ,$*)) MESH_H=$(word 2,$(subst x, ,$*)) \
+	    MESH_AW=2 ACCEL_CASES=$(SCALING_CASE) CIFAR_RESULTS=$@ > $(SCALING_DIR)/$*.log 2>&1 \
+	    || { tail -20 $(SCALING_DIR)/$*.log; echo "FAIL: $(SCALING_CASE) on $*, see $(SCALING_DIR)/$*.log"; exit 1; }
+
+FORCE:

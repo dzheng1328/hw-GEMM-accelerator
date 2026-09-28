@@ -73,5 +73,5 @@ make "$@"
 cd "$REPO_ROOT/tb/perf"
 make "$@"
 
-python -m pytest -q "$REPO_ROOT/tb/test_check_results.py" "$REPO_ROOT/tb/perf/test_perflib.py" "$REPO_ROOT/tb/accel/test_cifar_report.py" "$REPO_ROOT/tb/accel/test_cases.py" \
+python -m pytest -q "$REPO_ROOT/tb/test_check_results.py" "$REPO_ROOT/tb/perf/test_perflib.py" "$REPO_ROOT/tb/accel/test_cifar_report.py" "$REPO_ROOT/tb/accel/test_scaling_report.py" "$REPO_ROOT/tb/accel/test_cases.py" \
     "$REPO_ROOT/model/test_fixedpoint.py" "$REPO_ROOT/model/test_cifar.py" "$REPO_ROOT/compiler"
