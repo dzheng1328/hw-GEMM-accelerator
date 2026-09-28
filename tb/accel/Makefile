@@ -17,8 +17,8 @@ VERILOG_SOURCES = $(RTL)/pe.v $(RTL)/systolic_array.v $(RTL)/skew_feeder.v $(RTL
                   $(RTL)/gemm_sequencer.v $(RTL)/gemm_tile.v $(RTL)/router.v $(RTL)/flit_buf.v \
                   $(RTL)/node_perf.v $(RTL)/requant.v $(RTL)/noc_node.v $(RTL)/noc_mesh.v \
                   $(RTL)/sim_mem.v $(RTL)/dma_gather.v $(RTL)/flit_pack.v $(RTL)/cmd_seq.v \
-                  $(RTL)/writeback.v $(RTL)/cmd_perf.v $(RTL)/accel.v
-TOPLEVEL = accel
+                  $(RTL)/writeback.v $(RTL)/cmd_perf.v $(RTL)/accel.v $(PWD)/accel_tb.v
+TOPLEVEL = accel_tb
 MODULE = test_accel
 
 export MESH_W  ?= 2
@@ -28,6 +28,8 @@ ifeq ($(SIM),icarus)
 COMPILE_ARGS += -P$(TOPLEVEL).W=$(MESH_W) -P$(TOPLEVEL).H=$(MESH_H) -P$(TOPLEVEL).AW=$(MESH_AW)
 else
 COMPILE_ARGS += -GW=$(MESH_W) -GH=$(MESH_H) -GAW=$(MESH_AW)
+# accel_tb.v generates the clock with a delay: 5x faster than a cocotb Clock.
+COMPILE_ARGS += --timing
 endif
 
 # One build dir per shape; each case's images live under it.
@@ -85,5 +87,5 @@ lint-configs:
 	@for cfg in $(LINT_CONFIGS); do \
 	  echo "lint accel $$cfg"; \
 	  verilator --lint-only -Wall $$(echo $$cfg | tr _ ' ') $(TB_DIR)/lint_waivers.vlt \
-	      $(VERILOG_SOURCES) --top-module $(TOPLEVEL) || exit 1; \
+	      $(filter-out %/accel_tb.v,$(VERILOG_SOURCES)) --top-module accel || exit 1; \
 	done

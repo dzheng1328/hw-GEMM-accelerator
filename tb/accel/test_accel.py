@@ -10,9 +10,9 @@ import os
 
 import cocotb
 import numpy as np
-from cocotb.clock import Clock
 from cocotb.handle import Force
-from cocotb.triggers import FallingEdge, RisingEdge
+from cocotb.triggers import FallingEdge, First, RisingEdge, Timer
+from cocotb.utils import get_sim_time
 
 import cases
 from golden import Tracer
@@ -24,7 +24,6 @@ COUNTERS = ("run_cyc", "blocks", "slot_cyc", "inj_stall_cyc", "wait_cyc", "credi
 
 
 async def reset(dut):
-    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     dut.start.value = 0
     dut.rst.value = 1
     for _ in range(3):
@@ -34,22 +33,23 @@ async def reset(dut):
 
 
 async def run(dut, max_cycles):
-    """Pulse start and wait for done; returns the falling edges counted from
-    the one after start was sampled up to the first with done high."""
+    """Pulse start and wait for done; returns the clock edges from the one
+    that samples start to the one that raises done (cmd_perf's run_cyc).
+    Fails on error or after max_cycles."""
     dut.start.value = 1
     await RisingEdge(dut.clk)
     dut.start.value = 0
-    for cycles in range(1, max_cycles + 1):
-        await FallingEdge(dut.clk)
-        assert not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
-        if dut.done.value:
-            return cycles
-    raise AssertionError(f"no done within {max_cycles} cycles")
+    t0 = get_sim_time("ns")
+    await First(RisingEdge(dut.done), RisingEdge(dut.error), Timer(10 * max_cycles, "ns"))
+    await FallingEdge(dut.clk)
+    assert not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
+    assert dut.done.value, f"no done within {max_cycles} cycles"
+    return round((get_sim_time("ns") - t0 - 5) / 10)
 
 
 def read_act(dut, n_words):
     """Activation words 0 .. n_words - 1 (word w: bank w mod 4, address w >> 2)."""
-    banks = [dut.g_act[b].bank.mem for b in range(4)]
+    banks = [dut.accel.g_act[b].bank.mem for b in range(4)]
     return np.array([int(banks[w % 4][w >> 2].value) for w in range(n_words)], dtype=np.uint64)
 
 
@@ -68,13 +68,12 @@ async def test_case_matches_golden(dut):
     bad = np.flatnonzero(got != want)
     assert not bad.size, (f"{bad.size} of {len(want)} activation words differ; first word {bad[0]}: "
                           f"got {int(got[bad[0]]):016x}, want {int(want[bad[0]]):016x}")
-    perf = dut.g_perf.perf
+    perf = dut.accel.g_perf.perf
     counts = {n: int(getattr(perf, n).value) for n in COUNTERS}
     assert counts["blocks"] == len(g.blocks), counts
     assert counts["slot_cyc"] == g.slots, counts
     assert counts["wb_words"] == g.wb_words, counts
-    # busy from the edge that samples start to the edge that raises done.
-    assert counts["run_cyc"] == cycles - 1, (counts, cycles)
+    assert counts["run_cyc"] == cycles, (counts, cycles)
     dut._log.info("%s on %dx%d: %d cycles, %d BLOCKs, %d slots (%.1f%% of cycles), %s",
                   CASE, *MESH, cycles, len(g.blocks), g.slots, 100 * g.slots / cycles, counts)
 
@@ -84,7 +83,7 @@ async def test_stray_result_is_fatal(dut):
     """Run only by `make stray-check` (Icarus): a RESULT forced onto node
     (1,0)'s delivery port must stop the run; reaching the end means it did not."""
     await reset(dut)
-    dut.mesh.res_valid.value = Force(0b10)
+    dut.accel.mesh.res_valid.value = Force(0b10)
     for _ in range(5):
         await RisingEdge(dut.clk)
     raise AssertionError("a RESULT at node (1,0) did not stop the run")
