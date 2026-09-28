@@ -1,6 +1,6 @@
 # Milestone 4.3 design: a tiny story model and a vector unit
 
-Status: approved in conversation 2026-09-28; awaiting review of this written spec.
+Status: approved 2026-09-28; sub-issues #81-#87.
 Tracking issue: #60.
 Builds on milestone 4.2 (issues #59, #68-#73): the command processor, strided DMA, write-back, compiler, and golden executor that run CIFAR-10 on the chip.
 
