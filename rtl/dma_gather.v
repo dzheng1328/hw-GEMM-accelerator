@@ -33,7 +33,7 @@ module dma_gather #(
 ) (
     input  wire                clk,
     input  wire                rst,
-    // One BLOCK; held stable from start until done.
+    // One BLOCK; held stable from start until handoff.
     input  wire                start,
     input  wire [5:0]          group,
     input  wire [7:0]          pixel_block,

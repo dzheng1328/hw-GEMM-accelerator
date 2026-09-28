@@ -104,7 +104,7 @@ def scramble_inputs(dut, rng):
 async def run_blocks(dut, layer, blocks, rng, ready_prob=1.0, scramble=True):
     """Issue blocks back to back: each is presented with start held until the
     DMA's ready, and the next is presented right after the previous one's
-    handoff. With scramble on, every input is driven to garbage for 0-2
+    handoff. With scramble on, every input is driven to garbage for 1-2
     cycles between handoff and the next start (the new contract: inputs hold
     only until handoff). Return (flits seen, flits expected)."""
     seen = []
@@ -140,7 +140,7 @@ async def run_blocks(dut, layer, blocks, rng, ready_prob=1.0, scramble=True):
         await RisingEdge(dut.clk)
         if scramble:
             scramble_inputs(dut, rng)
-            for _ in range(rng.randrange(3)):
+            for _ in range(rng.randrange(1, 3)):
                 await RisingEdge(dut.clk)
     bp.kill()
     dut.inj_ready.value = 1

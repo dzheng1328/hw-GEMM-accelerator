@@ -9,18 +9,21 @@
 //   ADD      dst = src + imm; r0 stays zero
 //   BLOCK    stall while the tile's write-back FIFO is full (returning
 //            BLOCKs only), then start rtl/dma_gather.v, push the write-back
-//            entry, and wait for the DMA's done
-//   WAIT     stall until rtl/writeback.v is idle
+//            entry, and wait for the DMA's handoff
+//   WAIT     stall until rtl/writeback.v and the DMA are idle
 //   LOOP     push (pc + 1, count); ENDLOOP counts down and jumps back
-//   END      stall until write-back is idle, then raise done
+//   END      stall until write-back and the DMA are idle, then raise done
 //
 // Fetch reads ahead. Program memory reads are registered, so the executing
 // command is prog_rdata itself, and a command that completes reads its
-// successor in the same cycle: one command per cycle, no fetch state. A
-// BLOCK leaves prog_rdata -- and with it every BLOCK field the DMA and
-// rtl/flit_pack.v read -- untouched until the DMA's done (the cycle its GO
-// beat is accepted), and reads ahead in that cycle: flit_pack formats the
-// GO flit before its skid buffer, so the fields may change at that edge.
+// successor in the same cycle: one command per cycle, no fetch state.
+// A BLOCK leaves prog_rdata -- and with it every BLOCK field the DMA reads --
+// untouched until the DMA's handoff (the cycle it emits the BLOCK's last
+// OPERAND beat; it carries what it still needs, including rtl/flit_pack.v's
+// fields, down its own pipeline), and reads ahead in that cycle. The next
+// BLOCK issues as soon as the DMA is ready, while this one drains, so the
+// injection port sees no gap between BLOCKs. WAIT and END also wait for the
+// DMA to drain: a no_ret BLOCK has no write-back entry to wait on.
 // Registers change only on ADD, so they too hold while a BLOCK runs: the
 // DMA's stable-input contract.
 //
@@ -61,10 +64,11 @@ module cmd_seq #(
     output wire                prog_re,
     output wire [PC_W-1:0]     prog_raddr,
     input  wire [63:0]         prog_rdata,
-    // rtl/dma_gather.v: every output below holds from dma_start until dma_done.
+    // rtl/dma_gather.v: every output below holds from dma_start until dma_handoff.
     output wire                dma_start,
     input  wire                dma_busy,
-    input  wire                dma_done,
+    input  wire                dma_ready,     // the DMA accepts a start this cycle
+    input  wire                dma_handoff,   // the DMA no longer reads the BLOCK's inputs
     output wire [5:0]          group,
     output wire [7:0]          pixel_block,
     output wire [6:0]          round,
@@ -162,16 +166,16 @@ module cmd_seq #(
     wire bad_endl = is_endloop && !loop_on;
     wire fault    = exec && (bad_op || bad_tile || bad_loop || bad_endl);
 
-    wire drain  = (is_wait || is_end) && !wb_idle;
+    wire drain  = (is_wait || is_end) && (!wb_idle || dma_busy);
     wire credit = is_block && !no_ret && wb_full[tile];
-    wire issue  = exec && !fault && is_block && !credit && !dma_busy;
+    wire issue  = exec && !fault && is_block && !credit && dma_ready;
     wire step   = exec && !fault && !is_block && !drain;   // a non-BLOCK command completes
 
     wire            loop_back = is_endloop && (loop_left != 16'd1);
     wire [PC_W-1:0] pc_next   = loop_back ? loop_pc : pc + PC_ONE;
     wire            restart   = start && (state == S_IDLE || (state == S_HALT && done));
 
-    assign prog_re    = restart || step || (state == S_BLOCK && dma_done);
+    assign prog_re    = restart || step || (state == S_BLOCK && dma_handoff);
     assign prog_raddr = restart ? {PC_W{1'b0}} : pc_next;
 
     assign busy         = (state == S_EXEC) || (state == S_BLOCK);
@@ -251,7 +255,7 @@ module cmd_seq #(
                         done  <= 1'b1;
                     end
                 end
-                S_BLOCK: if (dma_done) begin
+                S_BLOCK: if (dma_handoff) begin
                     state <= S_EXEC;
                     pc    <= pc_next;
                 end
