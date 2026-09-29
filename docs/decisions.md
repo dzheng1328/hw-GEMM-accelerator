@@ -18,6 +18,17 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-09-29 -- The DMA hands off at its last slot, so BLOCKs stream with no refill gap
+
+**Context:** The 4.2f scaling study measured about 3.0 cycles per BLOCK of "Other" on every mesh: `cmd_seq` held a BLOCK until the DMA's GO beat left its three-stage pipeline, and the DMA accepted a start only when that pipeline was empty.
+4.3's attention BLOCKs have 8 slots, so the same gap would cost them about 25%.
+**Options considered:** (1) start the next BLOCK when the GO beat enters S1 (saves 2 of the 3 cycles, no new state); (2) latch the values a BLOCK still needs after its last slot (k_chunks and flit_pack's fields as an opaque tag), carry per-beat values down the pipeline, and hand off at the last slot; (3) a FIFO of BLOCK descriptors in front of the DMA.
+**Decision:** (2).
+**Why:** It removes the whole gap (the next BLOCK's first slot follows the previous GO beat directly) for one latched tag and a few pipeline registers, while (3) adds a queue the sequencer does not need: fetch already reads ahead.
+WAIT and END now also wait for the DMA to drain, since a no_ret BLOCK leaves no write-back entry.
+The WAIT/END and credit-stall counters in `rtl/cmd_perf.v` now count only cycles where the DMA's output accepts no beat and the injection port is not stalled, so the breakdown stays a partition even though a BLOCK's drain now overlaps the next BLOCK's issue.
+**Result:** CIFAR-10 on 2x2: 146,430 to 139,913 cycles per image (4.5% faster); "Other" from 3.04 to 0.04 cycles per BLOCK; every mesh in `docs/perf/scaling.md`, all bit-exact.
+
 ### 2026-09-28 -- Milestone 4.3: our own Llama-style story model, 8 stories in parallel, attention on the mesh
 
 **Context:** 4.3's roadmap entry (a vector unit plus a tiny story model) needed a concrete target before a spec: how good the stories should be, whose model, how many run at once, and where attention and the nonlinear ops execute.

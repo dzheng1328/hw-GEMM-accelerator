@@ -274,7 +274,7 @@ Memory map:
 
 | Issue | Delivers | Depends on | Done when |
 |---|---|---|---|
-| 4.3a | DMA refill overlapped across BLOCK boundaries | - | CIFAR-10 still bit-exact; `make compare` shows the 3-cycle per-BLOCK refill gone from the "Other" column |
+| 4.3a | DMA refill overlapped across BLOCK boundaries | - | CIFAR-10 still bit-exact; `make cifar` and `make scaling` show the 3-cycle per-BLOCK refill gone from the "Other" column |
 | 4.3b | Tokenizer, training, quantization, new `fixedpoint.py` ops, `lm_reference.py` | - | Loss gate met; sample stories from the int8 reference read coherently |
 | 4.3c | RESULT16, row limit, A-memory write port and depth | - | `tb/mesh/` and `tb/writeback/` pass with the new modes |
 | 4.3d | ISA additions, `lower_lm.py`, golden executor, `check_lm.py` | b | Golden equals `lm_reference.py` for several meshes |
