@@ -30,7 +30,6 @@ import argparse
 import json
 import math
 import os
-import resource
 import signal
 import time
 from pathlib import Path
@@ -40,6 +39,11 @@ import torch
 
 from lm_net import StoryNet
 from tinystories_data import eval_windows, load_tokens, sample_windows
+
+try:
+    import resource  # POSIX only; Windows has no resource module, so rss_mb is not logged there
+except ImportError:
+    resource = None
 
 CHECKPOINT_PATH = Path(__file__).parent / "checkpoints" / "lm_float.pt"
 BATCH_SIZE = 128
@@ -58,6 +62,13 @@ _STOP = False
 def _request_stop(signum, frame):
     global _STOP
     _STOP = True
+
+
+def _sync(device):
+    if device == "cuda":
+        torch.cuda.synchronize()
+    elif device == "mps":
+        torch.mps.synchronize()
 
 
 def pick_device(requested: str | None) -> str:
@@ -178,6 +189,7 @@ def train(total_iters, *, device, train_tokens, val_windows, out_dir, eval_every
         mean_loss = accumulate_grads(model, w)
         torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
         opt.step()
+        _sync(device)  # GPU work is asynchronous: time the step, not its queueing
         step_time += time.perf_counter() - t0
         step_count += 1
 
@@ -188,8 +200,9 @@ def train(total_iters, *, device, train_tokens, val_windows, out_dir, eval_every
                 "train_loss": mean_loss,
                 "val_loss": val_loss(model, device, val_windows),
                 "ms_per_iter": step_time / step_count * 1000,
-                "rss_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20,
             }
+            if resource is not None:  # ru_maxrss is bytes on macOS
+                entry["rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
             if device == "mps":
                 entry["mps_driver_mb"] = torch.mps.driver_allocated_memory() / 2**20
             elif device == "cuda":

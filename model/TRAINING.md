@@ -6,6 +6,7 @@ example from a Mac to a Windows laptop with an NVIDIA GPU.
 ## 1. Set up the environment
 
 Install Python 3.12.
+From the repository root, create and activate a virtual environment: `python -m venv .venv`, then `.venv\Scripts\Activate.ps1` in PowerShell (`source .venv/bin/activate` on Mac or Linux).
 Install PyTorch with the CUDA build for your GPU, using the selector at
 pytorch.org (Get Started, pick your OS/CUDA version, run the given `pip
 install torch` command).
@@ -30,9 +31,9 @@ slower than copying.
 
 Before touching the real checkpoint, confirm the new machine works with a
 throwaway run into a scratch directory.
-Run `python lm_train.py --iters 200 --out-dir /tmp/lm_scratch` from `model/`.
-Confirm it prints eval lines with a `cuda_max_alloc_mb` field and a
-reasonable `ms_per_iter`, then delete `/tmp/lm_scratch`.
+From `model/`, run `python lm_train.py --iters 200 --out-dir scratch` (a `scratch` folder next to `checkpoints`, the same on every OS).
+Confirm it prints an eval line with a `cuda_max_alloc_mb` field and an `ms_per_iter` well below the Mac's 280.
+Then delete the folder: `Remove-Item -Recurse -Force scratch` in PowerShell (`rm -r scratch` on Mac or Linux).
 
 ## 5. Bring over the paused state
 
@@ -61,8 +62,7 @@ Windows; it works the same way on Mac and Linux.
 Disable Windows sleep for the duration of the run.
 Settings > System > Power & battery > Screen and sleep, set both "on
 battery" and "plugged in" sleep timers to Never.
-A laptop that sleeps mid-run pauses the process without it seeing a signal,
-which can leave partial state or a stalled run.
+A laptop that sleeps freezes the run until it wakes: nothing is lost, but no training happens while it sleeps.
 
 ## 9. Bring the results back
 
