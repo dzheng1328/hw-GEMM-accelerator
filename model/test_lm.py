@@ -260,6 +260,61 @@ def test_resume_on_mps_restores_cpu_rng_state(tmp_path, monkeypatch):
     assert final_state["iter"] == 6  # resume continued from the saved iteration (2) through to 6, not from 0
 
 
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="needs MPS")
+def test_resume_saved_on_mps_continues_on_cpu(tmp_path, monkeypatch):
+    # The real cross-machine workflow: a state saved while training on one
+    # accelerator (MPS here) must resume on a different device -- CPU, or by
+    # the same map_location path, CUDA on another machine -- and continue
+    # from the saved iteration, not restart from 0.
+    train_tokens, val_windows = _tiny_train_data(monkeypatch)
+    out_dir = tmp_path / "cross_device_run"
+
+    orig_accumulate_grads = lm_train.accumulate_grads
+    calls = {"n": 0}
+
+    def stop_after_two(model, w):
+        calls["n"] += 1
+        loss = orig_accumulate_grads(model, w)
+        if calls["n"] == 2:
+            lm_train._STOP = True
+        return loss
+
+    lm_train.accumulate_grads = stop_after_two
+    try:
+        log = lm_train.train(6, device="mps", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir)
+        assert log == [] and lm_train._STOP is True
+    finally:
+        lm_train.accumulate_grads = orig_accumulate_grads
+        lm_train._STOP = False
+
+    paused_state = torch.load(out_dir / "lm_train_state.pt", map_location="cpu", weights_only=False)
+    assert paused_state["iter"] == 2  # confirms the pause landed where we expect before resuming
+
+    log = lm_train.train(6, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir, resume=True)
+    assert log[-1]["iter"] == 6  # completed on cpu, not stuck restarting at iter 0
+
+    final_state = torch.load(out_dir / "lm_train_state.pt", map_location="cpu", weights_only=False)
+    assert final_state["iter"] == 6
+
+
+def test_pick_device_explicit_value_wins(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    assert lm_train.pick_device("cpu") == "cpu"
+
+
+def test_pick_device_auto_prefers_cuda_then_mps_then_cpu(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    assert lm_train.pick_device(None) == "cuda"
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    assert lm_train.pick_device(None) == "mps"
+
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+    assert lm_train.pick_device(None) == "cpu"
+
+
 import lm_reference as ref
 
 

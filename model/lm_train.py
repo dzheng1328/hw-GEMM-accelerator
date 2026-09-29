@@ -1,25 +1,30 @@
 """Train the float story model (spec section 1) with llama2.c's recipe for
 stories260K (AdamW, lr 1e-3 with 1000 warmup iterations and cosine decay to
 1e-4, beta2 0.99, weight decay 0.01 on matrices, gradient clip 1.0, effective
-batch 128) at our context of 256, on MPS when available.
+batch 128) at our context of 256, on CUDA, MPS, or CPU -- picked automatically
+in that order of preference, or forced with --device.
 
 The effective batch of 128 windows is split into MICRO_BATCH-sized forward/
 backward passes (accumulate_grads) so peak activation memory stays low; the
 optimizer still steps once per 128-window batch. Training tokens are read
 from a memmap (tinystories_data.load_tokens), never fully loaded into RAM.
 
-Training can be paused on command: SIGINT/SIGTERM set a flag the loop checks
-after every completed optimizer step, at which point it atomically saves a
-full resume state (model, optimizer, RNGs, log) to out_dir/lm_train_state.pt
-and exits. `--resume` restores that state -- including both RNG streams --
-and continues from the saved iteration, bit-identical to an uninterrupted
-run. Every eval also writes the model-only out_dir/lm_float.pt (the file
+Training can be paused on command: Ctrl+C (SIGINT), or SIGTERM where the
+platform supports it, sets a flag the loop checks after every completed
+optimizer step, at which point it atomically saves a full resume state
+(model, optimizer, RNGs, log) to out_dir/lm_train_state.pt and exits.
+`--resume` restores that state -- including both RNG streams -- and
+continues from the saved iteration, bit-identical to an uninterrupted run on
+the same device; resuming on a different device still continues from the
+saved iteration (the RNG streams and optimizer state move with it). Every
+eval also writes the model-only out_dir/lm_float.pt (the file
 lm_quantize.py loads) and out_dir/lm_train_log.json.
 
-    python lm_train.py --iters 200                     # timing run
-    python lm_train.py --iters 100000                  # full run
-    kill -TERM <pid>                                    # pause (no lost work)
-    python lm_train.py --iters 100000 --resume          # continue"""
+    python lm_train.py --iters 200                      # timing run
+    python lm_train.py --iters 100000                   # full run
+    python lm_train.py --iters 100000 --device cuda      # force a device
+    Ctrl+C, or kill -TERM <pid> on platforms with it      # pause (no lost work)
+    python lm_train.py --iters 100000 --resume           # continue"""
 
 import argparse
 import json
@@ -53,6 +58,18 @@ _STOP = False
 def _request_stop(signum, frame):
     global _STOP
     _STOP = True
+
+
+def pick_device(requested: str | None) -> str:
+    """`requested` if given, else the best available device: CUDA, then MPS,
+    then CPU."""
+    if requested:
+        return requested
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 def _atomic_save(obj, path: Path):
@@ -175,6 +192,8 @@ def train(total_iters, *, device, train_tokens, val_windows, out_dir, eval_every
             }
             if device == "mps":
                 entry["mps_driver_mb"] = torch.mps.driver_allocated_memory() / 2**20
+            elif device == "cuda":
+                entry["cuda_max_alloc_mb"] = torch.cuda.max_memory_allocated() / 2**20
             log.append(entry)
             print(json.dumps(entry), flush=True)
             _save_checkpoint(out_dir, model, opt, it + 1, total_iters, rng, log, write_log=True)
@@ -193,14 +212,17 @@ def main():
     ap.add_argument("--iters", type=int, required=True)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--out-dir", type=Path, default=CHECKPOINT_PATH.parent)
+    ap.add_argument("--device", choices=["cuda", "mps", "cpu"], default=None,
+                     help="default: auto -- CUDA, else MPS, else CPU")
     args = ap.parse_args()
 
     global _STOP
     _STOP = False
     signal.signal(signal.SIGINT, _request_stop)
-    signal.signal(signal.SIGTERM, _request_stop)
+    if hasattr(signal, "SIGTERM"):  # SIGTERM can't be sent on Windows; Ctrl+C (SIGINT) still pauses
+        signal.signal(signal.SIGTERM, _request_stop)
 
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    device = pick_device(args.device)
     train_tokens = load_tokens("train")
     val_windows = eval_windows(VAL_WINDOWS)
     train(args.iters, device=device, train_tokens=train_tokens, val_windows=val_windows,
