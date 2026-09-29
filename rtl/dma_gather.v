@@ -9,7 +9,13 @@
 // beats into flits. compiler/golden.py (Golden.operands) is the reference.
 //
 // Every BLOCK field and register input is held stable by the caller from
-// start until done; the DMA latches only its counters.
+// start until handoff, the cycle S0 emits the BLOCK's last OPERAND beat.
+// The DMA latches its counters, k_chunks, and the caller's opaque tag
+// (rtl/flit_pack.v's BLOCK fields) at start, and carries every per-beat
+// value (stride2, bias_val, k_chunks, tag) down the pipeline, so the next
+// BLOCK starts while this one drains: with no backpressure its first slot
+// follows this BLOCK's GO beat with no gap. ready accepts a start whenever
+// S0 is free, including the cycle S0 emits the previous GO beat.
 //
 // Pipeline, one slot per cycle, one global stall (adv):
 //   S0  slot counters (local slot j, channel c, tap ky/kx); combinational
@@ -22,11 +28,12 @@
 // Memories read synchronously and hold their data while re (= adv) is low.
 module dma_gather #(
     parameter ACT_BW = 15,             // activation bank address bits
-    parameter WT_AW  = 15              // weight memory address bits
+    parameter WT_AW  = 15,             // weight memory address bits
+    parameter TAGW   = 1                // opaque per-BLOCK tag bits
 ) (
     input  wire                clk,
     input  wire                rst,
-    // One BLOCK; held stable from start until done.
+    // One BLOCK; held stable from start until handoff.
     input  wire                start,
     input  wire [5:0]          group,
     input  wire [7:0]          pixel_block,
@@ -47,7 +54,9 @@ module dma_gather #(
     input  wire [15:0]         bias_start,
     input  wire [7:0]          bias_val,
     output wire                busy,
-    output wire                done,
+    output wire                ready,       // start is accepted this cycle
+    output wire                handoff,     // inputs may change from the next cycle
+    input  wire [TAGW-1:0]     tag,         // returned with every beat of this BLOCK
     // Memory read ports.
     output wire                act_re,
     output wire [4*ACT_BW-1:0] act_raddr,   // bank b at [b*ACT_BW +: ACT_BW]
@@ -62,7 +71,8 @@ module dma_gather #(
     output reg  [5:0]          out_slot,
     output reg  [63:0]         out_a,
     output reg  [63:0]         out_b,
-    output reg  [3:0]          out_kchunks
+    output reg  [3:0]          out_kchunks,
+    output reg  [TAGW-1:0]     out_tag
 );
 
     localparam WA = ACT_BW + 2;        // activation word address bits
@@ -85,19 +95,29 @@ module dma_gather #(
     wire        emit_slot = active && adv;
     wire        emit_go   = go_pend && adv;
 
-    assign busy = active || go_pend || v1 || out_valid;
-    assign done = out_valid && out_ready && out_go;
+    reg [3:0]      kchunks0;
+    reg [TAGW-1:0] tag0;
+    wire           last_slot = emit_slot && (j == n_slots - 7'd1);
+
+    assign busy    = active || go_pend || v1 || out_valid;
+    assign ready   = !active && (!go_pend || adv);
+    assign handoff = last_slot;
 
     always @(posedge clk) begin
         if (rst) begin
             active  <= 1'b0;
             go_pend <= 1'b0;
-        end else if (start && !busy) begin
-            active <= 1'b1;
-            j      <= 7'd0;
-            c      <= k0[14:0] & cmask;
-            ky     <= ky0;
-            kx     <= kx0;
+        end else if (start && ready) begin
+            // A pending GO beat is emitted this cycle (ready implies adv),
+            // and S1 samples the old kchunks0/tag0 at this same edge.
+            active   <= 1'b1;
+            go_pend  <= 1'b0;
+            j        <= 7'd0;
+            c        <= k0[14:0] & cmask;
+            ky       <= ky0;
+            kx       <= kx0;
+            kchunks0 <= n_slots[6:3];
+            tag0     <= tag;
         end else if (emit_slot) begin
             j <= j + 7'd1;
             if (c == cmask) begin
@@ -111,7 +131,7 @@ module dma_gather #(
             end else begin
                 c <= c + 15'd1;
             end
-            if (j == n_slots - 7'd1) begin
+            if (last_slot) begin
                 active  <= 1'b0;
                 go_pend <= 1'b1;
             end
@@ -170,18 +190,26 @@ module dma_gather #(
     reg [7:0] dmask1, bmask1;
     reg [2:0] o1;
     reg [1:0] wlo1;
+    reg       stride2_1;
+    reg [7:0] bias_val1;
+    reg [3:0] kchunks1;
+    reg [TAGW-1:0] tag1;
 
     always @(posedge clk) begin
         if (rst) begin
             v1 <= 1'b0;
         end else if (adv) begin
-            v1     <= emit_slot || emit_go;
-            go1    <= emit_go;
-            slot1  <= j[5:0];
-            dmask1 <= data_mask;
-            bmask1 <= bias_mask;
-            o1     <= byte0[2:0];
-            wlo1   <= wb[1:0];
+            v1        <= emit_slot || emit_go;
+            go1       <= emit_go;
+            slot1     <= j[5:0];
+            dmask1    <= data_mask;
+            bmask1    <= bias_mask;
+            o1        <= byte0[2:0];
+            wlo1      <= wb[1:0];
+            stride2_1 <= stride2;
+            bias_val1 <= bias_val;
+            kchunks1  <= kchunks0;
+            tag1      <= tag0;
         end
     end
 
@@ -198,8 +226,8 @@ module dma_gather #(
         end
         shifted = window >> {o1, 3'b000};
         for (i = 0; i < 8; i = i + 1) begin
-            byte_l = stride2 ? shifted[16*i +: 8] : shifted[8*i +: 8];
-            b_row[8*i +: 8] = dmask1[i] ? byte_l : (bmask1[i] ? bias_val : 8'd0);
+            byte_l = stride2_1 ? shifted[16*i +: 8] : shifted[8*i +: 8];
+            b_row[8*i +: 8] = dmask1[i] ? byte_l : (bmask1[i] ? bias_val1 : 8'd0);
         end
     end
 
@@ -213,7 +241,8 @@ module dma_gather #(
             out_slot    <= slot1;
             out_a       <= wt_rdata;
             out_b       <= b_row;
-            out_kchunks <= n_slots[6:3];
+            out_kchunks <= kchunks1;
+            out_tag     <= tag1;
         end
     end
 

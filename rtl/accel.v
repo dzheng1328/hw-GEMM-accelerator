@@ -46,7 +46,7 @@ module accel #(
     wire [PC_W-1:0]     prog_raddr;
     wire [63:0]         prog_rdata;
     wire                seq_busy, seq_wait, seq_credit;
-    wire                dma_start, dma_busy, dma_done;
+    wire                dma_start, dma_busy, dma_ready, dma_handoff;
     wire [5:0]          group;
     wire [7:0]          pixel_block;
     wire [6:0]          round;
@@ -71,7 +71,7 @@ module accel #(
         .clk(clk), .rst(rst), .start(start), .done(done), .error(error), .error_pc(error_pc),
         .busy(seq_busy), .wait_stall(seq_wait), .credit_stall(seq_credit),
         .prog_re(prog_re), .prog_raddr(prog_raddr), .prog_rdata(prog_rdata),
-        .dma_start(dma_start), .dma_busy(dma_busy), .dma_done(dma_done),
+        .dma_start(dma_start), .dma_busy(dma_busy), .dma_ready(dma_ready), .dma_handoff(dma_handoff),
         .group(group), .pixel_block(pixel_block), .round(round), .ky0(ky0), .kx0(kx0),
         .in_base(in_base), .w_base(w_base), .cin_log2(cin_log2), .h_log2(h_log2), .w_log2(w_log2),
         .wout_log2(wout_log2), .stride2(stride2), .pad(pad), .ksize(ksize), .ks(ks),
@@ -92,24 +92,32 @@ module accel #(
     wire [63:0]         beat_a, beat_b;
     wire [3:0]          beat_kchunks;
 
-    dma_gather #(.ACT_BW(ACT_BW), .WT_AW(WT_AW)) dma (
+    // flit_pack's BLOCK fields ride through the DMA with each beat.
+    localparam TAGW = 2*AW + 26;
+    wire [TAGW-1:0] block_tag = {tile_y, tile_x, no_ret, acc_keep, requant, relu, sh, m};
+    wire [TAGW-1:0] beat_tag;
+
+    dma_gather #(.ACT_BW(ACT_BW), .WT_AW(WT_AW), .TAGW(TAGW)) dma (
         .clk(clk), .rst(rst), .start(dma_start),
         .group(group), .pixel_block(pixel_block), .round(round), .ky0(ky0), .kx0(kx0),
         .in_base(in_base), .w_base(w_base), .cin_log2(cin_log2), .h_log2(h_log2), .w_log2(w_log2),
         .wout_log2(wout_log2), .stride2(stride2), .pad(pad), .ksize(ksize), .ks(ks),
-        .bias_start(bias_start), .bias_val(bias_val), .busy(dma_busy), .done(dma_done),
+        .bias_start(bias_start), .bias_val(bias_val), .busy(dma_busy), .ready(dma_ready),
+        .handoff(dma_handoff), .tag(block_tag),
         .act_re(act_re), .act_raddr(act_raddr), .act_rdata(act_rdata),
         .wt_re(wt_re), .wt_raddr(wt_raddr), .wt_rdata(wt_rdata),
         .out_valid(beat_valid), .out_ready(beat_ready), .out_go(beat_go), .out_slot(beat_slot),
-        .out_a(beat_a), .out_b(beat_b), .out_kchunks(beat_kchunks));
+        .out_a(beat_a), .out_b(beat_b), .out_kchunks(beat_kchunks), .out_tag(beat_tag));
 
     wire          inj0_valid;
     wire [FW-1:0] inj0_flit;
     wire [NN-1:0] inj_ready;
 
     flit_pack #(.AW(AW)) pack (
-        .clk(clk), .rst(rst), .dest_x(tile_x), .dest_y(tile_y), .acc_keep(acc_keep), .no_ret(no_ret),
-        .requant(requant), .relu(relu), .sh(sh), .m(m),
+        .clk(clk), .rst(rst),
+        .dest_y(beat_tag[AW+26 +: AW]), .dest_x(beat_tag[26 +: AW]), .no_ret(beat_tag[25]),
+        .acc_keep(beat_tag[24]), .requant(beat_tag[23]), .relu(beat_tag[22]), .sh(beat_tag[21:16]),
+        .m(beat_tag[15:0]),
         .in_valid(beat_valid), .in_ready(beat_ready), .in_go(beat_go), .in_slot(beat_slot),
         .in_a(beat_a), .in_b(beat_b), .in_kchunks(beat_kchunks),
         .inj_valid(inj0_valid), .inj_flit(inj0_flit), .inj_ready(inj_ready[0]));
@@ -188,15 +196,25 @@ module accel #(
     endgenerate
 
     // ---- Performance counters ----
+    // With the DMA's cross-BLOCK handoff (4.3a), a WAIT/END stall or a
+    // credit stall can now coincide with the previous BLOCK's still-draining
+    // OPERAND/GO beats, or with the injection port stalled on a flit already
+    // formatted from one of those beats. Count wait_stall/credit_stall only
+    // on a cycle where the DMA accepts no beat and the injection port is not
+    // stalled, so every category stays a disjoint slice of run cycles.
+    wire dma_beat_accepted = beat_valid && beat_ready;
+    wire inj_stalled       = inj0_valid && !inj_ready[0];
     generate
         if (PERF) begin : g_perf
             cmd_perf perf (
                 .clk(clk), .rst(rst), .run(seq_busy), .block(dma_start),
                 .slot(beat_valid && beat_ready && !beat_go),
-                .inj_stall(inj0_valid && !inj_ready[0]),
-                .wait_stall(seq_wait), .credit_stall(seq_credit), .wb_word(wb_we));
+                .inj_stall(inj_stalled),
+                .wait_stall(seq_wait && !dma_beat_accepted && !inj_stalled),
+                .credit_stall(seq_credit && !dma_beat_accepted && !inj_stalled),
+                .wb_word(wb_we));
         end else begin : g_noperf
-            wire unused_perf = &{1'b0, seq_busy, seq_wait, seq_credit};
+            wire unused_perf = &{1'b0, seq_busy, seq_wait, seq_credit, dma_beat_accepted, inj_stalled};
         end
     endgenerate
 

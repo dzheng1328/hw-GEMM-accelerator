@@ -13,15 +13,15 @@
       "run_cyc": 40130071,
       "blocks": 303360,
       "slot_cyc": 16910336,
-      "inj_stall_cyc": 21957562,
-      "wait_cyc": 37721,
+      "inj_stall_cyc": 22865719,
+      "wait_cyc": 37724,
       "credit_cyc": 0,
       "wb_words": 671744
     },
     "mesh_perf": {
       "corner": {
         "lcl_in_xfer": 17885440,
-        "lcl_in_stall": 21291002,
+        "lcl_in_stall": 22199159,
         "out_xfer_l": 17885440,
         "out_xfer_n": 0,
         "out_xfer_e": 0,
@@ -43,27 +43,27 @@
     "float_agreement": 0.9921875,
     "reference_agreement": 1.0,
     "mesh": "2x1",
-    "cycles": 20917693,
-    "cycles_per_image": 163419.4765625,
-    "slot_utilization": 0.8084226114227797,
+    "cycles": 20775621,
+    "cycles_per_image": 162309.5390625,
+    "slot_utilization": 0.8139509283501081,
     "counters": {
-      "run_cyc": 20917693,
+      "run_cyc": 20775621,
       "blocks": 303360,
       "slot_cyc": 16910336,
-      "inj_stall_cyc": 2800732,
-      "wait_cyc": 39003,
+      "inj_stall_cyc": 3509987,
+      "wait_cyc": 39006,
       "credit_cyc": 0,
       "wb_words": 671744
     },
     "mesh_perf": {
       "corner": {
         "lcl_in_xfer": 17549568,
-        "lcl_in_stall": 2465884,
+        "lcl_in_stall": 3175139,
         "out_xfer_l": 9278592,
         "out_xfer_n": 0,
         "out_xfer_e": 8606848,
         "out_stall_n": 0,
-        "out_stall_e": 797312
+        "out_stall_e": 822272
       },
       "feed_cyc": [
         8455168,
@@ -82,27 +82,27 @@
     "float_agreement": 0.9921875,
     "reference_agreement": 1.0,
     "mesh": "2x2",
-    "cycles": 18742977,
-    "cycles_per_image": 146429.5078125,
-    "slot_utilization": 0.9022225231349321,
+    "cycles": 17908805,
+    "cycles_per_image": 139912.5390625,
+    "slot_utilization": 0.9442470337914786,
     "counters": {
-      "run_cyc": 18742977,
+      "run_cyc": 17908805,
       "blocks": 303360,
       "slot_cyc": 16910336,
-      "inj_stall_cyc": 568160,
-      "wait_cyc": 40283,
+      "inj_stall_cyc": 641891,
+      "wait_cyc": 40414,
       "credit_cyc": 0,
       "wb_words": 671744
     },
     "mesh_perf": {
       "corner": {
         "lcl_in_xfer": 17385728,
-        "lcl_in_stall": 398176,
+        "lcl_in_stall": 469859,
         "out_xfer_l": 5241984,
         "out_xfer_n": 4036608,
         "out_xfer_e": 8606848,
         "out_stall_n": 0,
-        "out_stall_e": 74368
+        "out_stall_e": 97280
       },
       "feed_cyc": [
         4490240,
@@ -125,27 +125,27 @@
     "float_agreement": 0.9921875,
     "reference_agreement": 1.0,
     "mesh": "3x3",
-    "cycles": 18613057,
-    "cycles_per_image": 145414.5078125,
-    "slot_utilization": 0.9085200781365468,
+    "cycles": 17777733,
+    "cycles_per_image": 138888.5390625,
+    "slot_utilization": 0.9512087958571546,
     "counters": {
-      "run_cyc": 18613057,
+      "run_cyc": 17777733,
       "blocks": 303360,
       "slot_cyc": 16910336,
-      "inj_stall_cyc": 440032,
-      "wait_cyc": 38491,
+      "inj_stall_cyc": 512611,
+      "wait_cyc": 38494,
       "credit_cyc": 0,
       "wb_words": 671744
     },
     "mesh_perf": {
       "corner": {
         "lcl_in_xfer": 17298688,
-        "lcl_in_stall": 357984,
+        "lcl_in_stall": 429667,
         "out_xfer_l": 3149568,
         "out_xfer_n": 3537280,
         "out_xfer_e": 11198592,
         "out_stall_n": 0,
-        "out_stall_e": 10496
+        "out_stall_e": 12160
       },
       "feed_cyc": [
         2435072,
@@ -178,27 +178,27 @@
     "float_agreement": 0.9921875,
     "reference_agreement": 1.0,
     "mesh": "4x4",
-    "cycles": 18372161,
-    "cycles_per_image": 143532.5078125,
-    "slot_utilization": 0.9204326045259456,
+    "cycles": 17525573,
+    "cycles_per_image": 136918.5390625,
+    "slot_utilization": 0.9648948995847383,
     "counters": {
-      "run_cyc": 18372161,
+      "run_cyc": 17525573,
       "blocks": 303360,
       "slot_cyc": 16910336,
-      "inj_stall_cyc": 194784,
-      "wait_cyc": 45403,
+      "inj_stall_cyc": 253539,
+      "wait_cyc": 45406,
       "credit_cyc": 0,
       "wb_words": 671744
     },
     "mesh_perf": {
       "corner": {
         "lcl_in_xfer": 17262848,
-        "lcl_in_stall": 146144,
+        "lcl_in_stall": 204387,
         "out_xfer_l": 2214528,
         "out_xfer_n": 3027456,
         "out_xfer_e": 12643456,
         "out_stall_n": 0,
-        "out_stall_e": 2688
+        "out_stall_e": 3072
       },
       "feed_cyc": [
         1516544,

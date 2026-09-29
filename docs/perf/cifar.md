@@ -11,18 +11,18 @@ The final activation memory is bit-exact against `compiler/golden.py`, and every
 | int8 accuracy (RTL logits vs labels) | 88.28% |
 | Float model accuracy (same images) | 87.50% |
 | RTL agrees with the float model | 99.22% |
-| Cycles | 18,742,977 |
-| Cycles per image | 146,430 |
-| OPERAND slot utilization | 90.2% |
+| Cycles | 17,908,805 |
+| Cycles per image | 139,913 |
+| OPERAND slot utilization | 94.4% |
 
 Command processor counters (`rtl/cmd_perf.v`):
 
 | Counter | Value |
 |---|---:|
-| run_cyc | 18,742,977 |
+| run_cyc | 17,908,805 |
 | blocks | 303,360 |
 | slot_cyc | 16,910,336 |
-| inj_stall_cyc | 568,160 |
-| wait_cyc | 40,283 |
+| inj_stall_cyc | 641,891 |
+| wait_cyc | 40,414 |
 | credit_cyc | 0 |
 | wb_words | 671,744 |

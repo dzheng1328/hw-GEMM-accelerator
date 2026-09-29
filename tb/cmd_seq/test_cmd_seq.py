@@ -51,9 +51,10 @@ async def setup_dut(dut):
 
 
 async def reset(dut):
-    for sig in ("start", "prog_we", "dma_busy", "dma_done", "wb_full"):
+    for sig in ("start", "prog_we", "dma_busy", "dma_handoff", "wb_full"):
         getattr(dut, sig).value = 0
     dut.wb_idle.value = 1
+    dut.dma_ready.value = 1
     dut.rst.value = 1
     for _ in range(3):
         await RisingEdge(dut.clk)
@@ -82,22 +83,38 @@ def block_of(dut):
 
 class Env:
     """Stands in for rtl/dma_gather.v and rtl/writeback.v around the
-    sequencer and records every BLOCK issue. The DMA takes a random number
-    of cycles and checks its inputs hold until done; write-back retires
+    sequencer and records every BLOCK issue. The DMA emits a random number
+    of slot cycles, checks its inputs hold through handoff, then drains for
+    a random number of cycles while already ready for the next BLOCK
+    (busy stays high until every BLOCK has drained); write-back retires
     entries at random, oldest first per tile, at most `budget` more of them
     (None: no limit)."""
 
-    def __init__(self, dut, rng, dma_cycles=(1, 12), retire_prob=0.3):
+    def __init__(self, dut, rng, dma_cycles=(1, 12), drain_cycles=(1, 4), retire_prob=0.3):
         self.dut, self.rng = dut, rng
-        self.dma_cycles, self.retire_prob = dma_cycles, retire_prob
+        self.dma_cycles, self.drain_cycles, self.retire_prob = dma_cycles, drain_cycles, retire_prob
         self.issues = []   # {"block", "regs", "push", "pending"} per BLOCK issued
         self.pending = []  # (tile, issue index) of entries not yet written back, oldest first
         self.budget = None
-        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback())]
+        self.in_s0 = False
+        self.draining = 0
+        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback()),
+                      cocotb.start_soon(self.busy())]
 
     def stop(self):
         for t in self.tasks:
             t.kill()
+
+    async def busy(self):
+        while True:
+            await RisingEdge(self.dut.clk)
+            self.dut.dma_busy.value = int(self.in_s0 or self.draining > 0)
+
+    async def drain(self, cycles):
+        self.draining += 1
+        for _ in range(cycles):
+            await RisingEdge(self.dut.clk)
+        self.draining -= 1
 
     async def dma(self):
         dut = self.dut
@@ -105,7 +122,7 @@ class Env:
             await FallingEdge(dut.clk)
             if not dut.dma_start.value:
                 continue
-            assert not dut.dma_busy.value, "dma_start while the DMA is busy"
+            assert dut.dma_ready.value, "dma_start while the DMA is not ready"
             push = ports(dut, PUSH_PORTS)
             self.issues.append({"block": block_of(dut), "regs": ports(dut, REG_PORTS), "push": push,
                                 "pending": [i for _, i in self.pending]})
@@ -116,18 +133,21 @@ class Env:
                 self.pending.append((tile, n))
             held = ports(dut, BLOCK_PORTS + REG_PORTS)
             await RisingEdge(dut.clk)
-            dut.dma_busy.value = 1
+            self.in_s0 = True
+            dut.dma_ready.value = 0
             for _ in range(self.rng.randint(*self.dma_cycles)):
                 await FallingEdge(dut.clk)
-                assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed before done"
-                assert not dut.dma_start.value, f"BLOCK {n}: dma_start while the DMA is busy"
+                assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed before handoff"
+                assert not dut.dma_start.value, f"BLOCK {n}: dma_start while the DMA is not ready"
                 await RisingEdge(dut.clk)
-            dut.dma_done.value = 1
+            dut.dma_handoff.value = 1
             await FallingEdge(dut.clk)
-            assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed in the done cycle"
+            assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed in the handoff cycle"
             await RisingEdge(dut.clk)
-            dut.dma_done.value = 0
-            dut.dma_busy.value = 0
+            dut.dma_handoff.value = 0
+            dut.dma_ready.value = 1
+            self.in_s0 = False
+            cocotb.start_soon(self.drain(self.rng.randint(*self.drain_cycles)))
 
     async def writeback(self):
         dut = self.dut
@@ -271,6 +291,36 @@ async def test_wait_and_end_hold_until_write_back_drains(dut):
             break
     env.stop()
     assert dut.done.value and not env.pending
+
+
+@cocotb.test()
+async def test_wait_and_end_hold_until_the_dma_drains(dut):
+    """no_ret BLOCKs push no write-back entry, so only the DMA's busy keeps a
+    WAIT or END from passing a BLOCK whose beats are still in the DMA."""
+    await setup_dut(dut)
+    prog = SETUP + [blk(0, 0, no_ret=True), isa.wait(), blk(1, 0, no_ret=True), isa.end()]
+    await load(dut, prog)
+    env = Env(dut, random.Random(6), dma_cycles=(4, 4), drain_cycles=(30, 30))
+    dut.start.value = 1
+    await RisingEdge(dut.clk)
+    dut.start.value = 0
+    for _ in range(20):
+        await FallingEdge(dut.clk)
+    assert len(env.issues) == 1 and dut.wait_stall.value, "the WAIT passed a BLOCK still draining in the DMA"
+    for _ in range(60):
+        await FallingEdge(dut.clk)
+        if len(env.issues) == 2:
+            break
+    assert len(env.issues) == 2, "the WAIT did not release once the DMA drained"
+    for _ in range(20):
+        await FallingEdge(dut.clk)
+    assert not dut.done.value and dut.wait_stall.value, "END raised done while the DMA was draining"
+    for _ in range(60):
+        await FallingEdge(dut.clk)
+        if dut.done.value:
+            break
+    env.stop()
+    assert dut.done.value
 
 
 @cocotb.test()

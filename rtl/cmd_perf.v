@@ -12,8 +12,12 @@ module cmd_perf (
     input  wire block,         // a BLOCK issued to the DMA
     input  wire slot,          // an OPERAND beat accepted from the DMA
     input  wire inj_stall,     // a flit waiting at node (0,0)'s injection port
-    input  wire wait_stall,    // WAIT or END waiting for write-back
-    input  wire credit_stall,  // a returning BLOCK waiting for its tile's write-back FIFO
+    input  wire wait_stall,    // WAIT or END waiting for write-back or the DMA to drain, counted
+                                // only on a cycle the DMA accepts no beat and the injection port
+                                // is not stalled (so this cannot double-count slot/GO/inj_stall cycles)
+    input  wire credit_stall,  // a returning BLOCK waiting for its tile's write-back FIFO, counted
+                                // only on a cycle the DMA accepts no beat and the injection port
+                                // is not stalled (so this cannot double-count slot/GO/inj_stall cycles)
     input  wire wb_word        // an activation word written back
 );
 
