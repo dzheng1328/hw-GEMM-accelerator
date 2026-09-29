@@ -26,8 +26,11 @@ of the alternatives. Useful for your own memory, and directly answers the
 **Decision:** (2).
 **Why:** It removes the whole gap (the next BLOCK's first slot follows the previous GO beat directly) for one latched tag and a few pipeline registers, while (3) adds a queue the sequencer does not need: fetch already reads ahead.
 WAIT and END now also wait for the DMA to drain, since a no_ret BLOCK leaves no write-back entry.
-The WAIT/END and credit-stall counters in `rtl/cmd_perf.v` now count only cycles where the DMA's output accepts no beat and the injection port is not stalled, so the breakdown stays a partition even though a BLOCK's drain now overlaps the next BLOCK's issue.
-**Result:** CIFAR-10 on 2x2: 146,430 to 139,913 cycles per image (4.5% faster); "Other" from 3.04 to 0.04 cycles per BLOCK; every mesh in `docs/perf/scaling.md`, all bit-exact.
+`rtl/cmd_perf.v` now measures every category of its cycle breakdown at one interface, node (0,0)'s injection port: an OPERAND or GO flit injected, a flit stalled, or, with no flit at the port, a WAIT/END stall, else a credit stall, else an explicit Other.
+Each run cycle is in exactly one, and `tb/accel` asserts they sum to the run cycles (the first 4.3a version counted flits at the DMA's output but stalls at the port, which is not a partition; `docs/learnings.md`, 2026-09-29).
+Only a BLOCK that directly follows another issues in the previous BLOCK's GO cycle: each non-BLOCK command between two BLOCKs executes in its own cycle and delays the next BLOCK's first slot by one cycle (one idle injection cycle unless the port is stalled anyway), which 4.3d's lowering should keep in mind.
+**Result:** CIFAR-10 on 2x2: 146,430 to 139,913 cycles per image (4.5% fewer cycles), all bit-exact, every mesh in `docs/perf/scaling.md`.
+Other went from 3.04 cycles per BLOCK to 0.045 (106 cycles per image on every mesh): what remains is per layer, the register ADDs and the DMA pipeline refilling after each WAIT, not per BLOCK.
 
 ### 2026-09-28 -- Milestone 4.3: our own Llama-style story model, 8 stories in parallel, attention on the mesh
 

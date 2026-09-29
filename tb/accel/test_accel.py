@@ -16,13 +16,23 @@ from cocotb.triggers import FallingEdge, First, RisingEdge, Timer
 from cocotb.utils import get_sim_time
 
 import cases
+from cifar_report import check_split
 from golden import Tracer
 from lower import read_buffer, read_output
 
 MESH = (int(os.environ.get("MESH_W", "2")), int(os.environ.get("MESH_H", "2")))
 CASE = os.environ.get("ACCEL_CASE", "")
 PROBE = os.environ.get("ACCEL_PROBE", "")
-COUNTERS = ("run_cyc", "blocks", "slot_cyc", "inj_stall_cyc", "wait_cyc", "credit_cyc", "wb_words")
+COUNTERS = ("run_cyc", "blocks", "slot_cyc", "go_cyc", "inj_stall_cyc", "wait_cyc", "credit_cyc", "other_cyc",
+            "wb_words")
+# Guards 4.3a's zero refill gap above the DMA: cmd_perf's Other cycles (the
+# injection port idle with no WAIT/END or credit stall) per BLOCK. What is
+# left in Other is per-run and per-layer cost (the DMA pipeline filling after
+# each WAIT, a layer's register ADDs) amortized over the BLOCKs: 0.05 on
+# cifar8 and at most 0.98 on any small case, on every mesh tested. The 4.2
+# DMA's 3-cycle refill per BLOCK (cmd_seq issuing only once the DMA drained)
+# measured 2.7 to 3.7 on the same cases. 1.5 sits between with margin.
+OTHER_PER_BLOCK_MAX = 1.5
 # rtl/node_perf.v counters at node (0,0), where every flit enters and every
 # RESULT leaves the mesh (router LOCAL input: injection + the tile's results).
 CORNER = ("lcl_in_xfer", "lcl_in_stall", "out_xfer_l", "out_xfer_n", "out_xfer_e", "out_stall_n", "out_stall_e")
@@ -105,10 +115,19 @@ async def test_case_matches_golden(dut):
                           f"got {int(got[bad[0]]):016x}, want {int(want[bad[0]]):016x}")
     perf = dut.accel.g_perf.perf
     counts = {n: int(getattr(perf, n).value) for n in COUNTERS}
+    # blocks counts DMA starts; slot_cyc and go_cyc count OPERAND and GO
+    # flits injected at node (0,0) while running, so they match golden only
+    # if every flit entered the mesh before done.
     assert counts["blocks"] == len(g.blocks), counts
     assert counts["slot_cyc"] == g.slots, counts
+    assert counts["go_cyc"] == len(g.blocks), counts
     assert counts["wb_words"] == g.wb_words, counts
     assert counts["run_cyc"] == cycles, (counts, cycles)
+    check_split(counts)
+    other = counts["other_cyc"] / len(g.blocks)
+    dut._log.info("other_cyc %d over %d BLOCKs: %.3f per BLOCK", counts["other_cyc"], len(g.blocks), other)
+    assert other <= OTHER_PER_BLOCK_MAX, (
+        f"{other:.3f} Other cycles per BLOCK (limit {OTHER_PER_BLOCK_MAX}): a refill gap between BLOCKs? {counts}")
     n = cases.is_cifar(CASE)
     if n is not None:
         record = check_cifar(b, got, n)

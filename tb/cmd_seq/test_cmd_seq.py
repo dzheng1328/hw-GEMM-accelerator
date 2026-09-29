@@ -83,71 +83,73 @@ def block_of(dut):
 
 class Env:
     """Stands in for rtl/dma_gather.v and rtl/writeback.v around the
-    sequencer and records every BLOCK issue. The DMA emits a random number
-    of slot cycles, checks its inputs hold through handoff, then drains for
-    a random number of cycles while already ready for the next BLOCK
-    (busy stays high until every BLOCK has drained); write-back retires
-    entries at random, oldest first per tile, at most `budget` more of them
-    (None: no limit)."""
+    sequencer and records every BLOCK issue. The DMA model is cycle-based,
+    like the real one: a BLOCK holds S0 for a random number of slot cycles,
+    the last of them the handoff, checking its inputs hold throughout; its GO
+    beat is then pending until flit_pack accepts it (each cycle with
+    probability go_accept), and the BLOCK drains for a random number of
+    cycles. ready = S0 free and (no GO pending or the GO is accepted this
+    cycle), rtl/dma_gather.v's !active && (!go_pend || adv); busy covers S0,
+    a pending GO, and every drain. Write-back retires entries at random,
+    oldest first per tile, at most `budget` more of them (None: no limit).
+    `cycles` records (dma_start, dma_ready, dma_handoff) for every cycle."""
 
-    def __init__(self, dut, rng, dma_cycles=(1, 12), drain_cycles=(1, 4), retire_prob=0.3):
+    def __init__(self, dut, rng, dma_cycles=(1, 12), drain_cycles=(1, 4), retire_prob=0.3, go_accept=0.7):
         self.dut, self.rng = dut, rng
         self.dma_cycles, self.drain_cycles, self.retire_prob = dma_cycles, drain_cycles, retire_prob
+        self.go_accept = go_accept
         self.issues = []   # {"block", "regs", "push", "pending"} per BLOCK issued
         self.pending = []  # (tile, issue index) of entries not yet written back, oldest first
         self.budget = None
-        self.in_s0 = False
-        self.draining = 0
-        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback()),
-                      cocotb.start_soon(self.busy())]
+        self.cycles = []
+        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback())]
 
     def stop(self):
         for t in self.tasks:
             t.kill()
 
-    async def busy(self):
-        while True:
-            await RisingEdge(self.dut.clk)
-            self.dut.dma_busy.value = int(self.in_s0 or self.draining > 0)
-
-    async def drain(self, cycles):
-        self.draining += 1
-        for _ in range(cycles):
-            await RisingEdge(self.dut.clk)
-        self.draining -= 1
-
     async def dma(self):
-        dut = self.dut
+        dut, rng = self.dut, self.rng
+        s0_left = 0        # cycles the current BLOCK still holds S0, the last its handoff
+        go_pending = False
+        drains = []        # cycles each handed-off BLOCK still drains
+        held = n = None
         while True:
+            # Drive this cycle's outputs right after the rising edge.
+            accept = go_pending and rng.random() < self.go_accept
+            ready = s0_left == 0 and (not go_pending or accept)
+            dut.dma_handoff.value = int(s0_left == 1)
+            dut.dma_ready.value = int(ready)
+            dut.dma_busy.value = int(s0_left > 0 or go_pending or bool(drains))
             await FallingEdge(dut.clk)
-            if not dut.dma_start.value:
-                continue
-            assert dut.dma_ready.value, "dma_start while the DMA is not ready"
-            push = ports(dut, PUSH_PORTS)
-            self.issues.append({"block": block_of(dut), "regs": ports(dut, REG_PORTS), "push": push,
-                                "pending": [i for _, i in self.pending]})
-            n = len(self.issues) - 1
-            if push["wb_push"]:
-                tile = push["wb_tile"]
-                assert sum(t == tile for t, _ in self.pending) < 2, f"BLOCK {n} pushed to tile {tile}'s full FIFO"
-                self.pending.append((tile, n))
-            held = ports(dut, BLOCK_PORTS + REG_PORTS)
-            await RisingEdge(dut.clk)
-            self.in_s0 = True
-            dut.dma_ready.value = 0
-            for _ in range(self.rng.randint(*self.dma_cycles)):
-                await FallingEdge(dut.clk)
+            start = bool(dut.dma_start.value)
+            self.cycles.append((start, ready, s0_left == 1))
+            if s0_left:
                 assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed before handoff"
-                assert not dut.dma_start.value, f"BLOCK {n}: dma_start while the DMA is not ready"
-                await RisingEdge(dut.clk)
-            dut.dma_handoff.value = 1
-            await FallingEdge(dut.clk)
-            assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed in the handoff cycle"
+                assert not start, f"BLOCK {n}: dma_start while the DMA is not ready"
+            if start:
+                assert ready, "dma_start while the DMA is not ready"
+                push = ports(dut, PUSH_PORTS)
+                self.issues.append({"block": block_of(dut), "regs": ports(dut, REG_PORTS), "push": push,
+                                    "pending": [i for _, i in self.pending]})
+                n = len(self.issues) - 1
+                if push["wb_push"]:
+                    tile = push["wb_tile"]
+                    assert sum(t == tile for t, _ in self.pending) < 2, f"BLOCK {n} pushed to tile {tile}'s full FIFO"
+                    self.pending.append((tile, n))
+                held = ports(dut, BLOCK_PORTS + REG_PORTS)
             await RisingEdge(dut.clk)
-            dut.dma_handoff.value = 0
-            dut.dma_ready.value = 1
-            self.in_s0 = False
-            cocotb.start_soon(self.drain(self.rng.randint(*self.drain_cycles)))
+            drains = [d - 1 for d in drains if d > 1]
+            if start:
+                s0_left = rng.randint(*self.dma_cycles) + 1
+                go_pending = False       # ready: no GO pending, or it went this cycle
+            elif s0_left:
+                s0_left -= 1
+                if s0_left == 0:
+                    go_pending = True
+                    drains.append(rng.randint(*self.drain_cycles))
+            elif accept:
+                go_pending = False
 
     async def writeback(self):
         dut = self.dut
@@ -321,6 +323,40 @@ async def test_wait_and_end_hold_until_the_dma_drains(dut):
             break
     env.stop()
     assert dut.done.value
+
+
+@cocotb.test()
+async def test_the_next_block_issues_while_the_previous_drains(dut):
+    """4.3a's zero gap, above the DMA: a BLOCK issues in the first cycle the
+    DMA is ready once it is the executing command, however long the previous
+    BLOCK still drains (busy high). With no GO backpressure that is the cycle
+    right after the previous handoff, plus one cycle per non-BLOCK command
+    between them (each executes in its own cycle, the first in the GO
+    cycle). With backpressure, ready drops until the GO is accepted; the
+    BLOCK issues in the first ready cycle, not after the drain."""
+    await setup_dut(dut)
+    body = [blk(0, 0, no_ret=True), blk(1, 0, no_ret=True), isa.add(14, 14, 1), blk(2, 0, no_ret=True),
+            isa.add(14, 14, 1), isa.add(15, 15, 1), blk(3, 0, no_ret=True), blk(0, 1, no_ret=True),
+            blk(1, 1, no_ret=True)]
+    between = [0, 1, 2, 0, 0]   # non-BLOCK commands after each BLOCK but the last
+    prog = SETUP + body + [isa.end()]
+    await load(dut, prog)
+    for seed, go_accept in ((8, 1.0), (9, 0.5), (10, 0.2)):
+        env = Env(dut, random.Random(seed), drain_cycles=(20, 30), go_accept=go_accept)
+        await run(dut, env)
+        env.stop()
+        assert dut.done.value and not dut.error.value
+        starts = [t for t, (s, _, _) in enumerate(env.cycles) if s]
+        handoffs = [t for t, (_, _, h) in enumerate(env.cycles) if h]
+        assert len(starts) == len(handoffs) == len(between) + 1, (starts, handoffs)
+        for i, (h, k) in enumerate(zip(handoffs, between)):
+            due = h + 1 + k   # the cycle the next BLOCK is the executing command
+            first_ready = next(t for t in range(due, len(env.cycles)) if env.cycles[t][1])
+            if go_accept == 1.0:
+                assert first_ready == due, f"BLOCK {i + 1}: the model's DMA was not ready at cycle {due}"
+            assert starts[i + 1] == first_ready, (
+                f"go_accept {go_accept}: BLOCK {i + 1} issued {starts[i + 1] - h} cycles after BLOCK {i}'s "
+                f"handoff; the DMA was first ready {first_ready - h} cycles after it (with {k} commands between)")
 
 
 @cocotb.test()

@@ -12,9 +12,11 @@
     "run_cyc": 17908805,
     "blocks": 303360,
     "slot_cyc": 16910336,
+    "go_cyc": 303360,
     "inj_stall_cyc": 641891,
-    "wait_cyc": 40414,
+    "wait_cyc": 39645,
     "credit_cyc": 0,
+    "other_cyc": 13573,
     "wb_words": 671744
   },
   "mesh_perf": {

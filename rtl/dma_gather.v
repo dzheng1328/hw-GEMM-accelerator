@@ -26,6 +26,12 @@
 //       byte offset, take lanes at stride 1 or 2, apply the masks.
 //   S2  output register.
 // Memories read synchronously and hold their data while re (= adv) is low.
+//
+// Memory-port contract (4.3f's shared ports rely on it): act_re and wt_re
+// equal adv every cycle, idle or not, and the read addresses are S0's
+// combinational ones. handoff releases the BLOCK's inputs, not the memory
+// ports: the last slot's read data is still in the memories' output
+// registers, and S1 needs it held until that slot advances out of S1.
 module dma_gather #(
     parameter ACT_BW = 15,             // activation bank address bits
     parameter WT_AW  = 15,             // weight memory address bits
@@ -108,8 +114,9 @@ module dma_gather #(
             active  <= 1'b0;
             go_pend <= 1'b0;
         end else if (start && ready) begin
-            // A pending GO beat is emitted this cycle (ready implies adv),
-            // and S1 samples the old kchunks0/tag0 at this same edge.
+            // A GO beat still pending is emitted this cycle (with go_pend,
+            // ready implies adv), and S1 samples the old kchunks0/tag0 at
+            // this same edge.
             active   <= 1'b1;
             go_pend  <= 1'b0;
             j        <= 7'd0;

@@ -13,9 +13,11 @@
       "run_cyc": 40130071,
       "blocks": 303360,
       "slot_cyc": 16910336,
+      "go_cyc": 303360,
       "inj_stall_cyc": 22865719,
-      "wait_cyc": 37724,
+      "wait_cyc": 37083,
       "credit_cyc": 0,
+      "other_cyc": 13573,
       "wb_words": 671744
     },
     "mesh_perf": {
@@ -50,9 +52,11 @@
       "run_cyc": 20775621,
       "blocks": 303360,
       "slot_cyc": 16910336,
+      "go_cyc": 303360,
       "inj_stall_cyc": 3509987,
-      "wait_cyc": 39006,
+      "wait_cyc": 38365,
       "credit_cyc": 0,
+      "other_cyc": 13573,
       "wb_words": 671744
     },
     "mesh_perf": {
@@ -89,9 +93,11 @@
       "run_cyc": 17908805,
       "blocks": 303360,
       "slot_cyc": 16910336,
+      "go_cyc": 303360,
       "inj_stall_cyc": 641891,
-      "wait_cyc": 40414,
+      "wait_cyc": 39645,
       "credit_cyc": 0,
+      "other_cyc": 13573,
       "wb_words": 671744
     },
     "mesh_perf": {
@@ -132,9 +138,11 @@
       "run_cyc": 17777733,
       "blocks": 303360,
       "slot_cyc": 16910336,
+      "go_cyc": 303360,
       "inj_stall_cyc": 512611,
-      "wait_cyc": 38494,
+      "wait_cyc": 37853,
       "credit_cyc": 0,
+      "other_cyc": 13573,
       "wb_words": 671744
     },
     "mesh_perf": {
@@ -185,9 +193,11 @@
       "run_cyc": 17525573,
       "blocks": 303360,
       "slot_cyc": 16910336,
+      "go_cyc": 303360,
       "inj_stall_cyc": 253539,
-      "wait_cyc": 45406,
+      "wait_cyc": 44765,
       "credit_cyc": 0,
+      "other_cyc": 13573,
       "wb_words": 671744
     },
     "mesh_perf": {
