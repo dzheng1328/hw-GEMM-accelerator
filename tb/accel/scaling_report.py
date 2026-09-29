@@ -159,9 +159,10 @@ def render(records):
                      f"and the larger meshes hide the stalls that remain (the injection stall falls to {pct(best['inj_stall'])} on {best['mesh']}).")
     lines += [
         "",
-        f"**The rest is a fixed cost per BLOCK.** Past the slots, the GO beats, and the stalls, the command processor spends {best['other_per_block']:.2f} cycles per BLOCK on {best['mesh']} "
-        f"({', '.join(f"{x['other_per_block']:.2f}" for x in d)} across the meshes), independent of the mesh.",
-        "That matches `rtl/dma_gather.v`'s three-stage pipeline (S0, S1, S2) refilling between BLOCKs: `done` pulses when the GO beat is accepted, and `rtl/cmd_seq.v` starts the next BLOCK only then, so each BLOCK's first slot waits for the pipeline to fill again.",
+        f"**What is left is a small fixed cost per BLOCK, not a refill gap.** Past the slots, the GO beats, and the stalls, the command processor spends {best['other_per_block']:.3f} cycles per BLOCK on {best['mesh']} "
+        f"({', '.join(f"{x['other_per_block']:.3f}" for x in d)} across the meshes), independent of the mesh.",
+        "`rtl/dma_gather.v` carries every value a BLOCK still needs (`k_chunks`, the caller's opaque tag) down its own pipeline and hands off at the cycle it emits the BLOCK's last OPERAND beat, and `rtl/cmd_seq.v` (4.3a, issue #81) issues the next BLOCK as soon as the DMA is ready, while the previous one drains, so its first slot follows the previous BLOCK's GO beat with no gap.",
+        "That is why the per-BLOCK remainder is now near zero on every mesh, down from about 3 cycles per BLOCK before 4.3a; whatever is left is data the measurement does not further attribute.",
         "",
         "What this decides for the next phase is recorded in `docs/decisions.md` (2026-09-28, mesh scaling study).",
     ]

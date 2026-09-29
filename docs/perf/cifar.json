@@ -5,16 +5,39 @@
   "float_agreement": 0.9921875,
   "reference_agreement": 1.0,
   "mesh": "2x2",
-  "cycles": 18742977,
-  "cycles_per_image": 146429.5078125,
-  "slot_utilization": 0.9022225231349321,
+  "cycles": 17908805,
+  "cycles_per_image": 139912.5390625,
+  "slot_utilization": 0.9442470337914786,
   "counters": {
-    "run_cyc": 18742977,
+    "run_cyc": 17908805,
     "blocks": 303360,
     "slot_cyc": 16910336,
-    "inj_stall_cyc": 568160,
-    "wait_cyc": 40283,
+    "inj_stall_cyc": 641891,
+    "wait_cyc": 40414,
     "credit_cyc": 0,
     "wb_words": 671744
+  },
+  "mesh_perf": {
+    "corner": {
+      "lcl_in_xfer": 17385728,
+      "lcl_in_stall": 469859,
+      "out_xfer_l": 5241984,
+      "out_xfer_n": 4036608,
+      "out_xfer_e": 8606848,
+      "out_stall_n": 0,
+      "out_stall_e": 97280
+    },
+    "feed_cyc": [
+      4490240,
+      4490240,
+      3964928,
+      3964928
+    ],
+    "busy_cyc": [
+      5811456,
+      5811456,
+      5152768,
+      5152768
+    ]
   }
 }

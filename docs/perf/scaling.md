@@ -10,11 +10,11 @@ int8 accuracy is 88.3% on every mesh: the mesh changes the schedule, never the r
 
 | Mesh | Tiles | Cycles per image | Speedup vs 1x1 | Mesh throughput (tiles busy) | MAC utilization per tile | Corner injection busy | Corner injection stalled |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 1x1 | 1 | 313,516 | 1.00x | 0.42 | 42.1% | 44.6% | 53.1% |
-| 2x1 | 2 | 163,419 | 1.92x | 0.81 | 40.4% | 83.9% | 11.8% |
-| 2x2 | 4 | 146,430 | 2.14x | 0.90 | 22.6% | 92.8% | 2.1% |
-| 3x3 | 9 | 145,415 | 2.16x | 0.91 | 10.1% | 92.9% | 1.9% |
-| 4x4 | 16 | 143,533 | 2.18x | 0.92 | 5.8% | 94.0% | 0.8% |
+| 1x1 | 1 | 313,516 | 1.00x | 0.42 | 42.1% | 44.6% | 55.3% |
+| 2x1 | 2 | 162,310 | 1.93x | 0.81 | 40.7% | 84.5% | 15.3% |
+| 2x2 | 4 | 139,913 | 2.24x | 0.94 | 23.6% | 97.1% | 2.6% |
+| 3x3 | 9 | 138,889 | 2.26x | 0.95 | 10.6% | 97.3% | 2.4% |
+| 4x4 | 16 | 136,919 | 2.29x | 0.96 | 6.0% | 98.5% | 1.2% |
 
 - *Mesh throughput* is 64-MAC operand slots fed into all arrays per cycle: 1.00 would be one tile computing every cycle.
 - *Corner injection* is node (0,0)'s router LOCAL input, where every OPERAND and GO flit enters the mesh and tile (0,0)'s RESULT flits leave it (`rtl/node_perf.v` `lcl_in_xfer`/`lcl_in_stall` over run cycles).
@@ -26,7 +26,7 @@ xychart-beta
     title "Cycles per CIFAR-10 image"
     x-axis ["1x1", "2x1", "2x2", "3x3", "4x4"]
     y-axis "Cycles per image" 0 --> 350000
-    bar [313516, 163419, 146430, 145415, 143533]
+    bar [313516, 162310, 139913, 138889, 136919]
     line [134482, 134482, 134482, 134482, 134482]
 ```
 
@@ -37,7 +37,7 @@ xychart-beta
     title "Speedup over 1x1"
     x-axis ["1x1", "2x1", "2x2", "3x3", "4x4"]
     y-axis "Speedup" 0 --> 16
-    bar [1, 1.918, 2.141, 2.156, 2.184]
+    bar [1, 1.932, 2.241, 2.257, 2.29]
     line [1, 2, 4, 9, 16]
 ```
 
@@ -47,38 +47,39 @@ Run cycles by what the command processor did (`rtl/cmd_perf.v`); *Other* is the 
 
 | Mesh | OPERAND slots | GO beats | Injection stall | WAIT/END stall | Credit stall | Other |
 |---|---:|---:|---:|---:|---:|---:|
-| 1x1 | 42.1% | 0.8% | 54.7% | 0.1% | 0.0% | 2.3% |
-| 2x1 | 80.8% | 1.5% | 13.4% | 0.2% | 0.0% | 4.1% |
-| 2x2 | 90.2% | 1.6% | 3.0% | 0.2% | 0.0% | 4.9% |
-| 3x3 | 90.9% | 1.6% | 2.4% | 0.2% | 0.0% | 4.9% |
-| 4x4 | 92.0% | 1.7% | 1.1% | 0.2% | 0.0% | 5.0% |
+| 1x1 | 42.1% | 0.8% | 57.0% | 0.1% | 0.0% | 0.0% |
+| 2x1 | 81.4% | 1.5% | 16.9% | 0.2% | 0.0% | 0.1% |
+| 2x2 | 94.4% | 1.7% | 3.6% | 0.2% | 0.0% | 0.1% |
+| 3x3 | 95.1% | 1.7% | 2.9% | 0.2% | 0.0% | 0.1% |
+| 4x4 | 96.5% | 1.7% | 1.4% | 0.3% | 0.0% | 0.1% |
 
 Node (0,0)'s outgoing ports, busy cycles over run cycles:
 
 | Mesh | East link | North link | LOCAL out (tile (0,0)'s operands, all RESULTs) |
 |---|---:|---:|---:|
 | 1x1 | 0.0% | 0.0% | 44.6% |
-| 2x1 | 41.1% | 0.0% | 44.4% |
-| 2x2 | 45.9% | 21.5% | 28.0% |
-| 3x3 | 60.2% | 19.0% | 16.9% |
-| 4x4 | 68.8% | 16.5% | 12.1% |
+| 2x1 | 41.4% | 0.0% | 44.7% |
+| 2x2 | 48.1% | 22.5% | 29.3% |
+| 3x3 | 63.0% | 19.9% | 17.7% |
+| 4x4 | 72.1% | 17.3% | 12.6% |
 
 ## Where the corner saturates and why
 
-The corner saturates at **2x2**: it runs within 2.0% of the fastest mesh measured (4x4), and no larger mesh measured is more than 2.0% faster, while the tile count grows 4x.
+The corner saturates at **2x2**: it runs within 2.2% of the fastest mesh measured (4x4), and no larger mesh measured is more than 2.2% faster, while the tile count grows 4x.
 
 **The corner's injection port is the bottleneck, and its capacity is exactly one tile.**
 Every OPERAND and GO flit enters the mesh through node (0,0)'s single router LOCAL input, one flit per cycle.
 One OPERAND flit is one slot, an 8-byte A column and an 8-byte B row, which is 64 MACs of work for the tile it reaches: one tile's peak rate.
 So no mesh can do more MACs per cycle than one fully busy tile.
-Each image needs 134,482 injected flits (2,370 BLOCKs of 55.7 slots on average, plus one GO each), which is a floor under every mesh; 4x4 runs at 93.7% of the floor's speed, with the corner's injection port busy 94.0% of cycles.
-Mesh throughput tops out at 0.92 tiles busy, and MAC utilization per tile falls from 42.1% to 5.8% as tiles are added.
+Each image needs 134,482 injected flits (2,370 BLOCKs of 55.7 slots on average, plus one GO each), which is a floor under every mesh; 4x4 runs at 98.2% of the floor's speed, with the corner's injection port busy 98.5% of cycles.
+Mesh throughput tops out at 0.96 tiles busy, and MAC utilization per tile falls from 42.1% to 6.0% as tiles are added.
 
 **Below saturation, a single tile cannot overlap loading and computing.**
-A tile backpressures OPERAND and GO flits while it computes and streams results (issue #44, one operand buffer), so on 1x1 loading and computing take turns: the corner's injection port is stalled 53.1% of cycles and the mesh runs at 42.9% of the floor's speed.
-A second tile loads while the first computes: 2x1 is 1.92x faster than 1x1, and the larger meshes hide the stalls that remain (the injection stall falls to 0.8% on 4x4).
+A tile backpressures OPERAND and GO flits while it computes and streams results (issue #44, one operand buffer), so on 1x1 loading and computing take turns: the corner's injection port is stalled 55.3% of cycles and the mesh runs at 42.9% of the floor's speed.
+A second tile loads while the first computes: 2x1 is 1.93x faster than 1x1, and the larger meshes hide the stalls that remain (the injection stall falls to 1.2% on 4x4).
 
-**The rest is a fixed cost per BLOCK.** Past the slots, the GO beats, and the stalls, the command processor spends 3.03 cycles per BLOCK on 4x4 (3.04, 2.85, 3.04, 3.04, 3.03 across the meshes), independent of the mesh.
-That matches `rtl/dma_gather.v`'s three-stage pipeline (S0, S1, S2) refilling between BLOCKs: `done` pulses when the GO beat is accepted, and `rtl/cmd_seq.v` starts the next BLOCK only then, so each BLOCK's first slot waits for the pipeline to fill again.
+**What is left is a small fixed cost per BLOCK, not a refill gap.** Past the slots, the GO beats, and the stalls, the command processor spends 0.043 cycles per BLOCK on 4x4 (0.043, 0.043, 0.042, 0.043, 0.043 across the meshes), independent of the mesh.
+`rtl/dma_gather.v` carries every value a BLOCK still needs (`k_chunks`, the caller's opaque tag) down its own pipeline and hands off at the cycle it emits the BLOCK's last OPERAND beat, and `rtl/cmd_seq.v` (4.3a, issue #81) issues the next BLOCK as soon as the DMA is ready, while the previous one drains, so its first slot follows the previous BLOCK's GO beat with no gap.
+That is why the per-BLOCK remainder is now near zero on every mesh, down from about 3 cycles per BLOCK before 4.3a; whatever is left is data the measurement does not further attribute.
 
 What this decides for the next phase is recorded in `docs/decisions.md` (2026-09-28, mesh scaling study).
