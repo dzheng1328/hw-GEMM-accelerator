@@ -143,7 +143,11 @@ def train(total_iters, *, device, train_tokens, val_windows, out_dir, eval_every
         model.load_state_dict(state["model"])
         opt.load_state_dict(state["opt"])
         rng.bit_generator.state = state["np_rng"]
-        torch.set_rng_state(state["torch_rng"])
+        # torch.load(..., map_location=device) above moves every tensor in the
+        # saved state onto that device, including this CPU-only RNG state
+        # (torch.get_rng_state() always returns a CPU ByteTensor); set_rng_state
+        # rejects anything else, so pull it back to CPU before restoring it.
+        torch.set_rng_state(state["torch_rng"].cpu())
         start_iter, log = state["iter"], state["log"]
 
     step_time, step_count = 0.0, 0

@@ -221,6 +221,45 @@ def test_resume_with_different_total_iters_raises(tmp_path, monkeypatch):
         lm_train.train(3, device="cpu", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir, resume=True)
 
 
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="needs MPS")
+def test_resume_on_mps_restores_cpu_rng_state(tmp_path, monkeypatch):
+    # torch.load(..., map_location=device) moves every tensor in the saved
+    # state onto that device -- including state["torch_rng"], a CPU
+    # ByteTensor from torch.get_rng_state(). torch.set_rng_state() rejects
+    # anything but a CPU ByteTensor, so resuming a run on "mps" used to raise
+    # TypeError: RNG state must be a torch.ByteTensor. The CPU-only resume
+    # test above can't catch this: map_location="cpu" is a no-op there.
+    train_tokens, val_windows = _tiny_train_data(monkeypatch)
+    out_dir = tmp_path / "mps_run"
+
+    orig_accumulate_grads = lm_train.accumulate_grads
+    calls = {"n": 0}
+
+    def stop_after_two(model, w):
+        calls["n"] += 1
+        loss = orig_accumulate_grads(model, w)
+        if calls["n"] == 2:
+            lm_train._STOP = True
+        return loss
+
+    lm_train.accumulate_grads = stop_after_two
+    try:
+        log = lm_train.train(6, device="mps", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir)
+        assert log == [] and lm_train._STOP is True
+    finally:
+        lm_train.accumulate_grads = orig_accumulate_grads
+        lm_train._STOP = False
+
+    paused_state = torch.load(out_dir / "lm_train_state.pt", map_location="mps", weights_only=False)
+    assert paused_state["iter"] == 2  # confirms the pause landed where we expect before resuming
+
+    log = lm_train.train(6, device="mps", train_tokens=train_tokens, val_windows=val_windows, out_dir=out_dir, resume=True)
+    assert log[-1]["iter"] == 6  # completed, not stuck restarting at iter 0
+
+    final_state = torch.load(out_dir / "lm_train_state.pt", map_location="mps", weights_only=False)
+    assert final_state["iter"] == 6  # resume continued from the saved iteration (2) through to 6, not from 0
+
+
 import lm_reference as ref
 
 
