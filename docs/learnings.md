@@ -24,6 +24,35 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-09-29 -- Two counters at different interfaces around a skid buffer do not partition cycles
+
+**Phase:** Phase 4 (4.3a follow-up)
+**Problem:** 4.3a's scaling report showed "Other" at 0.04 cycles per BLOCK, and its text called the command processor's cycle breakdown a partition.
+The final review measured one CIFAR-10 image on 2x2 cycle by cycle: about 2,081 cycles were counted in two categories and about 2,185 in none, so "Other" was near zero only because the two errors cancelled.
+**Cause:** OPERAND slots and GO beats were counted where the DMA hands beats to `rtl/flit_pack.v` (`beat_valid && beat_ready`), but the injection stall was counted at `flit_pack`'s output, after its `rtl/flit_buf.v` skid buffer.
+The skid's `in_ready` is `count < 2`, which does not depend on `out_ready`, so a beat can be accepted in a cycle the port is stalled (counted twice), and the port can inject a buffered flit in a cycle the DMA offers nothing (counted by neither).
+The 4.3a masking (count WAIT/END and credit stalls only when neither interface was busy) could not fix that, because the overlap was between the two flit counters themselves.
+**Fix:** `rtl/cmd_perf.v` counts every category at one interface, node (0,0)'s injection port: an OPERAND or GO flit injected (by its type field), a flit stalled, or, with no flit at the port, a WAIT/END stall, else a credit stall, else an explicit `other_cyc`.
+`tb/accel` asserts the six categories sum exactly to `run_cyc` on every case, and the report scripts refuse records that do not.
+The totals barely moved (over a whole run every flit and every stall is counted once at either interface): on 2x2, `wait_cyc` fell 1.9% and Other went from 0.042 to 0.045 cycles per BLOCK, but now each cycle is attributed once and Other is measured, not a remainder.
+**Takeaway:** a breakdown is a partition only if every category is decided at the same interface in the same cycle; assert the exact sum, because a non-negative remainder can hide errors that cancel.
+
+### 2026-09-29 -- A git worktree has no `.venv`, so `./test.sh` fails at its first line
+
+**Phase:** Phase 4 (4.3a)
+**Problem:** `./test.sh` in a second worktree (used so a training run could keep reading the main checkout) failed immediately on `source .venv/bin/activate`.
+**Cause:** `.venv` is gitignored, so `git worktree add` does not create it, and `test.sh` activates the repo-local one.
+**Fix:** symlink the main checkout's `.venv` into the worktree (`ln -s <main>/.venv .venv`), and never stage the symlink (`git add` explicit paths).
+**Takeaway:** a new worktree gets tracked files only; link or recreate every gitignored tool directory before running the suite.
+
+### 2026-09-29 -- The 4.3a plan merged the PR before the whole-branch review
+
+**Phase:** Phase 4 (4.3a)
+**Problem:** the final whole-branch review of 4.3a found two Important issues (no test above the DMA guarded the zero gap, and the perf breakdown was not a partition) after PR #89 had already merged, so the fixes needed a follow-up PR.
+**Cause:** the plan's last task said to merge once `./test.sh` passed, and the final review was scheduled after the last task, so it ran on `main`.
+**Fix:** the fixes landed in a follow-up PR, which merges only after its own review.
+**Takeaway:** a plan's merge step belongs after the final whole-branch review; a passing test suite is not a review.
+
 ### 2026-09-28 -- A cocotb Clock dominates Verilator run time on long simulations
 
 **Phase:** Phase 4 (4.2e)

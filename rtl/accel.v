@@ -92,10 +92,19 @@ module accel #(
     wire [63:0]         beat_a, beat_b;
     wire [3:0]          beat_kchunks;
 
-    // flit_pack's BLOCK fields ride through the DMA with each beat.
-    localparam TAGW = 2*AW + 26;
-    wire [TAGW-1:0] block_tag = {tile_y, tile_x, no_ret, acc_keep, requant, relu, sh, m};
-    wire [TAGW-1:0] beat_tag;
+    // flit_pack's BLOCK fields ride through the DMA with each beat, as an
+    // opaque tag laid out by these offsets.
+    localparam TAG_M = 0, TAG_SH = 16, TAG_RELU = 22, TAG_REQUANT = 23, TAG_ACC_KEEP = 24,
+               TAG_NO_RET = 25, TAG_X = 26, TAG_Y = 26 + AW, TAGW = 26 + 2*AW;
+    wire [TAGW-1:0] block_tag, beat_tag;
+    assign block_tag[TAG_M +: 16]     = m;
+    assign block_tag[TAG_SH +: 6]     = sh;
+    assign block_tag[TAG_RELU]        = relu;
+    assign block_tag[TAG_REQUANT]     = requant;
+    assign block_tag[TAG_ACC_KEEP]    = acc_keep;
+    assign block_tag[TAG_NO_RET]      = no_ret;
+    assign block_tag[TAG_X +: AW]     = tile_x;
+    assign block_tag[TAG_Y +: AW]     = tile_y;
 
     dma_gather #(.ACT_BW(ACT_BW), .WT_AW(WT_AW), .TAGW(TAGW)) dma (
         .clk(clk), .rst(rst), .start(dma_start),
@@ -115,9 +124,9 @@ module accel #(
 
     flit_pack #(.AW(AW)) pack (
         .clk(clk), .rst(rst),
-        .dest_y(beat_tag[AW+26 +: AW]), .dest_x(beat_tag[26 +: AW]), .no_ret(beat_tag[25]),
-        .acc_keep(beat_tag[24]), .requant(beat_tag[23]), .relu(beat_tag[22]), .sh(beat_tag[21:16]),
-        .m(beat_tag[15:0]),
+        .dest_y(beat_tag[TAG_Y +: AW]), .dest_x(beat_tag[TAG_X +: AW]), .no_ret(beat_tag[TAG_NO_RET]),
+        .acc_keep(beat_tag[TAG_ACC_KEEP]), .requant(beat_tag[TAG_REQUANT]), .relu(beat_tag[TAG_RELU]),
+        .sh(beat_tag[TAG_SH +: 6]), .m(beat_tag[TAG_M +: 16]),
         .in_valid(beat_valid), .in_ready(beat_ready), .in_go(beat_go), .in_slot(beat_slot),
         .in_a(beat_a), .in_b(beat_b), .in_kchunks(beat_kchunks),
         .inj_valid(inj0_valid), .inj_flit(inj0_flit), .inj_ready(inj_ready[0]));
