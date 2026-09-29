@@ -8,6 +8,8 @@ docs/perf/scaling.json and rendered as docs/perf/scaling.md.
 import json
 import sys
 
+from cifar_report import SPLIT, check_split
+
 # The saturation point: the smallest mesh within this fraction of the
 # fastest mesh measured.
 SATURATION_TOLERANCE = 0.05
@@ -29,11 +31,7 @@ def combine(records):
             raise ValueError(f"{r['mesh']}: RTL predictions differ from the NumPy reference")
         if sum(r["mesh_perf"]["feed_cyc"]) != r["counters"]["slot_cyc"]:
             raise ValueError(f"{r['mesh']}: tiles fed a different number of slots than the DMA sent")
-        c = r["counters"]
-        categorized = c["slot_cyc"] + c["blocks"] + c["inj_stall_cyc"] + c["wait_cyc"] + c["credit_cyc"]
-        if categorized > c["run_cyc"]:
-            raise ValueError(f"{r['mesh']}: categorized cycles ({categorized}) exceed run cycles "
-                              f"({c['run_cyc']}) -- Other would be negative")
+        check_split(r["counters"], r["mesh"])
     return records
 
 
@@ -42,21 +40,20 @@ def derive(r):
     c, corner, n = r["counters"], r["mesh_perf"]["corner"], r["images"]
     run = c["run_cyc"]
     feed = sum(r["mesh_perf"]["feed_cyc"])
-    other = run - c["slot_cyc"] - c["blocks"] - c["inj_stall_cyc"] - c["wait_cyc"] - c["credit_cyc"]
     return {
         "mesh": r["mesh"], "tiles": tiles(r), "cpi": run / n,
         # Every OPERAND and GO flit enters through node (0,0)'s injection
         # port at one flit per cycle: no mesh runs faster than this.
-        "floor": (c["slot_cyc"] + c["blocks"]) / n,
+        "floor": (c["slot_cyc"] + c["go_cyc"]) / n,
         "throughput": feed / run,               # tile-equivalents of 64-MAC feeds per cycle
         "mac_util": feed / (tiles(r) * run),    # per tile
         "inj_busy": corner["lcl_in_xfer"] / run,
         "inj_stall": corner["lcl_in_stall"] / run,
         "link_e": corner["out_xfer_e"] / run, "link_n": corner["out_xfer_n"] / run,
         "local_out": corner["out_xfer_l"] / run,
-        "split": {"OPERAND slots": c["slot_cyc"], "GO beats": c["blocks"], "Injection stall": c["inj_stall_cyc"],
-                  "WAIT/END stall": c["wait_cyc"], "Credit stall": c["credit_cyc"], "Other": other},
-        "run": run, "other_per_block": other / c["blocks"], "blocks_per_image": c["blocks"] / n,
+        "split": {label: c[k] for label, k in SPLIT.items()},
+        "run": run, "other_per_block": c["other_cyc"] / c["blocks"], "other_per_image": c["other_cyc"] / n,
+        "blocks_per_image": c["blocks"] / n,
         "slots_per_block": c["slot_cyc"] / c["blocks"],
     }
 
@@ -118,7 +115,9 @@ def render(records):
         "",
         "## Where the command processor's cycles go",
         "",
-        "Run cycles by what the command processor did (`rtl/cmd_perf.v`); *Other* is the remainder.",
+        "Run cycles by what node (0,0)'s injection port did (`rtl/cmd_perf.v`).",
+        "Every category is counted at that one port, so each run cycle is in exactly one and the rows sum to 100%: "
+        "an OPERAND or GO flit injected, a flit stalled, or, with no flit at the port, a WAIT/END stall, else a credit stall, else *Other*.",
         "",
         "| Mesh | " + " | ".join(d[0]["split"]) + " |",
         "|---|" + "---:|" * len(d[0]["split"]),
@@ -159,10 +158,11 @@ def render(records):
                      f"and the larger meshes hide the stalls that remain (the injection stall falls to {pct(best['inj_stall'])} on {best['mesh']}).")
     lines += [
         "",
-        f"**What is left is a small fixed cost per BLOCK, not a refill gap.** Past the slots, the GO beats, and the stalls, the command processor spends {best['other_per_block']:.3f} cycles per BLOCK on {best['mesh']} "
-        f"({', '.join(f"{x['other_per_block']:.3f}" for x in d)} across the meshes), independent of the mesh.",
+        f"**What is left is a fixed cost per layer, not a refill gap.** *Other* is {best['other_per_image']:,.0f} cycles per image on {best['mesh']} "
+        f"({', '.join(f"{x['other_per_image']:,.0f}" for x in d)} across the meshes), {best['other_per_block']:.3f} cycles per BLOCK.",
+        "It is the command processor's non-BLOCK commands (one cycle each: a layer's register ADDs, LOOP, ENDLOOP) and the DMA pipeline refilling after each WAIT, which the image's BLOCKs amortize.",
         "`rtl/dma_gather.v` carries every value a BLOCK still needs (`k_chunks`, the caller's opaque tag) down its own pipeline and hands off at the cycle it emits the BLOCK's last OPERAND beat, and `rtl/cmd_seq.v` (4.3a, issue #81) issues the next BLOCK as soon as the DMA is ready, while the previous one drains, so its first slot follows the previous BLOCK's GO beat with no gap.",
-        "That is why the per-BLOCK remainder is now near zero on every mesh, down from about 3 cycles per BLOCK before 4.3a; whatever is left is data the measurement does not further attribute.",
+        "Before 4.3a the DMA idled about 3 cycles refilling its pipeline between every two BLOCKs.",
         "",
         "What this decides for the next phase is recorded in `docs/decisions.md` (2026-09-28, mesh scaling study).",
     ]

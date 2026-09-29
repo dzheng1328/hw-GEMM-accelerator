@@ -15,14 +15,17 @@ The final activation memory is bit-exact against `compiler/golden.py`, and every
 | Cycles per image | 139,913 |
 | OPERAND slot utilization | 94.4% |
 
-Command processor counters (`rtl/cmd_perf.v`):
+Command processor counters (`rtl/cmd_perf.v`).
+`slot_cyc`, `go_cyc`, `inj_stall_cyc`, `wait_cyc`, `credit_cyc`, `other_cyc` partition `run_cyc`, all measured at node (0,0)'s injection port.
 
 | Counter | Value |
 |---|---:|
 | run_cyc | 17,908,805 |
 | blocks | 303,360 |
 | slot_cyc | 16,910,336 |
+| go_cyc | 303,360 |
 | inj_stall_cyc | 641,891 |
-| wait_cyc | 40,414 |
+| wait_cyc | 39,645 |
 | credit_cyc | 0 |
+| other_cyc | 13,573 |
 | wb_words | 671,744 |

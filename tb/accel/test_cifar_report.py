@@ -1,9 +1,14 @@
 """pytest for tb/accel/cifar_report.py."""
 
+import pytest
+
 from cifar_report import render
 
 RECORD = {"mesh": "2x2", "images": 128, "cycles": 18_750_000, "cycles_per_image": 146_484.4,
-          "slot_utilization": 0.902, "counters": {"run_cyc": 18_750_000, "blocks": 303_360},
+          "slot_utilization": 0.902,
+          "counters": {"run_cyc": 18_750_000, "blocks": 303_360, "slot_cyc": 16_912_500, "go_cyc": 303_360,
+                       "inj_stall_cyc": 1_500_000, "wait_cyc": 20_000, "credit_cyc": 0, "other_cyc": 14_140,
+                       "wb_words": 670_000},
           "int8_accuracy": 0.8828, "float_accuracy": 0.8906, "float_agreement": 0.9922,
           "reference_agreement": 1.0}
 
@@ -13,6 +18,13 @@ def test_render_reports_accuracy_and_cycles():
     assert "88.28%" in md and "89.06%" in md and "99.22%" in md
     assert "128" in md and "2x2" in md and "146,484" in md and "90.2%" in md
     assert "bit-exact" in md
+    assert "| other_cyc | 14,140 |" in md and "partition `run_cyc`" in md
+
+
+def test_render_refuses_counters_that_do_not_partition_run_cycles():
+    bad = dict(RECORD, counters=dict(RECORD["counters"], other_cyc=14_141))
+    with pytest.raises(ValueError, match="not run_cyc"):
+        render(bad)
 
 
 def test_render_refuses_a_record_that_disagrees_with_the_reference():

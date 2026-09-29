@@ -196,25 +196,20 @@ module accel #(
     endgenerate
 
     // ---- Performance counters ----
-    // With the DMA's cross-BLOCK handoff (4.3a), a WAIT/END stall or a
-    // credit stall can now coincide with the previous BLOCK's still-draining
-    // OPERAND/GO beats, or with the injection port stalled on a flit already
-    // formatted from one of those beats. Count wait_stall/credit_stall only
-    // on a cycle where the DMA accepts no beat and the injection port is not
-    // stalled, so every category stays a disjoint slice of run cycles.
-    wire dma_beat_accepted = beat_valid && beat_ready;
-    wire inj_stalled       = inj0_valid && !inj_ready[0];
+    // rtl/cmd_perf.v partitions the run cycles at node (0,0)'s injection
+    // port: a flit injected (OPERAND or GO, by its type field), a flit
+    // stalled, or, with the port idle, a WAIT/END stall, a credit stall, or
+    // other, in that priority.
+    localparam [1:0] T_GO = 2'd1;      // GO flit type (rtl/noc_node.v)
+    wire inj0_go = (inj0_flit[FW-1 -: 2] == T_GO);
     generate
         if (PERF) begin : g_perf
             cmd_perf perf (
                 .clk(clk), .rst(rst), .run(seq_busy), .block(dma_start),
-                .slot(beat_valid && beat_ready && !beat_go),
-                .inj_stall(inj_stalled),
-                .wait_stall(seq_wait && !dma_beat_accepted && !inj_stalled),
-                .credit_stall(seq_credit && !dma_beat_accepted && !inj_stalled),
-                .wb_word(wb_we));
+                .inj_valid(inj0_valid), .inj_ready(inj_ready[0]), .inj_go(inj0_go),
+                .wait_stall(seq_wait), .credit_stall(seq_credit), .wb_word(wb_we));
         end else begin : g_noperf
-            wire unused_perf = &{1'b0, seq_busy, seq_wait, seq_credit, dma_beat_accepted, inj_stalled};
+            wire unused_perf = &{1'b0, seq_busy, seq_wait, seq_credit, inj0_go};
         end
     endgenerate
 

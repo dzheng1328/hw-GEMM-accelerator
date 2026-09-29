@@ -43,9 +43,10 @@ xychart-beta
 
 ## Where the command processor's cycles go
 
-Run cycles by what the command processor did (`rtl/cmd_perf.v`); *Other* is the remainder.
+Run cycles by what node (0,0)'s injection port did (`rtl/cmd_perf.v`).
+Every category is counted at that one port, so each run cycle is in exactly one and the rows sum to 100%: an OPERAND or GO flit injected, a flit stalled, or, with no flit at the port, a WAIT/END stall, else a credit stall, else *Other*.
 
-| Mesh | OPERAND slots | GO beats | Injection stall | WAIT/END stall | Credit stall | Other |
+| Mesh | OPERAND flits | GO flits | Injection stall | WAIT/END stall | Credit stall | Other |
 |---|---:|---:|---:|---:|---:|---:|
 | 1x1 | 42.1% | 0.8% | 57.0% | 0.1% | 0.0% | 0.0% |
 | 2x1 | 81.4% | 1.5% | 16.9% | 0.2% | 0.0% | 0.1% |
@@ -78,8 +79,9 @@ Mesh throughput tops out at 0.96 tiles busy, and MAC utilization per tile falls 
 A tile backpressures OPERAND and GO flits while it computes and streams results (issue #44, one operand buffer), so on 1x1 loading and computing take turns: the corner's injection port is stalled 55.3% of cycles and the mesh runs at 42.9% of the floor's speed.
 A second tile loads while the first computes: 2x1 is 1.93x faster than 1x1, and the larger meshes hide the stalls that remain (the injection stall falls to 1.2% on 4x4).
 
-**What is left is a small fixed cost per BLOCK, not a refill gap.** Past the slots, the GO beats, and the stalls, the command processor spends 0.043 cycles per BLOCK on 4x4 (0.043, 0.043, 0.042, 0.043, 0.043 across the meshes), independent of the mesh.
+**What is left is a fixed cost per layer, not a refill gap.** *Other* is 106 cycles per image on 4x4 (106, 106, 106, 106, 106 across the meshes), 0.045 cycles per BLOCK.
+It is the command processor's non-BLOCK commands (one cycle each: a layer's register ADDs, LOOP, ENDLOOP) and the DMA pipeline refilling after each WAIT, which the image's BLOCKs amortize.
 `rtl/dma_gather.v` carries every value a BLOCK still needs (`k_chunks`, the caller's opaque tag) down its own pipeline and hands off at the cycle it emits the BLOCK's last OPERAND beat, and `rtl/cmd_seq.v` (4.3a, issue #81) issues the next BLOCK as soon as the DMA is ready, while the previous one drains, so its first slot follows the previous BLOCK's GO beat with no gap.
-That is why the per-BLOCK remainder is now near zero on every mesh, down from about 3 cycles per BLOCK before 4.3a; whatever is left is data the measurement does not further attribute.
+Before 4.3a the DMA idled about 3 cycles refilling its pipeline between every two BLOCKs.
 
 What this decides for the next phase is recorded in `docs/decisions.md` (2026-09-28, mesh scaling study).

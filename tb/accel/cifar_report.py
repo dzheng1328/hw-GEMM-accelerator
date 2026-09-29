@@ -7,6 +7,19 @@ import json
 import sys
 
 
+# rtl/cmd_perf.v's partition of the run cycles, every category measured at
+# node (0,0)'s injection port: report label -> counter.
+SPLIT = {"OPERAND flits": "slot_cyc", "GO flits": "go_cyc", "Injection stall": "inj_stall_cyc",
+         "WAIT/END stall": "wait_cyc", "Credit stall": "credit_cyc", "Other": "other_cyc"}
+
+
+def check_split(c, where="counters"):
+    """The categories must sum to exactly run_cyc: each run cycle is in one."""
+    total = sum(c[k] for k in SPLIT.values())
+    if total != c["run_cyc"]:
+        raise ValueError(f"{where}: the cycle categories sum to {total}, not run_cyc {c['run_cyc']}")
+
+
 def pct(x):
     return f"{100 * x:.2f}%"
 
@@ -15,6 +28,7 @@ def render(r):
     if r["reference_agreement"] != 1.0:
         raise ValueError("RTL predictions differ from the NumPy reference; not a bit-exact run")
     c = r["counters"]
+    check_split(c)
     lines = [
         "# CIFAR-10 on the chip",
         "",
@@ -33,7 +47,8 @@ def render(r):
         f"| Cycles per image | {r['cycles_per_image']:,.0f} |",
         f"| OPERAND slot utilization | {100 * r['slot_utilization']:.1f}% |",
         "",
-        "Command processor counters (`rtl/cmd_perf.v`):",
+        "Command processor counters (`rtl/cmd_perf.v`).",
+        "`" + "`, `".join(SPLIT.values()) + "` partition `run_cyc`, all measured at node (0,0)'s injection port.",
         "",
         "| Counter | Value |",
         "|---|---:|",

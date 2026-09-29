@@ -9,12 +9,13 @@ CORNER = {"lcl_in_xfer": 0, "lcl_in_stall": 0, "out_xfer_l": 0, "out_xfer_n": 0,
 
 
 def record(mesh, tiles, run, inj_stall):
-    slots, blocks = 5_400, 100
+    slots, blocks, wait = 5_400, 100, 10
     feed = [slots // tiles] * tiles
     feed[0] += slots - sum(feed)
     return {"mesh": mesh, "images": 2, "int8_accuracy": 0.75, "reference_agreement": 1.0,
-            "counters": {"run_cyc": run, "blocks": blocks, "slot_cyc": slots, "inj_stall_cyc": inj_stall,
-                         "wait_cyc": 10, "credit_cyc": 0, "wb_words": 200},
+            "counters": {"run_cyc": run, "blocks": blocks, "slot_cyc": slots, "go_cyc": blocks,
+                         "inj_stall_cyc": inj_stall, "wait_cyc": wait, "credit_cyc": 0,
+                         "other_cyc": run - slots - blocks - inj_stall - wait, "wb_words": 200},
             "mesh_perf": {"corner": dict(CORNER, lcl_in_xfer=slots + blocks, lcl_in_stall=inj_stall),
                           "feed_cyc": feed, "busy_cyc": feed}}
 
@@ -36,6 +37,13 @@ def test_render_reports_speedup_floor_and_saturation():
     assert "bit-exact" in md and "—" not in md
 
 
+def test_render_takes_other_from_its_counter():
+    md = render(RECORDS)
+    # 4x4: other_cyc = 5,830 - 5,400 - 100 - 20 - 10 = 300 = 5.1% of run cycles, 150 per image
+    assert "| 4x4 | 92.6% | 1.7% | 0.3% | 0.2% | 0.0% | 5.1% |" in md
+    assert "*Other* is 150 cycles per image on 4x4" in md
+
+
 @pytest.mark.parametrize("field,value,message", [
     ("reference_agreement", 0.99, "reference"),
     ("images", 3, "different numbers of images"),
@@ -53,10 +61,11 @@ def test_combine_refuses_feeds_that_do_not_match_the_slots_sent():
         combine([bad])
 
 
-def test_combine_refuses_categorized_cycles_exceeding_run_cycles():
+@pytest.mark.parametrize("delta", [1, -1])
+def test_combine_refuses_categories_that_do_not_sum_to_run_cycles(delta):
     bad = record("2x2", 4, 5_900, 90)
-    bad["counters"]["wait_cyc"] = 1_000_000  # would make "Other" negative
-    with pytest.raises(ValueError, match="exceed run cycles"):
+    bad["counters"]["wait_cyc"] += delta   # a cycle counted twice, or not at all
+    with pytest.raises(ValueError, match="not run_cyc"):
         combine([bad])
 
 
