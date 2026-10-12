@@ -24,9 +24,12 @@ async def reset(dut):
 
 
 def random_block(rng):
+    requant = rng.randrange(2)
     return {"dest_x": rng.randrange(8), "dest_y": rng.randrange(8), "acc_keep": rng.randrange(2),
-            "no_ret": rng.randrange(2), "requant": rng.randrange(2), "relu": rng.randrange(2),
-            "sh": rng.randrange(64), "m": rng.randrange(1 << 16)}
+            "no_ret": rng.randrange(2), "requant": requant, "relu": rng.randrange(2),
+            "sh": rng.randrange(64), "m": rng.randrange(1 << 16),
+            "q16": rng.randrange(2) if requant else 0,  # RESULT16 is a requantized mode
+            "rows_m1": rng.randrange(8)}
 
 
 def beats_and_flits(rng, blk, n):
@@ -40,7 +43,8 @@ def beats_and_flits(rng, blk, n):
         want.append(flits.operand(AW, dest, slot, a, b))
     beats.append((1, 0, 0, 0, n // 8))
     want.append(flits.go(AW, dest, n // 8, m=blk["m"], sh=blk["sh"], relu=bool(blk["relu"]),
-                         requant=bool(blk["requant"]), acc_keep=bool(blk["acc_keep"]), no_ret=bool(blk["no_ret"])))
+                         requant=bool(blk["requant"]), acc_keep=bool(blk["acc_keep"]), no_ret=bool(blk["no_ret"]),
+                         q16=bool(blk["q16"]), rows=blk["rows_m1"] + 1))
     return beats, want
 
 
@@ -134,3 +138,21 @@ async def test_one_flit_per_cycle_without_backpressure(dut):
         await RisingEdge(dut.clk)
     c.kill()
     assert valid_cycles == len(want)
+
+
+@cocotb.test()
+async def test_every_row_limit_and_mode_reaches_the_go_descriptor(dut):
+    """GO bits 42 (q16) and 45:43 (rows_m1) follow the block fields, for all
+    eight row limits in both int8 and int16 modes."""
+    await reset(dut)
+    rng = random.Random(2)
+    blocks = []
+    for rows_m1 in range(8):
+        for q16 in (0, 1):
+            blk = random_block(rng)
+            blk.update(requant=1, q16=q16, rows_m1=rows_m1)
+            blocks.append((blk, 8))
+    seen, want = await run(dut, rng, blocks, ready_prob=0.6)
+    assert seen == want
+    gos = [flits.decode(AW, f) for f in seen if flits.decode(AW, f)["type"] == "GO"]
+    assert sorted((g["rows"], g["q16"]) for g in gos) == sorted((r, bool(q)) for r in range(1, 9) for q in (0, 1))

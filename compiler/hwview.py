@@ -20,10 +20,17 @@ def dma_ports(regs):
     }
 
 
-def entry_words(base, step, raw):
-    """The activation words a write-back entry covers, in flit order: row i
-    at base + i * step, and for raw results cell (i, j) at
-    base + i * step + j, modulo the address width like the RTL's adder."""
-    rows = int(base) + int(step) * np.arange(8, dtype=np.int64)
-    words = (rows[:, None] + np.arange(8)[None, :]).reshape(-1) if raw else rows
+def entry_words(base, step, raw, q16=False, rows=8):
+    """The activation words a write-back entry covers, in flit order, for a
+    block limited to its first `rows` rows: RESULT8 row i at base + i * step;
+    raw cell (i, j) at base + i * step + j; RESULT16 half h of row i (flit
+    idx 2i + h) at base + i * step + h. Modulo the address width, like the
+    RTL's adder."""
+    row_words = int(base) + int(step) * np.arange(rows, dtype=np.int64)
+    if raw:
+        words = (row_words[:, None] + np.arange(8)[None, :]).reshape(-1)
+    elif q16:
+        words = (row_words[:, None] + np.arange(2)[None, :]).reshape(-1)
+    else:
+        words = row_words
     return words % isa.ACT_WORDS

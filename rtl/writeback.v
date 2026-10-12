@@ -2,13 +2,18 @@
 
 // rtl/writeback.v -- the command processor's result write-back (milestone
 // 4.2, docs/specs/2026-09-25-command-processor-cifar10-design.md section 2).
-// Every returning BLOCK pushes one entry {raw, base, step} (computed by
-// rtl/cmd_seq.v) onto its tile's 2-deep FIFO; the tile's RESULT flits,
-// delivered at node (0,0), then land in activation memory at
+// Every returning BLOCK pushes one entry {mode, rows_m1, base, step}
+// (computed by rtl/cmd_seq.v) onto its tile's 2-deep FIFO; the tile's RESULT
+// flits, delivered at node (0,0), then land in activation memory at
 //   RESULT8 row i:        base + i * step
+//   RESULT16 row i, half h (flit idx 2i + h):
+//                         base + i * step + h
 //   RESULT cell i*8 + j:  base + i * step + j
-// and the block's last flit (row 7, or cell 63) pops the entry. A tile
-// returns its blocks in order, so its oldest entry always matches.
+// and the block's last flit pops the entry: row rows_m1 for RESULT8, half 1
+// of row rows_m1 for RESULT16, cell rows_m1 * 8 + 7 for raw (the GO's row
+// limit, rtl/noc_node.v, decides how many rows a block returns). A tile
+// returns its blocks in order, so its oldest entry always matches; a flit
+// of another mode than that entry is fatal.
 // compiler/golden.py (Golden.result_words) is the reference.
 //
 // The delivered flit is registered first (stage R), so the FIFO lookup and
@@ -32,14 +37,17 @@ module writeback #(
     // Entries from rtl/cmd_seq.v, one per returning BLOCK.
     input  wire                push,
     input  wire [TIW-1:0]      push_tile,
-    input  wire                push_raw,
+    input  wire [1:0]          push_mode,     // 0 raw, 1 RESULT8, 2 RESULT16
+    input  wire [2:0]          push_rows_m1,  // rows the block returns, minus one
     input  wire [WA-1:0]       push_base,
     input  wire [11:0]         push_step,
     output wire [(1<<TIW)-1:0] full,
     output wire                idle,
-    // RESULT / RESULT8 flits delivered at node (0,0) (rtl/noc_mesh.v res_*).
+    // RESULT / RESULT8 / RESULT16 flits delivered at node (0,0)
+    // (rtl/noc_mesh.v res_*; res_q16 marks a RESULT16 half row).
     input  wire                res_valid,
     input  wire                res_q8,
+    input  wire                res_q16,
     input  wire [AW-1:0]       res_src_x,
     input  wire [AW-1:0]       res_src_y,
     input  wire [5:0]          res_idx,
@@ -51,7 +59,8 @@ module writeback #(
 );
 
     localparam NT = 1 << TIW;          // tile slots; slots >= NN never get entries
-    localparam EW = 1 + WA + 12;       // entry: {raw, base, step}
+    localparam EW = 2 + 3 + WA + 12;   // entry: {mode, rows_m1, base, step}
+    localparam [1:0] M_RAW = 2'd0, M_Q8 = 2'd1, M_Q16 = 2'd2;
     localparam [31:0] W32 = W;
 
     // Two entries per tile, at {tile, pointer}.
@@ -63,19 +72,22 @@ module writeback #(
     // ---- Stage R: the delivered flit ----
     wire [31:0] src_lin = {{(32-AW){1'b0}}, res_src_y} * W32 + {{(32-AW){1'b0}}, res_src_x};
     wire        unused_src_lin = &{1'b0, src_lin};
-    reg            r_valid, r_q8;
+    reg            r_valid, r_q8, r_q16;
     reg  [TIW-1:0] r_tile;
     reg  [5:0]     r_idx;
     reg  [63:0]    r_data;
 
     // ---- Stage W: the tile's oldest entry gives the address ----
     wire [EW-1:0] head   = ent[{r_tile, rp[r_tile]}];
-    wire          h_raw  = head[EW-1];
+    wire [1:0]    h_mode = head[EW-1 -: 2];
+    wire [2:0]    h_rm1  = head[12+WA +: 3];
     wire [WA-1:0] h_base = head[12 +: WA];
     wire [11:0]   h_step = head[11:0];
-    wire [2:0]    row    = r_q8 ? r_idx[2:0] : r_idx[5:3];
-    wire [2:0]    col    = r_q8 ? 3'd0 : r_idx[2:0];
-    wire          pop    = r_valid && (r_q8 ? (r_idx == 6'd7) : (r_idx == 6'd63));
+    wire [1:0]    r_mode = r_q16 ? M_Q16 : r_q8 ? M_Q8 : M_RAW;
+    wire [2:0]    row    = r_mode == M_RAW ? r_idx[5:3] : r_mode == M_Q16 ? r_idx[3:1] : r_idx[2:0];
+    wire [2:0]    col    = r_mode == M_RAW ? r_idx[2:0] : r_mode == M_Q16 ? {2'b00, r_idx[0]} : 3'd0;
+    wire [5:0]    last   = r_mode == M_RAW ? {h_rm1, 3'b111} : r_mode == M_Q16 ? {2'b00, h_rm1, 1'b1} : {3'b000, h_rm1};
+    wire          pop    = r_valid && (r_idx == last);
 
     assign act_we    = r_valid;
     assign act_waddr = h_base + {{(WA-12){1'b0}}, h_step} * {{(WA-3){1'b0}}, row}
@@ -102,11 +114,12 @@ module writeback #(
         end else begin
             r_valid <= res_valid;
             r_q8    <= res_q8;
+            r_q16   <= res_q16;
             r_tile  <= src_lin[TIW-1:0];
             r_idx   <= res_idx;
             r_data  <= res_data;
             if (push) begin
-                ent[{push_tile, wp[push_tile]}] <= {push_raw, push_base, push_step};
+                ent[{push_tile, wp[push_tile]}] <= {push_mode, push_rows_m1, push_base, push_step};
                 wp[push_tile] <= ~wp[push_tile];
             end
             if (pop)
@@ -119,12 +132,13 @@ module writeback #(
     end
 
 `ifndef SYNTHESIS
-    // A RESULT whose tile has no pending entry, or of the other kind than
-    // the entry, is a block nobody asked for: a bug in cmd_seq or the mesh,
-    // never a program error.
+    // A RESULT whose tile has no pending entry, or of another mode than the
+    // entry (raw, RESULT8, RESULT16), is a block nobody asked for: a bug in
+    // cmd_seq or the mesh, never a program error.
     always @(posedge clk)
-        if (!rst && r_valid && (cnt[r_tile] == 2'd0 || h_raw == r_q8))
-            $fatal(1, "writeback: a RESULT flit (q8=%0d) from tile %0d matches no pending block", r_q8, r_tile);
+        if (!rst && r_valid && (cnt[r_tile] == 2'd0 || h_mode != r_mode))
+            $fatal(1, "writeback: a RESULT flit (mode %0d) from tile %0d matches no pending block (entry mode %0d)",
+                   r_mode, r_tile, h_mode);
 `endif
 
 endmodule
