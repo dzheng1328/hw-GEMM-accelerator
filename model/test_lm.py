@@ -350,3 +350,69 @@ def test_generate_copies_prompt_then_samples():
     assert (ref.generate(q, prompt, 12, 256, seeds) == log).all()  # deterministic
     greedy = ref.generate(q, prompt, 12, 0, seeds)
     assert (greedy == greedy[:, :1]).all()  # temperature 0: every story identical
+
+
+import lm_quantize
+import torch
+from lm_net import StoryNet
+
+
+def _calibrated_random_net(seed=0):
+    torch.manual_seed(seed)
+    model = StoryNet().eval()
+    with torch.no_grad():
+        for name, p in model.named_parameters():  # random init is near-degenerate; widen so every op has signal
+            if name.endswith("norm.weight"):
+                p.copy_(torch.empty_like(p).uniform_(0.5, 2.0))  # gains != 1 exercise the folding
+            elif p.dim() == 2:
+                p.mul_(8.0)
+    windows = np.random.default_rng(seed).integers(0, lm_spec.VOCAB, (8, 65))
+    return model, windows, lm_quantize.calibrate(model, windows)
+
+
+def test_group_scales_are_constant_per_group_and_dead_groups_borrow():
+    W = np.random.default_rng(0).normal(size=(24, 16))
+    W[8:16] = 0.0
+    s = lm_quantize.group_scales(W)
+    assert (s.reshape(3, 8) == s.reshape(3, 8)[:, :1]).all()
+    assert s[0] == np.abs(W[:8]).max() / 127 and s[8] == s.max()
+
+
+def test_quantize_matrix_round_trips_within_half_a_step():
+    from fixedpoint import requant
+
+    W = np.random.default_rng(1).normal(size=(16, 32))
+    wq, m, sh = lm_quantize.quantize_matrix(W, s_in=0.05, s_out=0.1)
+    assert wq.dtype == np.int8 and np.abs(wq).max() <= 127
+    s_w = lm_quantize.group_scales(W)
+    assert (np.abs(wq * s_w[:, None] - W) <= s_w[:, None] / 2 + 1e-12).all()
+    x = np.random.default_rng(2).integers(-127, 128, (4, 32))
+    got = requant(x @ wq.astype(np.int64).T, np.repeat(m, 8), np.repeat(sh, 8), relu=False)
+    want = np.clip(np.round(x @ W.T * 0.05 / 0.1), -128, 127)
+    assert np.abs(got - want).max() <= 3  # int8 weight rounding, not requant error
+
+
+def test_quantize_model_has_the_reference_key_set_and_tracks_the_float_logits():
+    model, windows, probe = _calibrated_random_net()
+    q = lm_quantize.quantize_model(model, probe)
+    synthetic = ref.random_quantized(0)
+    assert set(q) == set(synthetic)
+    for k, v in q.items():
+        assert np.shape(v) == np.shape(synthetic[k]), k
+    tokens = windows[:, :-1]
+    with torch.no_grad():
+        want = model(torch.as_tensor(tokens))[0].numpy()
+    got = ref.forward_seq(q, tokens) * q["s_logit"]
+    corr = np.corrcoef(got.ravel(), want.ravel())[0, 1]
+    assert corr > 0.98, corr
+
+
+def test_frozen_npz_meets_the_loss_gate_and_carries_the_demo_inputs():
+    q = dict(np.load(ref.NPZ_PATH))
+    assert q["int_val_loss"] - q["float_val_loss"] <= lm_quantize.GATE
+    assert set(ref.random_quantized(0)) <= set(q)
+    assert q["vocab"].shape == (lm_spec.VOCAB,) and q["prompt_ids"][0] == lm_spec.BOS
+    assert q["seeds"].shape == (lm_spec.BATCH,) and (q["seeds"] > 0).all() and (q["seeds"] < 2**32).all()
+    greedy = ref.generate(q, q["prompt_ids"], 40, 0, q["seeds"])
+    text = lm_tok.decode([str(p) for p in q["vocab"]], greedy[:, 0])
+    assert text.startswith(lm_spec.PROMPT)
