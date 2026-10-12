@@ -34,6 +34,7 @@ make "$@"
 
 cd "$REPO_ROOT/tb/requant"
 make "$@"
+make q16 "$@"
 
 cd "$REPO_ROOT/tb/noc"
 make "$@"
