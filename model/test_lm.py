@@ -440,3 +440,16 @@ def test_load_float_model_reads_a_plain_state_dict_and_refuses_pickled_objects(t
     torch.save({"model": model.state_dict(), "rng": np.random.default_rng(0)}, tmp_path / "state.pt")
     with pytest.raises(Exception, match="weights_only|Unsupported global"):
         lm_quantize.load_float_model(tmp_path / "state.pt")
+
+
+def test_load_tokens_needs_only_train_and_val_bin_when_they_exist(tmp_path, monkeypatch):
+    monkeypatch.setattr(tinystories_data, "TOK_DIR", tmp_path)
+
+    def no_download():
+        raise AssertionError("must not touch the dataset when train.bin and val.bin are already cached")
+
+    monkeypatch.setattr(tinystories_data, "shard_paths", no_download)
+    np.arange(30, dtype=np.uint16).tofile(tmp_path / "train.bin")
+    np.arange(10, dtype=np.uint16).tofile(tmp_path / "val.bin")
+    assert len(tinystories_data.load_tokens("train")) == 30
+    assert len(tinystories_data.load_tokens("val")) == 10

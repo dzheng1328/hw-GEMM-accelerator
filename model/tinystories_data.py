@@ -117,11 +117,11 @@ def load_tokens(split: str) -> np.memmap:
     """All training shards (1-49) concatenated, or the validation shard (0),
     as a read-only memmap over a cached train.bin / val.bin (built once by
     streaming the per-shard .bin files, never held fully in RAM)."""
-    paths = sorted(TOK_DIR.glob("data*.bin"))
-    if len(paths) != len(shard_paths()):
-        raise FileNotFoundError("run `python model/tinystories_data.py` to pretokenize first")
     dest = TOK_DIR / ("val.bin" if split == "val" else "train.bin")
-    if not dest.exists():
+    if not dest.exists():  # a copied train.bin / val.bin needs nothing else, not even the dataset
+        paths = sorted(TOK_DIR.glob("data*.bin"))
+        if len(paths) != len(shard_paths()):
+            raise FileNotFoundError("run `python model/tinystories_data.py` to pretokenize first")
         shards = [paths[VAL_SHARD]] if split == "val" else paths[:VAL_SHARD] + paths[VAL_SHARD + 1 :]
         _build_tokens_bin(dest, shards)
     return np.memmap(dest, dtype=np.uint16, mode="r")
