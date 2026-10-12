@@ -229,15 +229,16 @@ def main():
                      help="default: auto -- CUDA, else MPS, else CPU")
     args = ap.parse_args()
 
+    device = pick_device(args.device)
+    train_tokens = load_tokens("train")
+    val_windows = eval_windows(VAL_WINDOWS)
+
+    # Only now: pausing waits for an optimizer step, so while the data builds Ctrl+C must still abort.
     global _STOP
     _STOP = False
     signal.signal(signal.SIGINT, _request_stop)
     if hasattr(signal, "SIGTERM"):  # SIGTERM can't be sent on Windows; Ctrl+C (SIGINT) still pauses
         signal.signal(signal.SIGTERM, _request_stop)
-
-    device = pick_device(args.device)
-    train_tokens = load_tokens("train")
-    val_windows = eval_windows(VAL_WINDOWS)
     train(args.iters, device=device, train_tokens=train_tokens, val_windows=val_windows,
           out_dir=args.out_dir, resume=args.resume)
 

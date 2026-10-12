@@ -453,3 +453,23 @@ def test_load_tokens_needs_only_train_and_val_bin_when_they_exist(tmp_path, monk
     np.arange(10, dtype=np.uint16).tofile(tmp_path / "val.bin")
     assert len(tinystories_data.load_tokens("train")) == 30
     assert len(tinystories_data.load_tokens("val")) == 10
+
+
+def test_pause_handlers_are_installed_only_after_the_data_is_loaded(monkeypatch):
+    import signal
+
+    import lm_train
+
+    seen = {}
+    old, old_term = signal.getsignal(signal.SIGINT), signal.getsignal(signal.SIGTERM)
+    monkeypatch.setattr("sys.argv", ["lm_train.py", "--iters", "1", "--device", "cpu"])
+    monkeypatch.setattr(lm_train, "load_tokens", lambda split: seen.setdefault("load", signal.getsignal(signal.SIGINT)))
+    monkeypatch.setattr(lm_train, "eval_windows", lambda n: seen.setdefault("eval", signal.getsignal(signal.SIGINT)))
+    monkeypatch.setattr(lm_train, "train", lambda *a, **k: seen.setdefault("train", signal.getsignal(signal.SIGINT)))
+    try:
+        lm_train.main()
+    finally:
+        signal.signal(signal.SIGINT, old)
+        signal.signal(signal.SIGTERM, old_term)
+    assert seen["load"] is old and seen["eval"] is old  # Ctrl+C still aborts a slow data build
+    assert seen["train"] is lm_train._request_stop
