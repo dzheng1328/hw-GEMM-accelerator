@@ -18,19 +18,23 @@ PROBE_SAMPLES = 1_000_000
 
 
 class Probe:
-    """|activation| samples by name, deterministic subsampling."""
+    """|activation| samples by name, deterministic subsampling, plus the
+    exact maximum of everything seen (a subsample can step over the peak, and
+    int16 scales are set from the peak)."""
 
     def __init__(self):
         self.samples = {}
+        self.peaks = {}
 
     def __call__(self, name, t):
         a = t.detach().abs().flatten().float().cpu().numpy()
+        self.peaks[name] = max(self.peaks.get(name, 0.0), float(a.max()))
         if a.size > PROBE_SAMPLES:
             a = a[:: a.size // PROBE_SAMPLES]
         self.samples.setdefault(name, []).append(a)
 
     def absmax(self, name) -> float:
-        return float(max(a.max() for a in self.samples[name]))
+        return self.peaks[name]
 
     def percentile(self, name, pct) -> float:
         return float(np.percentile(np.concatenate(self.samples[name]), pct))

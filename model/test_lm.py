@@ -416,3 +416,16 @@ def test_frozen_npz_meets_the_loss_gate_and_carries_the_demo_inputs():
     greedy = ref.generate(q, q["prompt_ids"], 40, 0, q["seeds"])
     text = lm_tok.decode([str(p) for p in q["vocab"]], greedy[:, 0])
     assert text.startswith(lm_spec.PROMPT)
+
+
+def test_probe_absmax_is_exact_even_when_the_tensor_is_subsampled(monkeypatch):
+    import lm_net
+
+    monkeypatch.setattr(lm_net, "PROBE_SAMPLES", 100)
+    t = torch.zeros(1000)
+    t[7] = -5.0  # stride is 10, so index 7 is never sampled
+    probe = lm_net.Probe()
+    probe("x", t)
+    probe("x", torch.ones(10))
+    assert probe.absmax("x") == 5.0
+    assert probe.percentile("x", 100) == 1.0  # the percentile still reads the subsample
