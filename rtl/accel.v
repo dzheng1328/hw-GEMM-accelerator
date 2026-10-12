@@ -137,17 +137,21 @@ module accel #(
     wire [NN*FW-1:0] inj_flit;
     assign inj_flit[FW-1:0] = inj0_flit;
 
-    wire [NN-1:0]       res_valid, res_q8;
+    wire [NN-1:0]       res_valid, res_q8, res_q16;
     wire [NN*AW-1:0]    res_src_x, res_src_y;
     wire [NN*6-1:0]     res_idx;
     wire [NN*64-1:0]    res_data;
     wire [NN-1:0]       mesh_busy, mesh_done;
     wire [NN*2048-1:0]  mesh_acc;
 
+    // RESULT16 has no producer yet (4.3f wires the BLOCK's mode to the GO); Task 3 of 4.3c
+    // connects node 0's flag to write-back and retires this.
+    wire unused_res_q16 = &{1'b0, res_q16};
+
     noc_mesh #(.W(W), .H(H), .AW(AW), .PERF(PERF)) mesh (
         .clk(clk), .rst(rst),
         .inj_valid(inj_valid), .inj_flit(inj_flit), .inj_ready(inj_ready),
-        .res_valid(res_valid), .res_q8(res_q8), .res_src_x(res_src_x), .res_src_y(res_src_y),
+        .res_valid(res_valid), .res_q8(res_q8), .res_q16(res_q16), .res_src_x(res_src_x), .res_src_y(res_src_y),
         .res_idx(res_idx), .res_data(res_data),
         .start({NN{1'b0}}), .k_chunks({(NN*4){1'b0}}),
         .busy(mesh_busy), .done(mesh_done), .acc_out(mesh_acc));

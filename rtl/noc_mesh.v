@@ -51,6 +51,7 @@ module noc_mesh #(
     // each): source tile coords, index, and data (see noc_node.v).
     output wire [NN-1:0]               res_valid,
     output wire [NN-1:0]               res_q8,
+    output wire [NN-1:0]               res_q16,
     output wire [NN*AW-1:0]            res_src_x,
     output wire [NN*AW-1:0]            res_src_y,
     output wire [NN*6-1:0]             res_idx,
@@ -140,7 +141,7 @@ module noc_mesh #(
                 .s_out_valid(so_v[i]), .s_out_flit(so_f[i*FW +: FW]), .s_out_ready(so_r[i]),
                 .w_in_valid(wi_v[i]), .w_in_flit(wi_f[i*FW +: FW]), .w_in_ready(wi_r[i]),
                 .w_out_valid(wo_v[i]), .w_out_flit(wo_f[i*FW +: FW]), .w_out_ready(wo_r[i]),
-                .res_valid(res_valid[i]), .res_q8(res_q8[i]),
+                .res_valid(res_valid[i]), .res_q8(res_q8[i]), .res_q16(res_q16[i]),
                 .res_src_x(res_src_x[i*AW +: AW]), .res_src_y(res_src_y[i*AW +: AW]),
                 .res_idx(res_idx[i*6 +: 6]), .res_data(res_data[i*8*N +: 8*N]),
                 .start(start[i]), .k_chunks(k_chunks[i*4 +: 4]),
