@@ -473,3 +473,28 @@ def test_pause_handlers_are_installed_only_after_the_data_is_loaded(monkeypatch)
         signal.signal(signal.SIGTERM, old_term)
     assert seen["load"] is old and seen["eval"] is old  # Ctrl+C still aborts a slow data build
     assert seen["train"] is lm_train._request_stop
+
+
+def test_story_text_round_trips_under_a_non_utf8_default_locale(tmp_path):
+    """A Windows cp1252 default, simulated with an ASCII locale and UTF-8 mode off."""
+    import os
+    import subprocess
+    import sys
+
+    story = "She said \u201chello\u201d \u2014 and left."
+    shard = tmp_path / "data01.json"
+    shard.write_text(json.dumps([{"story": story}], ensure_ascii=False), encoding="utf-8")  # raw UTF-8, like the real shards
+    script = (
+        "import locale, os, sys\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "import tinystories_data as t\n"
+        "assert open(os.devnull).encoding.lower() in ('ascii', 'ansi_x3.4-1968', 'us-ascii'), 'locale not simulated'\n"
+        "assert t.read_stories(Path(sys.argv[2])) == [sys.argv[4]]\n"
+        "t.write_tokenizer_text([Path(sys.argv[2])], Path(sys.argv[3]))\n"
+    )
+    env = {**os.environ, "LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+    args = [str(Path(__file__).parent), str(shard), str(tmp_path / "t.txt"), story]
+    out = subprocess.run([sys.executable, "-c", script, *args], env=env, capture_output=True, check=False)
+    assert out.returncode == 0, out.stderr.decode()
+    assert (tmp_path / "t.txt").read_text(encoding="utf-8") == story + "\n"

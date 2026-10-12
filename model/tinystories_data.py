@@ -41,7 +41,7 @@ def shard_paths() -> list[Path]:
 
 
 def read_stories(path: Path) -> list[str]:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return [d["story"].strip() for d in json.load(f)]
 
 
@@ -56,15 +56,20 @@ def spm_options(input_path: str, prefix: str, vocab_size: int = VOCAB) -> dict:
     )
 
 
+def write_tokenizer_text(shards: list[Path], dest: Path) -> None:
+    """One story per line, UTF-8 whatever the platform's default encoding."""
+    with open(dest, "w", encoding="utf-8") as f:
+        for shard in shards:
+            for story in read_stories(shard):
+                f.write(story + "\n")
+
+
 def train_tokenizer() -> Path:
     import sentencepiece as spm
 
     shards = shard_paths()
     text = CACHE_DIR / "tokenizer_text.txt"
-    with open(text, "w") as f:
-        for i in TOKENIZER_SHARDS:
-            for story in read_stories(shards[i]):
-                f.write(story + "\n")
+    write_tokenizer_text([shards[i] for i in TOKENIZER_SHARDS], text)
     prefix = CACHE_DIR / "tok512"
     spm.SentencePieceTrainer.train(**spm_options(str(text), str(prefix)))
     TOKENIZER_PATH.write_bytes(prefix.with_suffix(".model").read_bytes())
