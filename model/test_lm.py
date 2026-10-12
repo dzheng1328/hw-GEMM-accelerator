@@ -429,3 +429,14 @@ def test_probe_absmax_is_exact_even_when_the_tensor_is_subsampled(monkeypatch):
     probe("x", torch.ones(10))
     assert probe.absmax("x") == 5.0
     assert probe.percentile("x", 100) == 1.0  # the percentile still reads the subsample
+
+
+def test_load_float_model_reads_a_plain_state_dict_and_refuses_pickled_objects(tmp_path):
+    torch.manual_seed(0)
+    model = StoryNet()
+    torch.save(model.state_dict(), tmp_path / "lm_float.pt")
+    loaded = lm_quantize.load_float_model(tmp_path / "lm_float.pt")
+    assert all((a == b).all() for a, b in zip(model.state_dict().values(), loaded.state_dict().values()))
+    torch.save({"model": model.state_dict(), "rng": np.random.default_rng(0)}, tmp_path / "state.pt")
+    with pytest.raises(Exception, match="weights_only|Unsupported global"):
+        lm_quantize.load_float_model(tmp_path / "state.pt")

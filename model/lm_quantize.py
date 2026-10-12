@@ -144,8 +144,7 @@ def calibrate(model, windows, chunk=16) -> Probe:
 
 def load_float_model(path=CHECKPOINT_PATH) -> StoryNet:
     model = StoryNet()
-    sd = torch.load(path, map_location="cpu", weights_only=False)
-    model.load_state_dict(sd.get("model", sd))
+    model.load_state_dict(torch.load(path, map_location="cpu", weights_only=True))
     return model.eval()
 
 
