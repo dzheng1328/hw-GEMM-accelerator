@@ -498,3 +498,19 @@ def test_story_text_round_trips_under_a_non_utf8_default_locale(tmp_path):
     out = subprocess.run([sys.executable, "-c", script, *args], env=env, capture_output=True, check=False)
     assert out.returncode == 0, out.stderr.decode()
     assert (tmp_path / "t.txt").read_text(encoding="utf-8") == story + "\n"
+
+
+def test_peak_rss_mb_reads_ru_maxrss_in_the_platforms_units(monkeypatch):
+    import types
+
+    import lm_train
+
+    fake = types.SimpleNamespace(RUSAGE_SELF=0, getrusage=lambda who: types.SimpleNamespace(ru_maxrss=3 * 2**30))
+    monkeypatch.setattr(lm_train, "resource", fake)
+    monkeypatch.setattr("sys.platform", "darwin")
+    assert lm_train._peak_rss_mb() == 3 * 1024  # bytes on macOS
+    fake.getrusage = lambda who: types.SimpleNamespace(ru_maxrss=3 * 2**20)
+    monkeypatch.setattr("sys.platform", "linux")
+    assert lm_train._peak_rss_mb() == 3 * 1024  # kilobytes on Linux
+    monkeypatch.setattr(lm_train, "resource", None)
+    assert lm_train._peak_rss_mb() is None  # Windows: no resource module

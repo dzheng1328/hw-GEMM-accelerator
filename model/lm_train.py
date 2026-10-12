@@ -31,6 +31,7 @@ import json
 import math
 import os
 import signal
+import sys
 import time
 from pathlib import Path
 
@@ -69,6 +70,15 @@ def _sync(device):
         torch.cuda.synchronize()
     elif device == "mps":
         torch.mps.synchronize()
+
+
+def _peak_rss_mb():
+    """Peak resident memory in MB, or None where there is no resource module
+    (Windows). ru_maxrss is bytes on macOS but kilobytes on Linux."""
+    if resource is None:
+        return None
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak / 2**20 if sys.platform == "darwin" else peak / 2**10
 
 
 def pick_device(requested: str | None) -> str:
@@ -201,8 +211,8 @@ def train(total_iters, *, device, train_tokens, val_windows, out_dir, eval_every
                 "val_loss": val_loss(model, device, val_windows),
                 "ms_per_iter": step_time / step_count * 1000,
             }
-            if resource is not None:  # ru_maxrss is bytes on macOS
-                entry["rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20
+            if resource is not None:
+                entry["rss_mb"] = _peak_rss_mb()
             if device == "mps":
                 entry["mps_driver_mb"] = torch.mps.driver_allocated_memory() / 2**20
             elif device == "cuda":
