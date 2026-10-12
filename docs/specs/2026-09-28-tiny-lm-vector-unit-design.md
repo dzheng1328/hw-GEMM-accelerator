@@ -147,7 +147,12 @@ New errors (sticky `error`, `error_pc`, `$fatal` in simulation): an invalid VOP 
 
 ### Integer definitions (`model/fixedpoint.py`; `rtl/vpu*.v` bit-exact to them)
 
-- rsqrt and reciprocal: normalize by leading-zero count to an even exponent, 32-entry table seed, one Newton step; result is a Q1.15 mantissa and an exponent.
+- rsqrt: normalize the input by leading-zero count to an even exponent, so the mantissa v lies in [1, 4) as Q2.14.
+  The seed is a 48-entry table indexed by v's top 6 bits, followed by one Newton step.
+  The result is an integer r and an exponent k, with 1/sqrt(u) = r * 2^-(15+k).
+- Reciprocal: normalize by leading-zero count so the mantissa v lies in [1, 2) as Q1.15.
+  The seed is a 32-entry table indexed by v's top 5 bits, followed by one Newton step.
+  The result is an integer r and an exponent k, with 1/u = r * 2^-(15+k).
 - exp, for x <= 0: z = x * scale_log2e in fixed point, split into integer part n and fraction f; 2^-f from a second-order integer polynomial (I-BERT); the result shifted right by n, in Q0.16.
 - Rounding everywhere is `fixedpoint.requant`'s: add half, arithmetic shift right (round half up), then saturate to the output width.
 

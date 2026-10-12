@@ -29,6 +29,7 @@ runs/
 model/checkpoints/
 model/.mnist_cache/
 model/.cifar_cache/
+model/.tinystories_cache/
 
 # Editor / OS
 .DS_Store
