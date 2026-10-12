@@ -186,3 +186,11 @@ def test_rmsnorm_q_tracks_float():
     y = rmsnorm_q(x, 1, m, sh)
     ref = x / np.sqrt((x.astype(float) ** 2).mean(-1, keepdims=True))
     assert np.max(np.abs(y * s_n - np.clip(ref, -128 * s_n, 127 * s_n))) <= s_n
+
+
+def test_seed_table_sizes_match_the_spec():
+    """docs/specs/2026-09-28-tiny-lm-vector-unit-design.md section 3 documents these sizes for rtl/vpu_rsqrt.v."""
+    from fixedpoint import RECIP_LUT, RSQRT_LUT
+
+    assert len(RSQRT_LUT) == 48  # v in [1, 4) as Q2.14, top 6 bits index 16..63
+    assert len(RECIP_LUT) == 32  # v in [1, 2) as Q1.15, top 5 bits index 32..63
