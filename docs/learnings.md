@@ -24,6 +24,17 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-12 -- A new GO field whose reset value is not its zero value breaks every producer that predates it
+
+**Phase:** Phase 4 (4.3c)
+**Problem:** With the GO row limit in the node (`rows_m1` in bits 45:43) and nothing else changed, the `accel` suite stopped with "no done within 35168 cycles".
+**Cause:** `flit_pack` builds the GO payload with zeros above bit 41, so every GO arrived with `rows_m1 = 0`: one row per block, and the rest of every CIFAR-10 block never returned.
+The node's own reset value (7, all rows) never applies, because every GO overwrites it.
+Two more producers were missing from the plan's file list: `tb/dma_gather/dma_gather_tb.v` copies `accel.v`'s tag layout and instantiates `flit_pack` (a lint failure on the new port), and the perf harness, `tb/perf/host.py`, builds GO flits by hand (it timed out at 8 of 64 flits per block).
+**Fix:** `flit_pack` takes the new fields as inputs, the tag layout carries them from `accel.v` (tied to RESULT8-or-raw, 8 rows), the testbench copy of the layout got the same two fields, and the perf host's `go_flit` sets `rows_m1 = 7`.
+**Takeaway:** When a descriptor gains a field, check every producer of that descriptor, including testbenches that copy a layout, and give each an explicit value; a reset default on the consumer never sees the old producers.
+
+
 ### 2026-09-29 -- Two counters at different interfaces around a skid buffer do not partition cycles
 
 **Phase:** Phase 4 (4.3a follow-up)
