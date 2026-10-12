@@ -514,3 +514,25 @@ def test_peak_rss_mb_reads_ru_maxrss_in_the_platforms_units(monkeypatch):
     assert lm_train._peak_rss_mb() == 3 * 1024  # kilobytes on Linux
     monkeypatch.setattr(lm_train, "resource", None)
     assert lm_train._peak_rss_mb() is None  # Windows: no resource module
+
+
+def test_random_quantized_rope_table_follows_rope_theta(monkeypatch):
+    from fixedpoint import rope_table
+
+    monkeypatch.setattr(ref, "ROPE_THETA", 500.0)
+    q = ref.random_quantized(0)
+    want_cos, want_sin = rope_table(lm_spec.CTX, lm_spec.HEAD_DIM, 500.0)
+    assert (q["rope_cos"] == want_cos).all() and (q["rope_sin"] == want_sin).all()
+
+
+def test_float_generate_is_deterministic_and_greedy_at_temperature_zero():
+    from lm_net import generate
+
+    torch.manual_seed(0)
+    model = StoryNet().eval()
+    prompt = [lm_spec.BOS, 7, 9]
+    a = generate(model, prompt, 6, 0, seed=1)
+    assert a[:3] == prompt and len(a) == 9 and a == generate(model, prompt, 6, 0, seed=2)  # greedy ignores the seed
+    with torch.no_grad():
+        assert a[3] == int(model(torch.tensor([prompt]))[0][0, -1].argmax())
+    assert generate(model, prompt, 6, 1.0, seed=1) == generate(model, prompt, 6, 1.0, seed=1)

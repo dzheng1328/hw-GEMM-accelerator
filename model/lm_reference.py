@@ -12,9 +12,10 @@ from pathlib import Path
 
 import numpy as np
 
-from fixedpoint import (quantize_multiplier, requant, requant16, rmsnorm_q, rope_q, sample_q, silu_mul_q,
-                        silu_table, softmax_q)
-from lm_spec import BATCH, CTX, DIM, GROUP, HEAD_DIM, HIDDEN, KV_DIM, N_HEADS, N_KV_HEADS, N_LAYERS, VOCAB
+from fixedpoint import (quantize_multiplier, requant, requant16, rmsnorm_q, rope_q, rope_table, sample_q,
+                        silu_mul_q, silu_table, softmax_q)
+from lm_spec import (BATCH, CTX, DIM, GROUP, HEAD_DIM, HIDDEN, KV_DIM, N_HEADS, N_KV_HEADS, N_LAYERS, ROPE_THETA,
+                     VOCAB)
 
 NPZ_PATH = Path(__file__).parent / "lm_quantized.npz"
 REP = N_HEADS // N_KV_HEADS
@@ -140,8 +141,6 @@ def random_quantized(seed) -> dict:
     q["normf_m"], q["normf_sh"] = mul(32.0)
     q["logit_exp_m"], q["logit_exp_sh"] = mul(0.01 * 1.4427 * 65536)
     q["eps_q"] = 1
-    from fixedpoint import rope_table
-
-    q["rope_cos"], q["rope_sin"] = rope_table(CTX, HEAD_DIM, 10000.0)
+    q["rope_cos"], q["rope_sin"] = rope_table(CTX, HEAD_DIM, ROPE_THETA)
     q["s_logit"] = 0.01
     return q
