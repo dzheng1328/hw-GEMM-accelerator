@@ -57,6 +57,7 @@ make "$@"
 cd "$REPO_ROOT/tb/writeback"
 make "$@"
 make orphan-check "$@"
+make mode-check "$@"
 
 cd "$REPO_ROOT/tb/accel"
 make "$@"
