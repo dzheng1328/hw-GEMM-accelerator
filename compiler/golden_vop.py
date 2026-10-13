@@ -20,8 +20,14 @@ import numpy as np
 
 import golden
 import isa
-from fixedpoint import requant16, rmsnorm_q, silu_mul_q
-from lm_spec import CTX, DIM, HIDDEN, VOCAB
+from fixedpoint import requant16, rmsnorm_q, rope_q, sample_q, silu_mul_q, softmax_q
+from lm_layout import KT_WORDS, KV_NEST_WORDS, NESTS, PROB_NEST_WORDS, Q_NEST_WORDS, SCORE_NEST_WORDS
+from lm_spec import BATCH, CTX, DIM, HEAD_DIM, HIDDEN, N_HEADS, N_KV_HEADS, VOCAB
+
+
+def pos_blocks(t):
+    """Positions covered by a decode step at position t: t + 1 rounded up to 8."""
+    return (t + 8) & ~7
 
 
 def execute(g, pc, v):
@@ -29,10 +35,7 @@ def execute(g, pc, v):
     name = isa.VOP_NAMES.get(v.sub)
     if name is None:
         raise golden.GoldenError(pc, f"invalid VOP sub-op {v.sub}")
-    method = getattr(Vpu(g, pc), name.lower(), None)
-    if method is None:
-        raise golden.GoldenError(pc, f"VOP {name} is not implemented")
-    method(*(g.regs[r] for r in (v.ra, v.rb, v.rc)))
+    getattr(Vpu(g, pc), name.lower())(*(g.regs[r] for r in (v.ra, v.rb, v.rc)))
 
 
 class Vpu:
@@ -99,6 +102,54 @@ class Vpu:
         m, sh, eps = self.param(param)
         self.put8(dst, rmsnorm_q(self.get16(src, DIM).copy(), eps, m, sh))
 
+    def rope(self, qf, kf, qs):
+        """ra = q (int8 feature words, 64), rb = k (int8 feature words, 32,
+        rotated in place), rc = rotated-q destination (A word, 256: the q
+        scratch of the 32 nests). cos and sin of position T come from the
+        RoPE table at isa.A_ROPE (word 2t cos, 2t + 1 sin; 4 int16 lanes)."""
+        self.check_t()
+        tab = self._words(self.g.wmem, isa.A_ROPE + 2 * self.T, 2, "RoPE table").view("<i2").astype(np.int64)
+        cos, sin = tab[:4], tab[4:]
+        q = rope_q(self.get8(qf, DIM).reshape(BATCH, N_HEADS, HEAD_DIM), cos, sin)
+        k = rope_q(self.get8(kf, N_KV_HEADS * HEAD_DIM).reshape(BATCH, N_KV_HEADS, HEAD_DIM), cos, sin)
+        self.put8(kf, k.reshape(BATCH, -1))
+        scratch = np.zeros((BATCH, N_KV_HEADS, HEAD_DIM, 8), np.int8)  # (story, kvh, d, byte)
+        scratch[..., :2] = q.reshape(BATCH, N_KV_HEADS, 2, HEAD_DIM).transpose(0, 1, 3, 2)
+        self._words(self.g.wmem, qs, NESTS * Q_NEST_WORDS, "q scratch")[:] = scratch.reshape(-1).view("<u8")
+
+    def kvwrite(self, kf, vf, kv):
+        """ra = rotated k, rb = v (int8 feature words, 32 each), rc = this
+        layer's cache base (activation word): nest n = 4 * story + kvh holds
+        K^T (256 words) then V (256 words) at kv + 512 * n. Writes position T."""
+        self.check_t()
+        k = self.get8(kf, N_KV_HEADS * HEAD_DIM).reshape(BATCH, N_KV_HEADS, HEAD_DIM)
+        v = self.get8(vf, N_KV_HEADS * HEAD_DIM).reshape(BATCH, N_KV_HEADS, HEAD_DIM)
+        nest = (np.arange(BATCH)[:, None] * N_KV_HEADS + np.arange(N_KV_HEADS)[None, :])[:, :, None]
+        d = np.arange(HEAD_DIM)[None, None, :]
+        base = kv + KV_NEST_WORDS * nest
+        kt = (base + (CTX // 8) * d + (self.T >> 3)) * 8 + (self.T & 7)
+        vv = (base + KT_WORDS + self.T) * 8 + d
+        if max(kt.max(), vv.max()) >= len(self.g.act) or kv < 0:
+            self.fail("KV cache address past activation memory")
+        self.g.act[kt] = k.astype(np.uint8)
+        self.g.act[vv] = v.astype(np.uint8)
+
+    def softmax(self, sc, prob, param):
+        """ra = scores (activation words; nest n at 128 n: row i at +64 i,
+        position p at lane p & 3 of word p >> 2), rb = probabilities (A word;
+        nest n at 256 n), rc = parameter word (exp m, sh). Positions 0..T
+        attend; word p of each nest holds the two heads' probabilities, zero
+        past T up to the next multiple of 8 (the AV BLOCK's K slots)."""
+        m, sh, _ = self.param(param)
+        n = pos_blocks(self.T)
+        s = self._words(self.g.actw, sc, NESTS * SCORE_NEST_WORDS, "scores").view("<i2").astype(np.int64)
+        s = s.reshape(NESTS, 2, CTX)[:, :, :n]
+        p = softmax_q(s, (np.arange(n) <= self.T)[None, None, :], m, sh)
+        words = np.zeros((NESTS, n, 8), np.uint8)
+        words[..., :2] = p.transpose(0, 2, 1)
+        for i in range(NESTS):
+            self._words(self.g.wmem, prob + PROB_NEST_WORDS * i, n, "probability scratch")[:] = words[i].view("<u8").reshape(n)
+
     def silu_mul(self, gate, dst, table):
         """ra = gate (int8 feature words, 192; up follows at ra + 192), rb =
         destination, rc = SiLU block (A word): a parameter word (m, sh) then
@@ -118,3 +169,20 @@ class Vpu:
         blocks = self._words(self.g.actw, src, 8 * count, "transpose source").view(np.uint8)
         t = np.ascontiguousarray(blocks.reshape(count, 8, 8).transpose(0, 2, 1))
         self._words(self.g.actw, dst, 8 * count, "transpose destination")[:] = t.view("<u8").reshape(-1)
+
+    def sample(self, logits, param, seeds):
+        """ra = logits (int16 feature words, 512), rb = parameter word (the
+        logit exp m, sh), rc = seeds (A word: 4 words, story s's xorshift32
+        state in 32-bit lane s). Writes the token log at step T + 1: the
+        prompt token already there while T + 1 < PLEN, else a sample."""
+        self.check_t()
+        if self.T + 1 < self.g.regs[isa.PLEN]:
+            return
+        inv = self.g.regs[isa.INV_TEMP]
+        m, sh, _ = self.param(param)
+        state = self._words(self.g.wmem, seeds, 4, "seeds")
+        tok, new = sample_q(self.get16(logits, VOCAB), inv, m, sh, state.view("<u4").astype(np.int64))
+        self._words(self.g.actw, self.token_words(self.T + 1), 2, "token log")[:] = \
+            np.asarray(tok, dtype="<i2").reshape(2, 4).view("<u8").reshape(2)
+        if inv:
+            state[:] = np.asarray(new, dtype="<u4").view("<u8")
