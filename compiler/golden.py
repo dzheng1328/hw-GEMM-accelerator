@@ -9,10 +9,13 @@ BLOCK must not read a word that an outstanding returning BLOCK (one not yet
 covered by a WAIT or END) writes, and two outstanding BLOCKs must not write
 the same word."""
 
+from dataclasses import replace
+
 import numpy as np
 
+import golden_vop
 import isa
-from fixedpoint import requant
+from fixedpoint import requant, requant16
 
 
 class GoldenError(Exception):
@@ -38,7 +41,8 @@ class Golden:
         self.prog = _load(program, isa.PROGRAM_WORDS, "program")
         self.wmem = _load(weights, isa.WEIGHT_WORDS, "weight")
         self.act = _load(act, isa.ACT_WORDS, "activation").view(np.uint8)
-        self.regs = [0] * isa.N_REGS
+        self.actw = self.act.view("<u8")  # the same memory, a word at a time
+        self.regs = [0] * isa.N_REGS_LM
         self.acc = {}
         # pc of the outstanding BLOCK that writes each activation word, or -1.
         self.pending = np.full(isa.ACT_WORDS, -1, dtype=np.int64)
@@ -46,7 +50,7 @@ class Golden:
 
     def run(self, max_commands=10_000_000):
         """Execute from pc 0 through END; returns the activation memory bytes."""
-        pc, loop = 0, None
+        pc, loops = 0, []
         for _ in range(max_commands):
             if pc >= isa.PROGRAM_WORDS:
                 raise GoldenError(pc, "ran past the end of program memory")
@@ -56,24 +60,35 @@ class Golden:
                 dst, src, imm = arg
                 if dst:
                     self.regs[dst] = (self.regs[src] + imm) & isa.REG_MASK
+            elif op == isa.ALU:
+                self._alu(arg)
             elif op == isa.BLOCK:
                 self._block(pc, arg)
+            elif op == isa.VOP:
+                self._retire()  # a VOP drains every outstanding BLOCK, like WAIT, before it starts
+                golden_vop.execute(self, pc, arg)
             elif op == isa.WAIT:
                 self._retire()
-            elif op == isa.LOOP:
-                if loop is not None:
-                    raise GoldenError(pc, "LOOP inside an active loop")
-                if arg == 0:
+            elif op in (isa.LOOP, isa.LOOPR):
+                count = arg if op == isa.LOOP else self.regs[arg]
+                if op == isa.LOOP and count == 0:
                     raise GoldenError(pc, "LOOP count 0")
-                loop = [nxt, arg]
-            elif op == isa.ENDLOOP:
-                if loop is None:
-                    raise GoldenError(pc, "ENDLOOP without an active LOOP")
-                loop[1] -= 1
-                if loop[1]:
-                    nxt = loop[0]
+                if count > 0xFFFF:
+                    raise GoldenError(pc, f"LOOPR count {count} does not fit in 16 bits")
+                if count == 0:
+                    nxt = self._after_body(pc)
+                elif len(loops) == isa.MAX_LOOP_DEPTH:
+                    raise GoldenError(pc, f"LOOP nested deeper than {isa.MAX_LOOP_DEPTH}")
                 else:
-                    loop = None
+                    loops.append([nxt, count])
+            elif op == isa.ENDLOOP:
+                if not loops:
+                    raise GoldenError(pc, "ENDLOOP without an active LOOP")
+                loops[-1][1] -= 1
+                if loops[-1][1]:
+                    nxt = loops[-1][0]
+                else:
+                    loops.pop()
             elif op == isa.END:
                 self._retire()
                 return self.act
@@ -82,12 +97,53 @@ class Golden:
             pc = nxt
         raise GoldenError(pc, f"no END within {max_commands} commands")
 
+    def _alu(self, a):
+        if not a.dst:
+            return
+        x, y = self.regs[a.src], a.imm if a.src2 is None else self.regs[a.src2]
+        r = {isa.ALU_ADD: x + y, isa.ALU_SUB: x - y, isa.ALU_SHR: x >> (y & 31), isa.ALU_AND: x & y}[a.op]
+        self.regs[a.dst] = r & isa.REG_MASK
+
+    def _after_body(self, pc):
+        """The pc after the ENDLOOP matching the LOOPR at pc (a count of 0 skips the body)."""
+        depth = 1
+        for i in range(pc + 1, isa.PROGRAM_WORDS):
+            op = int(self.prog[i]) >> 60
+            depth += (op in (isa.LOOP, isa.LOOPR)) - (op == isa.ENDLOOP)
+            if not depth:
+                return i + 1
+        raise GoldenError(pc, "LOOPR without a matching ENDLOOP")
+
     def _retire(self):
         for words in self.pending_words:
             self.pending[words] = -1
         self.pending_words.clear()
 
+    def _resolve(self, pc, b):
+        """(block, rows, q16): a register-form BLOCK with its round, flags, and
+        result mode filled in from the registers (spec section 2), and the
+        rows it returns; any other BLOCK unchanged, 8 rows, RESULT8 or raw.
+        Register form: round = ROUND; rows = ROWS + 1; RMODE picks raw,
+        RESULT8, or RESULT16 (relu applies to RESULT8 only); the partial sum
+        accumulates when the BLOCK's acc_keep is set or ROUND > 0; and only
+        the last round of KS slots returns."""
+        if not b.reg_form:
+            return b, 8, False
+        R = self.regs
+        if R[isa.ROUND] >= 1 << 7:
+            raise GoldenError(pc, f"register-form ROUND {R[isa.ROUND]} out of range")
+        if R[isa.ROWS] > 7:
+            raise GoldenError(pc, f"register-form ROWS {R[isa.ROWS]} out of range (rows minus 1, 0..7)")
+        if R[isa.RMODE] > isa.RMODE_Q16:
+            raise GoldenError(pc, f"register-form RMODE {R[isa.RMODE]} out of range")
+        rnd, mode = R[isa.ROUND], R[isa.RMODE]
+        final = isa.SLOTS_PER_ROUND * (rnd + 1) >= R[isa.KS]
+        b = replace(b, round=rnd, acc_keep=b.acc_keep or rnd > 0, no_ret=not final, requant=mode != isa.RMODE_RAW,
+                    reg_form=False)
+        return b, R[isa.ROWS] + 1, mode == isa.RMODE_Q16
+
     def _block(self, pc, b):
+        b, rows, q16 = self._resolve(pc, b)
         if b.tile_x >= self.mesh[0] or b.tile_y >= self.mesh[1]:
             raise GoldenError(pc, f"tile ({b.tile_x}, {b.tile_y}) is outside the {self.mesh[0]}x{self.mesh[1]} mesh")
         a, bmat = self.operands(b, pc)
@@ -98,7 +154,7 @@ class Golden:
             raise GoldenError(pc, "accumulator outside int32")
         self.acc[tile] = acc
         if not b.no_ret:
-            self._write_back(pc, b, acc)
+            self._write_back(pc, b, acc, rows, q16)
 
     def operands(self, b, pc=0):
         """(a, bmat), each (n, 8) int64: the A columns and B rows the DMA
@@ -173,19 +229,25 @@ class Golden:
         out[~is_tap & lane_ok] = bias_val
         return out
 
-    def result_words(self, b):
+    def result_words(self, b, rows=8, q16=False):
         """Activation word addresses BLOCK b's results land at under the
-        current registers (spec: write-back): 8 RESULT8 rows, or 64 raw
-        cells in row-major order."""
+        current registers (spec: write-back), for its first `rows` rows: one
+        word per RESULT8 row, two per RESULT16 row (half h of row i at
+        base + i * OSTRIDE + h), or 8 raw cells per row, in row-major order."""
         out, ostride = self.regs[isa.OUT_BASE], self.regs[isa.OSTRIDE]
-        rows = 8 * b.group + np.arange(8)
+        idx = 8 * b.group + np.arange(rows)
+        if q16:
+            return (out + idx[:, None] * ostride + b.pixel_block + np.arange(2)[None, :]).reshape(-1)
         if b.requant:
-            return out + rows * ostride + b.pixel_block
-        return (out + (rows[:, None] * ostride + b.pixel_block) * 8 + np.arange(8)[None, :]).reshape(-1)
+            return out + idx * ostride + b.pixel_block
+        return (out + (idx[:, None] * ostride + b.pixel_block) * 8 + np.arange(8)[None, :]).reshape(-1)
 
-    def _write_back(self, pc, b, acc):
-        words = self.result_words(b)
-        if b.requant:
+    def _write_back(self, pc, b, acc, rows, q16):
+        words = self.result_words(b, rows, q16)
+        acc = acc[:rows]
+        if q16:
+            data = np.ascontiguousarray(requant16(acc, b.m, b.sh).astype("<i2")).view("<u8").reshape(-1)
+        elif b.requant:
             data = np.ascontiguousarray(requant(acc, b.m, b.sh, b.relu).astype(np.int8)).view("<u8").reshape(-1)
         else:
             data = acc.reshape(-1).astype(np.int64).view("<u8")
@@ -218,9 +280,10 @@ class Tracer(Golden):
         return a, bmat
 
     def _block(self, pc, b):
+        rb, rows, q16 = self._resolve(pc, b)
         super()._block(pc, b)
-        words = None if b.no_ret else self.result_words(b)
-        self.blocks.append((pc, b, tuple(self.regs), self.epoch, words))
+        words = None if rb.no_ret else self.result_words(rb, rows, q16)
+        self.blocks.append((pc, b, tuple(self.regs[: isa.N_REGS]), self.epoch, words))
         self.wb_words += 0 if words is None else len(words)
 
     def _retire(self):

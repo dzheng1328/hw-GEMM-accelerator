@@ -1,6 +1,10 @@
 """pytest for compiler/hwview.py."""
 
+import numpy as np
+import pytest
+
 import isa
+from golden import Golden
 from hwview import dma_ports, entry_words
 
 
@@ -39,3 +43,16 @@ def test_dma_ports_narrow_the_registers():
     assert dma_ports(regs)["stride2"] == 0
     assert set(p) == {"in_base", "w_base", "cin_log2", "h_log2", "w_log2", "wout_log2", "stride2", "pad",
                       "ksize", "ks", "bias_start", "bias_val"}
+
+
+@pytest.mark.parametrize("raw, q16", [(True, False), (False, False), (False, True)])
+@pytest.mark.parametrize("rows", [1, 2, 8])
+def test_golden_result_words_equal_the_write_back_entry_rtl_computes(raw, q16, rows):
+    """rtl/cmd_seq.v: wb_base = OUT_BASE + (group * 8 * OSTRIDE + pixel_block), times 8 for raw;
+    wb_step = OSTRIDE, times 8 for raw. golden.result_words must land on the same words."""
+    g = Golden(1, 1, [], [], [])
+    g.regs[isa.OUT_BASE], g.regs[isa.OSTRIDE] = 5000, 7
+    b = isa.Block(0, 0, group=3, pixel_block=2, round=0, requant=not raw)
+    row0 = 3 * 8 * 7 + 2
+    base, step = 5000 + (row0 * 8 if raw else row0), 7 * 8 if raw else 7
+    assert np.array_equal(g.result_words(b, rows, q16), entry_words(base, step, raw, q16, rows))

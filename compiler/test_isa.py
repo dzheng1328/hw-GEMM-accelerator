@@ -71,3 +71,51 @@ def test_check_shape_accepts(args, out):
 def test_check_shape_rejects(args, msg):
     with pytest.raises(isa.ShapeError, match=msg):
         isa.check_shape("t", *args)
+
+def test_block_round_trips_the_register_form_bit():
+    b = Block(1, 2, 3, 4, 0, acc_keep=True, relu=True, sh=9, m=12345, reg_form=True)
+    assert isa.decode(isa.block(b)) == (isa.BLOCK, b)
+    assert "reg_form" in isa.disassemble(isa.block(b))
+
+
+@pytest.mark.parametrize("field", ["round", "no_ret", "requant"])
+def test_a_register_form_block_rejects_the_fields_the_registers_replace(field):
+    with pytest.raises(ValueError, match="register-form"):
+        isa.block(Block(0, 0, 0, 0, **{"round": 0, field: 1 if field == "round" else True}, reg_form=True))
+
+
+def test_alu_round_trips_register_and_immediate_forms():
+    for op in (isa.ALU_ADD, isa.ALU_SUB, isa.ALU_SHR, isa.ALU_AND):
+        for word, want in ((isa.alu(op, 31, 22, src2=17), isa.Alu(op, 31, 22, src2=17)),
+                           (isa.alu(op, 5, 0, imm=0xFFFF_FFF8), isa.Alu(op, 5, 0, imm=0xFFFF_FFF8))):
+            assert isa.decode(word) == (isa.ALU, want)
+    assert isa.decode(isa.alu(isa.ALU_ADD, 3, 3, imm=-1)) == (isa.ALU, isa.Alu(isa.ALU_ADD, 3, 3, imm=0xFFFF_FFFF))
+    assert isa.disassemble(isa.alu(isa.ALU_SHR, 25, isa.T, imm=3)) == "ALU r25 = r16 shr 3"
+
+
+def test_alu_rejects_bad_operands():
+    with pytest.raises(ValueError, match="exactly one"):
+        isa.alu(isa.ALU_ADD, 1, 1)
+    with pytest.raises(ValueError, match="exactly one"):
+        isa.alu(isa.ALU_ADD, 1, 1, src2=2, imm=3)
+    with pytest.raises(ValueError, match="dst"):
+        isa.alu(isa.ALU_ADD, 32, 1, imm=0)
+    with pytest.raises(ValueError, match="imm"):
+        isa.alu(isa.ALU_ADD, 1, 1, imm=1 << 32)
+
+
+def test_loopr_and_vop_round_trip():
+    assert isa.decode(isa.loopr(27)) == (isa.LOOPR, 27)
+    assert isa.disassemble(isa.loopr(27)) == "LOOPR r27"
+    for sub in range(1, 10):
+        assert isa.decode(isa.vop(sub, 22, 23, 31)) == (isa.VOP, isa.Vop(sub, 22, 23, 31))
+    assert isa.disassemble(isa.vop(isa.SOFTMAX, 22, 23, 24)) == "VOP SOFTMAX r22, r23, r24"
+    assert isa.disassemble(isa.vop(0)) == "VOP INVALID(0)"
+    with pytest.raises(ValueError, match="rc"):
+        isa.vop(1, rc=32)
+
+
+def test_the_new_opcodes_and_registers_do_not_collide_with_the_old_ones():
+    assert len({isa.ADD, isa.BLOCK, isa.WAIT, isa.LOOP, isa.ENDLOOP, isa.END, isa.ALU, isa.LOOPR, isa.VOP}) == 9
+    assert (isa.T, isa.PLEN, isa.INV_TEMP, isa.ROUND, isa.ROWS, isa.RMODE) == (16, 17, 18, 19, 20, 21)
+    assert isa.N_REGS == 16 and isa.N_REGS_LM == 32 and isa.WEIGHT_WORDS == 65536

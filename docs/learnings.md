@@ -23,6 +23,15 @@ actually resolved.
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-12 -- The spec's matmul mapping had never met the DMA's channel counter
+
+**Phase:** Phase 4 (4.3d)
+**Problem:** The approved 4.3 spec maps every weight matmul to "a 1x1 convolution with Cin = input features", but the down projection has 192 inputs.
+**Cause:** The DMA's channel counter wraps at `(1 << cin_log2) - 1` and `isa.check_shape` requires a power-of-two Cin; nobody had run the spec's table through those rules, because the compiler for the model did not exist yet.
+The same pass found the spec's `LOOP 5` over layers impossible (per-BLOCK (m, sh) immediates differ per layer), a probability scratch four times larger than its memory table, and a golden ordering rule that VOP draining makes unviolable.
+**Fix:** Three K = 64 chunks accumulated on one tile; layers unrolled; the corrections are in the spec and the 4.3d decision entry.
+**Takeaway:** Before approving a spec that targets existing hardware, push each tensor shape through the real address and shape rules, not just the table; a throwaway prototype of the compiler found all of these in an afternoon.
+
 
 ### 2026-10-13 -- Two sources for one row count need an in-order index check, not a bound check
 

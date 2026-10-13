@@ -18,6 +18,20 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-12 -- 4.3d: the compiler's contract with the vector unit, and eleven corrections to the spec
+
+**Context:** Building the reference compiler and golden executor for 4.3 meant defining everything the spec left open (VOP operands, encodings, the memory map) and running the spec's mappings against the real DMA and BLOCK format.
+**Options considered:** For the down projection (K = 192, not a power of two, which the DMA's channel counter needs): three K = 64 BLOCKs per output block, padding the hidden width to 256, or a non-power-of-two channel wrap in the DMA.
+For layers: a `LOOP 5` over layers (the spec) or unrolling them.
+For the register-form BLOCK: every BLOCK flag from registers, or only round, row limit, and result mode.
+**Decision:** Three K = 64 chunks with `IN_BASE` and `W_BASE` advanced between them; layers unrolled (every BLOCK carries its own (m, sh) as immediates, which differ per layer), about 2000 commands of 4096; register-form BLOCKs derive `acc_keep` from ROUND above 0 and `no_ret` from "not the last round of KS slots", so one loop body serves every AV round.
+The other points are in the 4.3d plan's Spec Amendments and in the spec's edited sections: encodings, parameter words in A memory, a contiguous TRANSPOSE, SOFTMAX zero-padding only to the next multiple of 8, VOPs draining like WAIT (so no WAIT is emitted), a 64 KB probability scratch, `N_REGS` 16 versus `N_REGS_LM` 32.
+**Why:** Chunking wastes no slots and changes no RTL (padding costs 33% more down-projection slots; the DMA change contradicts "the DMA and the gather do not change" and puts RTL risk in a compiler milestone).
+The register-form rules make the partial-sum and return decisions properties of the hardware's own counters instead of per-round immediates, which a loop body cannot vary.
+**Result:** On the frozen model, the golden executor equals `lm_reference.py` bit for bit on all 8 stories' tokens and both KV caches for 256 steps (2x2, inverse temperature 256) and 16 steps on 1x1, 2x2, and 4x3 at both temperatures; on a synthetic model also on 8x8 and across the T = 7 to 8 and 63 to 64 boundaries.
+4.3e's `rtl/vpu*.v` and 4.3f's `cmd_seq` changes now have an executable contract: `compiler/golden_vop.py` and `compiler/golden.py`.
+Open for 4.3g: attention loop bodies carry about 3 non-BLOCK commands per 8-slot BLOCK, each costing a cycle (the 2026-09-29 decision), so the breakdown should show it.
+
 ### 2026-10-12 -- RESULT16 rides the requantized flit type with a flag; the row limit lives in the GO
 
 **Context:** 4.3's attention scores, logits, and residual updates need more range than int8 but not int32's 64 flits per block, and a QK^T block has only 2 useful rows of 8.

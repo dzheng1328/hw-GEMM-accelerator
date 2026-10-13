@@ -87,7 +87,7 @@ def forward_seq(q, tokens):
     return logits_q(q, x)
 
 
-def generate(q, prompt_ids, n_steps, inv_temp, seeds):
+def generate(q, prompt_ids, n_steps, inv_temp, seeds, return_cache=False):
     """Token log (n_steps + 1, B): row 0 is the prompt's first token; at step
     t the model reads row t and row t + 1 is the prompt's next token while
     the prompt lasts, otherwise a sample (spec section 3, SAMPLE)."""
@@ -104,7 +104,7 @@ def generate(q, prompt_ids, n_steps, inv_temp, seeds):
             log[t + 1] = prompt_ids[t + 1]
         else:
             log[t + 1], state = sample_q(logits_q(q, x)[:, 0], inv_temp, *scalar(q, "logit_exp"), state)
-    return log
+    return (log, cache) if return_cache else log
 
 
 def val_loss_int(q, windows, chunk=8) -> float:

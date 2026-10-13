@@ -97,6 +97,7 @@ Every new layout is produced by a VPU command writing its output in the shape th
 
 - Weight matmuls (q, k, v, o, gate, up, down, classifier): a 1x1 convolution over an 8-pixel row whose pixels are the 8 stories (Cin = input features, H = 1, W = 8, KSIZE = 1).
   This is today's BLOCK, unchanged.
+  The down projection (Cin = 192, not a power of two) is three K = 64 BLOCKs per output block on one tile: IN_BASE and W_BASE advance between them, acc_keep carries the partial sum, and the last returns RESULT16.
 - QK^T, per story and KV head, 8 positions per BLOCK: A word for slot d is the rotated-q word; the B row is the K^T word (d, j >> 3) through the gather (the K^T region is a Cin = 8, H = 1, W = 256 tensor).
   Output rows are the 2 query heads, lanes the 8 positions, returned as RESULT16 with a row limit of 2.
 - AV, per story and KV head: A word for slot j is the probabilities word; the B row is the V word of position j (a Cin = 256, H = 1, W = 8 tensor).
@@ -111,7 +112,7 @@ Every new layout is produced by a VPU command writing its output in the shape th
 2. Result engine (`noc_node`): RESULT16, a requant mode that saturates to int16 and packs 4 values per flit (2 flits per row); and a GO row limit (1-8 rows) so a block returns only its useful rows.
    The GO payload has free bits for both.
    Write-back decodes RESULT16 rows into two words each.
-3. `cmd_seq`: the register file grows to 32 (section 2, Registers); LOOP can take its count from a register; the loop stack is 4 deep; BLOCK gains a register form that takes its round, row limit, and result mode from registers, for blocks whose size grows with t.
+3. `cmd_seq`: the register file grows to 32 (section 2, Registers); LOOP can take its count from a register; the loop stack is 4 deep; BLOCK gains a register form (bit 16) that takes ROUND, ROWS (row limit minus 1), and RMODE (raw, RESULT8, RESULT16) from registers; it accumulates when acc_keep is set or ROUND is above 0 and returns only on the last round of KS slots.
 4. VPU commands (section 3) drain like WAIT before they start (every outstanding block written back), then own the DMA's read ports and write-back's write ports through a mux in `accel.v`; the next command starts when the VPU finishes.
    The VPU never overlaps the mesh; the counters show that serialization.
 
@@ -142,6 +143,11 @@ New hardware-defined registers:
 | 9 | VOP | One vector command (section 3): sub-op field plus up to three 5-bit operand registers |
 
 Exact bit positions are fixed in `compiler/isa.py`, the single source for the compiler, golden executor, and disassembler.
+ALU: dst `[59:55]`, src `[54:50]`, op `[49:48]` (add, sub, shr by the count mod 32, and), use-imm `[47]`, src2 `[46:42]`, imm `[31:0]`; 32-bit wrap, and a destination of r0 is ignored.
+LOOPR: register `[59:55]`; a count of 0 skips to the matching ENDLOOP, and a count above 65535 is an error.
+Register-form BLOCK errors: ROUND of 128 or more, ROWS above 7, RMODE above 2.
+VOP: sub-op `[59:56]` (EMBED 1, RMSNORM 2, ROPE 3, KVWRITE 4, SOFTMAX 5, SILU_MUL 6, ADD 7, TRANSPOSE 8, SAMPLE 9), operand registers `[55:51]`, `[50:46]`, `[45:41]`.
+Each sub-op's operand registers hold word addresses; `compiler/isa.py` and the docstrings in `compiler/golden_vop.py` are the definition of the operand conventions, and the compile-time constants (m, sh, eps_q) live in one-word parameter blocks in A memory (`m | sh << 16 | eps_q << 32`).
 New errors (sticky `error`, `error_pc`, `$fatal` in simulation): an invalid VOP sub-op, a fifth nested loop, a register-form ROWS or RMODE out of range.
 
 ## 3. The vector unit
@@ -165,10 +171,10 @@ New errors (sticky `error`, `error_pc`, `$fatal` in simulation): an invalid VOP 
 | RMSNORM | residual | int8 feature words | Sum of squares over 64 int16 features in 40 bits, shift right by 6, rsqrt, requant(x * r) to int8 |
 | ROPE | q and k feature words, RoPE table (A memory) | q to A scratch; k in place | y0 = rs(x0*c - x1*s, 14), y1 = rs(x0*s + x1*c, 14), saturated int8; c and s are Q1.14 at position T |
 | KVWRITE | rotated k, v feature words | K^T cache (byte read-modify-write), V cache (whole words) | Position T of every story, layer, KV head |
-| SOFTMAX | scores (RESULT16) | probabilities to A scratch | Max over positions 0..T, exp, sum, reciprocal; p in 0..127; positions past T written 0 |
+| SOFTMAX | scores (RESULT16) | probabilities to A scratch | Max over positions 0..T, exp, sum, reciprocal; p in 0..127; positions past T, up to the next multiple of 8, written 0 |
 | SILU_MUL | gate and up words, the layer's SiLU table | int8 feature words | requant(silu_table[g] * u); the table maps each int8 input to an int16 output |
 | ADD | residual, a RESULT16 buffer | residual | residual + requant(x), saturated int16 |
-| TRANSPOSE | 8 words at a stride | 8 words at a stride | 8x8 byte transpose |
+| TRANSPOSE | rc consecutive 8-word blocks | rc consecutive 8-word blocks | 8x8 byte transpose of each block |
 | SAMPLE | logits (RESULT16), INV_TEMP, token log | token log at T + 1 | See below |
 
 SAMPLE, per story: while T + 1 < PLEN it copies the prompt token already in the log and draws nothing.
@@ -199,25 +205,28 @@ SAMPLE reads the vocabulary three times (max; exp and sum; running-sum walk) ove
 - `compiler/lower_lm.py` (new): the transformer to BLOCKs and VOPs; memory allocation; weight, table, and prompt packing.
 - `compiler/schedule.py`: weight matmuls spread their groups across tiles in waves of W * H, as for CIFAR-10; attention pins story s to tile s mod (W * H), with the story loop unrolled because the tile field is an immediate.
 - `compiler/emit.py`: hex images for program, A memory, and the four activation banks.
-- `compiler/golden.py`: executes the new commands at command level (VOPs call `fixedpoint.py`), models RESULT16, the row limit, A-memory writes, and the K^T read-modify-writes, and faults on the new errors plus these ordering rules: a BLOCK must not read A scratch after a later VOP rewrote it without a WAIT between; T must stay below the context.
+- `compiler/golden.py`: executes the new commands at command level (VOPs call `fixedpoint.py`), models RESULT16, the row limit, A-memory writes, and the K^T read-modify-writes, and faults on the new errors plus one rule: T must stay below the context.
+  A VOP drains outstanding BLOCKs like WAIT before it starts, so a BLOCK can never read A scratch after a later VOP rewrote it, and the golden executor needs no ordering fault for that.
 - `compiler/check_lm.py` (new): golden's token log and final memory equal `lm_reference.py`'s, at temperature 0 and 1.0, for several mesh shapes.
   A full 256-step golden run is about 1M BLOCKs in Python, so pytest uses 16-step runs and `check_lm.py` runs the full length on demand.
 
-Program shape (about 1K commands, within the 4K program memory):
+Program shape (about 2000 commands, within the 4K program memory):
+Layers are unrolled, not looped, because every BLOCK carries its own (m, sh) as immediates and they differ per layer.
+No WAIT is emitted before a VOP, because a VOP drains outstanding BLOCKs like WAIT.
 
 ```
 LOOP n_steps
+  ALU nblk, KS, rounds from T
   VOP EMBED
-  LOOP 5                                   ; per-layer bases advance by fixed strides (ALU)
-    VOP RMSNORM; q/k/v BLOCKs; WAIT; VOP ROPE; VOP KVWRITE
-    32 story x KV-head nests: ALU setup; LOOPR nblk { QK^T BLOCK; ALU pointers += 1 word }
-    WAIT; VOP SOFTMAX
-    32 nests: ALU setup; LOOPR rounds { AV BLOCK (register form, acc_keep); ALU ROUND += 1 }
-    WAIT; VOP TRANSPOSE
-    o-proj BLOCKs; WAIT; VOP ADD
-    VOP RMSNORM; gate/up BLOCKs; WAIT; VOP SILU_MUL; down BLOCKs; WAIT; VOP ADD
-  ENDLOOP
-  VOP RMSNORM; classifier BLOCKs; WAIT; VOP SAMPLE; ALU T += 1
+  layers 0 to 4, unrolled:
+    VOP RMSNORM; q/k/v BLOCKs; VOP ROPE; VOP KVWRITE
+    per story (unrolled): LOOP 4 KV heads { ALU setup; LOOPR nblk { QK^T BLOCK; ALU pointers } }
+    VOP SOFTMAX
+    per story (unrolled): LOOP 4 KV heads { ROUND = 0; LOOPR rounds { AV BLOCK (register form); ROUND += 1 } }
+    VOP TRANSPOSE
+    o-proj BLOCKs; VOP ADD
+    VOP RMSNORM; gate/up BLOCKs; VOP SILU_MUL; down BLOCKs (3 K = 64 chunks each); VOP ADD
+  VOP RMSNORM; classifier BLOCKs; VOP SAMPLE; ALU T += 1
 ENDLOOP
 END
 ```
@@ -231,7 +240,9 @@ Memory map:
 | Embedding table | 32 KB |
 | RoPE table | 4 KB |
 | SiLU tables | 2.5 KB |
-| q and probability scratch, seeds | under 16 KB |
+| q scratch 2 KB, probability scratch 64 KB (32 nests x 256 positions x 8 bytes), seeds | 66 KB |
+
+The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 
 | Activation memory | Size |
 |---|---:|
@@ -283,7 +294,7 @@ Memory map:
 | 4.3a | DMA refill overlapped across BLOCK boundaries | - | CIFAR-10 still bit-exact; `make cifar` and `make scaling` show the 3-cycle per-BLOCK refill gone from the "Other" column |
 | 4.3b | Tokenizer, training, quantization, new `fixedpoint.py` ops, `lm_reference.py` | - | Loss gate met; sample stories from the int8 reference read coherently |
 | 4.3c | RESULT16, GO row limit | - | `tb/requant` (QW 16), `tb/mesh`, and `tb/writeback` pass with the new modes |
-| 4.3d | ISA additions, `lower_lm.py`, golden executor, `check_lm.py`, A-memory depth 512 KB | b | Golden equals `lm_reference.py` for several meshes |
+| 4.3d (done 2026-10-13) | ISA additions, `lower_lm.py`, golden executor, `check_lm.py`, A-memory depth 512 KB | b | Golden equals `lm_reference.py` for several meshes |
 | 4.3e | `rtl/vpu*.v`, `tb/vpu/` | b | Every sub-op bit-exact on random and edge inputs |
 | 4.3f | `cmd_seq` extensions, `accel` integration, A-memory VPU write port | c, d, e | Random small transformers pass end to end on 1x1, 2x2, 4x3 |
 | 4.3g | Stories on the chip: `make lm`, `docs/perf/lm.md`, the trace, the scaling table | f | Exit criteria above |
