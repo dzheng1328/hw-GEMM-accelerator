@@ -21,7 +21,7 @@ import numpy as np
 import golden
 import isa
 from fixedpoint import requant16, rmsnorm_q, rope_q, sample_q, silu_mul_q, softmax_q
-from lm_layout import KT_WORDS, KV_NEST_WORDS, NESTS, PROB_NEST_WORDS, Q_NEST_WORDS, SCORE_NEST_WORDS
+from lm_layout import KT_WORDS, KV_NEST_WORDS, NESTS, POS_PER_WORD, PROB_NEST_WORDS, Q_NEST_WORDS, SCORE_NEST_WORDS
 from lm_spec import BATCH, CTX, DIM, HEAD_DIM, HIDDEN, N_HEADS, N_KV_HEADS, VOCAB
 
 
@@ -127,7 +127,7 @@ class Vpu:
         nest = (np.arange(BATCH)[:, None] * N_KV_HEADS + np.arange(N_KV_HEADS)[None, :])[:, :, None]
         d = np.arange(HEAD_DIM)[None, None, :]
         base = kv + KV_NEST_WORDS * nest
-        kt = (base + (CTX // 8) * d + (self.T >> 3)) * 8 + (self.T & 7)
+        kt = (base + (CTX // POS_PER_WORD) * d + (self.T >> 3)) * 8 + (self.T & 7)
         vv = (base + KT_WORDS + self.T) * 8 + d
         if max(kt.max(), vv.max()) >= len(self.g.act) or kv < 0:
             self.fail("KV cache address past activation memory")

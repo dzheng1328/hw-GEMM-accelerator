@@ -268,7 +268,10 @@ def read_tokens(b, g):
 
 def read_cache(b, g):
     """{"k", "v"}: (N_LAYERS, 8 stories, CTX, KV heads, head_dim) int64, from the
-    K^T bytes (word (d, j >> 3), byte j & 7) and V words (word j, byte d)."""
+    K^T bytes (word (d, j >> 3), byte j & 7) and V words (word j, byte d).
+    This decodes the layout by reshaping the memory image, deliberately not by
+    reusing golden_vop.kvwrite's address arithmetic, so the comparison against
+    the reference also checks that KVWRITE wrote where the layout says."""
     k = np.zeros((N_LAYERS, BATCH, CTX, N_KV_HEADS, HEAD_DIM), np.int64)
     v = np.zeros_like(k)
     for l, addr in enumerate(b.layout.layers):

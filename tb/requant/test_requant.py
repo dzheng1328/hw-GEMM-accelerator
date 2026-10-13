@@ -23,6 +23,14 @@ def directed_vectors():
             for sh in (0, 1, 15, 16, 31, 47, 48, 62, 63):
                 for relu in (0, 1):
                     yield acc, m, sh, relu
+    # Accumulators that round to just inside, on, and just past the int16 rails (and their rounding ties),
+    # for scales that map them there: unit scale, halving (exact .5 ties at odd acc), and 1.5x.
+    rail16 = [32765, 32766, 32767, 32768, 32769, 65533, 65534, 65535, 65536, 65537, 65538,
+              -32767, -32768, -32769, -32770, -65535, -65536, -65537, -65538, -65539]
+    for acc in rail16:
+        for m, sh in ((1, 0), (1, 1), (3, 1), (1 << 15, 15), ((1 << 16) - 1, 16)):
+            for relu in (0, 1):
+                yield acc, m, sh, relu
 
 
 def random_vectors(rng):

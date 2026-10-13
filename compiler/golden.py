@@ -71,16 +71,13 @@ class Golden:
                 self._retire()
             elif op in (isa.LOOP, isa.LOOPR):
                 count = arg if op == isa.LOOP else self.regs[arg]
-                if op == isa.LOOP and count == 0:
-                    raise GoldenError(pc, "LOOP count 0")
-                if count > 0xFFFF:
-                    raise GoldenError(pc, f"LOOPR count {count} does not fit in 16 bits")
                 if count == 0:
-                    nxt = self._after_body(pc)
-                elif len(loops) == isa.MAX_LOOP_DEPTH:
+                    raise GoldenError(pc, f"{isa.OP_NAMES[op]} count 0")
+                if count > 0xFFFF:
+                    raise GoldenError(pc, f"{isa.OP_NAMES[op]} count {count} does not fit in 16 bits")
+                if len(loops) == isa.MAX_LOOP_DEPTH:
                     raise GoldenError(pc, f"LOOP nested deeper than {isa.MAX_LOOP_DEPTH}")
-                else:
-                    loops.append([nxt, count])
+                loops.append([nxt, count])
             elif op == isa.ENDLOOP:
                 if not loops:
                     raise GoldenError(pc, "ENDLOOP without an active LOOP")
@@ -103,16 +100,6 @@ class Golden:
         x, y = self.regs[a.src], a.imm if a.src2 is None else self.regs[a.src2]
         r = {isa.ALU_ADD: x + y, isa.ALU_SUB: x - y, isa.ALU_SHR: x >> (y & 31), isa.ALU_AND: x & y}[a.op]
         self.regs[a.dst] = r & isa.REG_MASK
-
-    def _after_body(self, pc):
-        """The pc after the ENDLOOP matching the LOOPR at pc (a count of 0 skips the body)."""
-        depth = 1
-        for i in range(pc + 1, isa.PROGRAM_WORDS):
-            op = int(self.prog[i]) >> 60
-            depth += (op in (isa.LOOP, isa.LOOPR)) - (op == isa.ENDLOOP)
-            if not depth:
-                return i + 1
-        raise GoldenError(pc, "LOOPR without a matching ENDLOOP")
 
     def _retire(self):
         for words in self.pending_words:

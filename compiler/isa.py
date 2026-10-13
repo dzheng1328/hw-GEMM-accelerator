@@ -160,7 +160,7 @@ def alu(op, dst, src, src2=None, imm=None):
 
 
 def loopr(reg):
-    """LOOP whose count is register reg's value; a count of 0 skips the body."""
+    """LOOP whose count is register reg's value (1 to 65535; a count of 0 faults, like LOOP 0)."""
     return (LOOPR << 60) | (_fit(reg, 5, "reg") << 55)
 
 
