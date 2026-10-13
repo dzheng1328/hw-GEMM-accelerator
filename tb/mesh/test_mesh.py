@@ -662,3 +662,59 @@ async def test_row_limit_in_every_mode(dut):
                 exp = requant16(acc, rq[0], rq[1])
             assert np.array_equal(got, exp), f"rows={rows} mode={mode}"
             await assert_no_results(dut, 30)
+
+
+@cocotb.test()
+async def test_back_to_back_go_with_mixed_row_limits_and_modes(dut):
+    """GOs queued behind an in-flight stream on one tile, with different row
+    limits and output modes (raw, RESULT8, RESULT16), a no_ret block, and an
+    acc_keep block, all injected in one burst over one set of loaded operands:
+    each GO's mode and row limit must take effect when that GO is delivered,
+    not when it was queued, so every stream comes back in order with its own
+    row count and format."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x44)
+    k_chunks, K = 1, 8
+    node = [n for n in NODES if n != HOST][0]
+    A, B = rand_mat(rng, N, K), rand_mat(rng, K, N)
+    acc = reference(A, B)
+    # (mode, rows, rq, extra GO fields, the accumulator the stream is requantized from)
+    gos = [
+        ("q16", 8, RQ16_CONFIGS[0], {}, acc),
+        ("raw", 1, None, {}, acc),
+        ("q8", 3, RQ_CONFIGS[0], {}, acc),
+        ("q16", 2, RQ16_CONFIGS[1], {}, acc),
+        ("raw", 8, None, {}, acc),
+        ("q8", 1, RQ_CONFIGS[2], {}, acc),
+        ("q16", 5, RQ16_CONFIGS[2], {}, acc),
+        ("none", 0, None, {"no_ret": True}, acc),
+        ("q16", 2, RQ16_CONFIGS[0], {"acc_keep": True}, 2 * acc),
+    ]
+    flits = operand_flits(node, A, B, k_chunks)
+    for mode, rows, rq, extra, _ in gos:
+        flits.append(go_flit(node, k_chunks, HOST, rq, q16=mode == "q16", rows=rows or N, **extra))
+    per_row = {"raw": N, "q8": 1, "q16": 2}
+    mon = cocotb.start_soon(collect_results(dut, sum(rows * per_row[mode] for mode, rows, *_ in gos if mode != "none")))
+    await inject(dut, io, HOST, flits)
+    stream = (await mon)[(HOST, node)]
+
+    pos = 0
+    for n, (mode, rows, rq, _, want) in enumerate(gos):
+        if mode == "none":
+            continue
+        part, pos = stream[pos:pos + rows * per_row[mode]], pos + rows * per_row[mode]
+        want = want[:rows]
+        if mode == "raw":
+            assert all(q8 == 0 for q8, _, _, _ in part), f"GO {n}: a requantized flit in a raw stream"
+            cells = {idx: to_signed(data, 8 * N) for _, idx, data, _ in part}
+            assert sorted(cells) == list(range(rows * N)), f"GO {n}: raw indices {sorted(cells)}"
+            got, exp = np.array([[cells[i * N + j] for j in range(N)] for i in range(rows)]), want
+        elif mode == "q8":
+            assert all(q8 == 1 and q16 == 0 for q8, _, _, q16 in part), f"GO {n}: wrong flit type in a RESULT8 stream"
+            got = np.array([[to_signed(d >> (8 * j), 8) for j in range(N)] for _, _, d, _ in sorted(part, key=lambda c: c[1])])
+            exp = requant(want, *rq)
+        else:
+            got, exp = q16_stream_to_rows(part, rows), requant16(want, rq[0], rq[1])
+        assert np.array_equal(got, exp), f"GO {n} ({mode}, rows={rows}):\n{got}\nvs\n{exp}"
+    assert pos == len(stream), "flits left over after every GO's stream"
+    await assert_no_results(dut, 30)

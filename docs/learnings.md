@@ -24,6 +24,14 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-13 -- Two sources for one row count need an in-order index check, not a bound check
+
+**Phase:** Phase 4 (4.3c review)
+**Problem:** The GO's row limit (`rtl/noc_node.v`) and the write-back entry's `rows_m1` (`rtl/cmd_seq.v`) are separate fields, and `writeback.v` only checked the flit's mode, so a block returning more or fewer rows than its entry landed silently.
+**Cause:** The reviewer's suggested `r_idx > last` fatal looked sufficient but is not: an entry pops on the flit with `idx == last`, so an extra flit is judged against the next entry, and a short block never pops at all.
+**Fix:** A simulation-only per-tile expected-index counter (reset on each pop) makes both overrun and underrun fatal, proved by `make rows-check` in `tb/writeback/`; a mesh test queues nine GOs of mixed row limits and modes behind one tile's stream, and fails when the GO backpressure is removed.
+**Takeaway:** When a check guards a protocol with a start, a length, and an end, write the negative probe for each way the length can be wrong, in both directions, before choosing the condition.
+
 ### 2026-10-12 -- A new GO field whose reset value is not its zero value breaks every producer that predates it
 
 **Phase:** Phase 4 (4.3c)

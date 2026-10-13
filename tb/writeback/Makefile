@@ -44,3 +44,22 @@ mode-check:
 	    echo "PASS: $$probe is fatal under $(SIM)"; \
 	  fi; \
 	done
+
+# Negative test: a block that returns more rows than its entry (overrun), or
+# stops short so the next block's first flit arrives mid-entry (underrun),
+# must each stop the run on writeback's in-order index check.
+.PHONY: rows-check
+rows-check:
+	@mkdir -p $(SIM_BUILD); \
+	for probe in overrun underrun; do \
+	  log=$(SIM_BUILD)/rows_check_$$probe.log; \
+	  if WRITEBACK_ROWS_PROBE=$$probe $(MAKE) --no-print-directory \
+	       TESTCASE=test_flit_outside_its_blocks_rows_is_fatal \
+	       COCOTB_RESULTS_FILE=$(SIM_BUILD)/rows_results_$$probe.xml > $$log 2>&1; then \
+	    echo "FAIL: $$probe did not stop the $(SIM) run (see $$log)"; exit 1; \
+	  elif ! grep -q "out of sequence" $$log; then \
+	    echo "FAIL: $(SIM) run failed for $$probe, but not on writeback's check (see $$log)"; exit 1; \
+	  else \
+	    echo "PASS: $$probe is fatal under $(SIM)"; \
+	  fi; \
+	done

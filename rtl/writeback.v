@@ -139,6 +139,24 @@ module writeback #(
         if (!rst && r_valid && (cnt[r_tile] == 2'd0 || h_mode != r_mode))
             $fatal(1, "writeback: a RESULT flit (mode %0d) from tile %0d matches no pending block (entry mode %0d)",
                    r_mode, r_tile, h_mode);
+
+    // A tile's flits arrive in order, idx 0 first and the entry's last flit last. The GO's row limit
+    // (rtl/noc_node.v) and the entry's rows_m1 (rtl/cmd_seq.v) have separate sources, so a block that
+    // returns more rows than its entry (the extra flit would land at the next entry's addresses or
+    // beyond), or fewer (its entry never pops and the next block's flit 0 lands on it), shows up as an
+    // idx that is not the next one expected.
+    reg [5:0] next_idx [0:NT-1];
+    integer   n;
+    always @(posedge clk)
+        if (rst) begin
+            for (n = 0; n < NT; n = n + 1)
+                next_idx[n] <= 6'd0;
+        end else if (r_valid) begin
+            next_idx[r_tile] <= pop ? 6'd0 : next_idx[r_tile] + 6'd1;
+            if (r_idx != next_idx[r_tile])
+                $fatal(1, "writeback: flit idx %0d from tile %0d is out of sequence (expected idx %0d, entry rows_m1 %0d)",
+                       r_idx, r_tile, next_idx[r_tile], h_rm1);
+        end
 `endif
 
 endmodule

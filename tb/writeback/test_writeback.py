@@ -217,3 +217,24 @@ async def test_orphan_result_is_fatal(dut):
     for _ in range(3):
         await cycle(dut)
     raise AssertionError("a RESULT8 with no pending entry did not stop the run")
+
+
+@cocotb.test(skip=os.environ.get("WRITEBACK_ROWS_PROBE") not in ("overrun", "underrun"))
+async def test_flit_outside_its_blocks_rows_is_fatal(dut):
+    """Negative test, run only by `make rows-check`: the GO's row limit (rtl/noc_node.v) and the entry's
+    rows_m1 (rtl/cmd_seq.v) have separate sources. A block that returns more rows than its entry
+    (overrun) or fewer (underrun, so the next block's flit 0 arrives mid-entry) must stop the run;
+    reaching the end means the check did NOT fire. A second entry is pending so neither probe is an orphan."""
+    await setup(dut)
+    tile, probe = 3, os.environ["WRITEBACK_ROWS_PROBE"]
+    rows_m1 = 1 if probe == "overrun" else 3  # 2 rows, or 4 rows
+    await cycle(dut, push=(tile, MODE_Q8, rows_m1, 100, 4))
+    await cycle(dut, push=(tile, MODE_Q8, rows_m1, 200, 4))
+    returned = rows_m1 + 1 if probe == "overrun" else rows_m1 - 1  # rows the block really returns
+    for k in range(returned):
+        await cycle(dut, res=(tile, MODE_Q8, k, 0x1000 + k))
+    # overrun: one more row of the first block (flit idx rows_m1 + 1); underrun: the second block's flit 0.
+    await cycle(dut, res=(tile, MODE_Q8, rows_m1 + 1 if probe == "overrun" else 0, 0x2000))
+    for _ in range(3):
+        await cycle(dut)
+    raise AssertionError(f"a {probe} block did not stop the run")
