@@ -292,7 +292,7 @@ def test_sample_inside_the_prompt_copies_nothing_and_draws_nothing():
     assert np.array_equal(g.wmem[60:64].view("<u4"), state)
 
 
-@pytest.mark.parametrize("sub", [isa.EMBED, isa.ROPE, isa.KVWRITE, isa.SAMPLE])
+@pytest.mark.parametrize("sub", [isa.EMBED, isa.ROPE, isa.KVWRITE, isa.SOFTMAX, isa.SAMPLE])
 def test_ops_that_index_by_position_fault_when_t_reaches_the_context(sub):
     with pytest.raises(GoldenError, match="is not below the context"):
         run_vop(sub, 100, 5000, 99, regs={isa.T: CTX})

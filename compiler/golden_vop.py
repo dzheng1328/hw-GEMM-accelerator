@@ -140,6 +140,7 @@ class Vpu:
         nest n at 256 n), rc = parameter word (exp m, sh). Positions 0..T
         attend; word p of each nest holds the two heads' probabilities, zero
         past T up to the next multiple of 8 (the AV BLOCK's K slots)."""
+        self.check_t()
         m, sh, _ = self.param(param)
         n = pos_blocks(self.T)
         s = self._words(self.g.actw, sc, NESTS * SCORE_NEST_WORDS, "scores").view("<i2").astype(np.int64)
