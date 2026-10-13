@@ -12,13 +12,15 @@ module writeback_tb #(
     input  wire          rst,
     input  wire          push,
     input  wire [3:0]    push_tile,
-    input  wire          push_raw,
+    input  wire [1:0]    push_mode,       // 0 raw, 1 RESULT8, 2 RESULT16
+    input  wire [2:0]    push_rows_m1,
     input  wire [16:0]   push_base,
     input  wire [11:0]   push_step,
     output wire [15:0]   full,
     output wire          idle,
     input  wire          res_valid,
     input  wire          res_q8,
+    input  wire          res_q16,
     input  wire [AW-1:0] res_src_x,
     input  wire [AW-1:0] res_src_y,
     input  wire [5:0]    res_idx,
@@ -31,9 +33,9 @@ module writeback_tb #(
     wire [255:0] unused_rdata;
 
     writeback #(.W(W), .H(H), .AW(AW)) wb (
-        .clk(clk), .rst(rst), .push(push), .push_tile(push_tile), .push_raw(push_raw),
+        .clk(clk), .rst(rst), .push(push), .push_tile(push_tile), .push_mode(push_mode), .push_rows_m1(push_rows_m1),
         .push_base(push_base), .push_step(push_step), .full(full), .idle(idle),
-        .res_valid(res_valid), .res_q8(res_q8), .res_src_x(res_src_x), .res_src_y(res_src_y),
+        .res_valid(res_valid), .res_q8(res_q8), .res_q16(res_q16), .res_src_x(res_src_x), .res_src_y(res_src_y),
         .res_idx(res_idx), .res_data(res_data),
         .act_we(act_we), .act_waddr(act_waddr), .act_wdata(act_wdata));
 

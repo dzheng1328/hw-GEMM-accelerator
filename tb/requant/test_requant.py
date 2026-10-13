@@ -1,5 +1,6 @@
 """cocotb testbench for rtl/requant.v: every output must equal
-model/fixedpoint.py's requant() bit-exactly, over directed corner cases
+model/fixedpoint.py's requant() (QW = 8) or requant16() (QW = 16, relu tied
+low, as the RESULT16 lanes use it) bit-exactly, over directed corner cases
 (rounding ties, saturation at both ends, sh = 0, sh = 63, extreme
 accumulators) and a large random sweep of every input."""
 
@@ -8,7 +9,7 @@ import random
 import cocotb
 from cocotb.triggers import Timer
 
-from fixedpoint import requant
+from fixedpoint import requant, requant16
 
 SEED = 0x5EED56
 RANDOM_VECTORS = 20000
@@ -37,21 +38,28 @@ def random_vectors(rng):
 @cocotb.test()
 async def test_matches_fixedpoint_reference(dut):
     rng = random.Random(SEED)
+    width = len(dut.q)
+    assert width in (8, 16), f"unexpected output width {width}"
+    hi_rail, lo_rail = (1 << (width - 1)) - 1, -(1 << (width - 1))
     checked = 0
     saturated = {"hi": 0, "lo": 0, "relu": 0}
     for acc, m, sh, relu in [*directed_vectors(), *random_vectors(rng)]:
+        if width == 16:
+            relu = 0  # RESULT16 has no ReLU: the node ties it low
         dut.acc.value = acc
         dut.m.value = m
         dut.sh.value = sh
         dut.relu.value = relu
         await Timer(1, units="ns")
         got = dut.q.value.signed_integer
-        exp = int(requant([acc], m, sh, bool(relu))[0])
-        assert got == exp, f"acc={acc} m={m} sh={sh} relu={relu}: RTL {got} vs reference {exp}"
+        exp = int(requant([acc], m, sh, bool(relu))[0] if width == 8 else requant16([acc], m, sh)[0])
+        assert got == exp, f"QW={width} acc={acc} m={m} sh={sh} relu={relu}: RTL {got} vs reference {exp}"
         checked += 1
-        saturated["hi"] += exp == 127
-        saturated["lo"] += exp == -128
+        saturated["hi"] += exp == hi_rail
+        saturated["lo"] += exp == lo_rail
         saturated["relu"] += relu and exp == 0 and acc * m < 0
-    # The sweep must actually reach both saturation rails and the ReLU clamp.
+    # The sweep must actually reach both saturation rails (and, at QW = 8, the ReLU clamp).
+    if width == 16:
+        del saturated["relu"]
     assert all(v > 100 for v in saturated.values()), f"weak coverage: {saturated}"
-    dut._log.info(f"{checked} vectors bit-exact; saturation coverage {saturated}")
+    dut._log.info(f"QW={width}: {checked} vectors bit-exact; saturation coverage {saturated}")

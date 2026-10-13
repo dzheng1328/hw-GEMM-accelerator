@@ -107,6 +107,7 @@ Every new layout is produced by a VPU command writing its output in the shape th
 ### RTL changes outside the VPU
 
 1. A memory: a VPU write port; default depth 64K words (512 KB, up from 256 KB).
+   The write port lands with the VPU's memory mux in 4.3f, since it has no driver before then, and the depth with 4.3d's memory map.
 2. Result engine (`noc_node`): RESULT16, a requant mode that saturates to int16 and packs 4 values per flit (2 flits per row); and a GO row limit (1-8 rows) so a block returns only its useful rows.
    The GO payload has free bits for both.
    Write-back decodes RESULT16 rows into two words each.
@@ -281,10 +282,10 @@ Memory map:
 |---|---|---|---|
 | 4.3a | DMA refill overlapped across BLOCK boundaries | - | CIFAR-10 still bit-exact; `make cifar` and `make scaling` show the 3-cycle per-BLOCK refill gone from the "Other" column |
 | 4.3b | Tokenizer, training, quantization, new `fixedpoint.py` ops, `lm_reference.py` | - | Loss gate met; sample stories from the int8 reference read coherently |
-| 4.3c | RESULT16, row limit, A-memory write port and depth | - | `tb/mesh/` and `tb/writeback/` pass with the new modes |
-| 4.3d | ISA additions, `lower_lm.py`, golden executor, `check_lm.py` | b | Golden equals `lm_reference.py` for several meshes |
+| 4.3c | RESULT16, GO row limit | - | `tb/requant` (QW 16), `tb/mesh`, and `tb/writeback` pass with the new modes |
+| 4.3d | ISA additions, `lower_lm.py`, golden executor, `check_lm.py`, A-memory depth 512 KB | b | Golden equals `lm_reference.py` for several meshes |
 | 4.3e | `rtl/vpu*.v`, `tb/vpu/` | b | Every sub-op bit-exact on random and edge inputs |
-| 4.3f | `cmd_seq` extensions, `accel` integration | c, d, e | Random small transformers pass end to end on 1x1, 2x2, 4x3 |
+| 4.3f | `cmd_seq` extensions, `accel` integration, A-memory VPU write port | c, d, e | Random small transformers pass end to end on 1x1, 2x2, 4x3 |
 | 4.3g | Stories on the chip: `make lm`, `docs/perf/lm.md`, the trace, the scaling table | f | Exit criteria above |
 
 4.3a, 4.3b, and 4.3c can proceed in parallel.

@@ -67,12 +67,13 @@ def go_flit(dest_x, dest_y, k_chunks, ret_x, ret_y, rq=None, acc_keep=False, no_
     """GO flit: type=1, {ret_y, ret_x, k_chunks} plus the output mode: rq=None
     for raw int32 results, or (m, sh, relu) for requantized int8 rows;
     acc_keep continues the previous run's sums and no_ret keeps the result in
-    the tile (layout in rtl/noc_node.v)."""
+    the tile (layout in rtl/noc_node.v). Every row returns (rows_m1 = 7, bits
+    45:43): a GO that leaves the row limit at 0 returns a single row."""
     payload = ((ret_y & 3) << 6) | ((ret_x & 3) << 4) | (k_chunks & 0xF)
     if rq is not None:
         m, sh, relu = rq
         payload |= (m << 16) | (sh << 32) | (int(relu) << 38) | (1 << 39)
-    payload |= (int(acc_keep) << 40) | (int(no_ret) << 41)
+    payload |= (int(acc_keep) << 40) | (int(no_ret) << 41) | (7 << 43)
     return (T_GO << (PW + 2 * AW)) | (payload << (2 * AW)) | ((dest_y & 3) << AW) | (dest_x & 3)
 
 

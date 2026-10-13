@@ -18,6 +18,16 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-12 -- RESULT16 rides the requantized flit type with a flag; the row limit lives in the GO
+
+**Context:** 4.3's attention scores, logits, and residual updates need more range than int8 but not int32's 64 flits per block, and a QK^T block has only 2 useful rows of 8.
+**Options considered:** (1) a new flit type (the 2-bit type field is full: OPERAND, GO, RESULT, RESULT8); (2) a flag bit in the requantized payload, which has 50+ spare bits; (3) widening the type field.
+**Decision:** (2), with RESULT16 rows as two flits of four int16 lanes, and a 3-bit rows_m1 field in the GO.
+**Why:** It changes no router or buffer width and no existing flit; a QK^T block returns 4 flits instead of 64 raw ones, so write-back (one word per cycle) is not the bottleneck.
+The spec's A-memory write port moves to 4.3f with its only driver (the VPU) and the 512 KB depth to 4.3d with the memory map that needs it.
+**Result:** `requant` takes an output width (`QW` = 8 or 16, checked against `requant` and `requant16`), the node returns 8R raw, R RESULT8, or 2R RESULT16 flits for a row limit R, and write-back lands each at `base + i * step` (+ j for raw, + h for RESULT16) and pops on its mode's last flit; a flit of another mode than its entry is fatal.
+Nothing issues either feature yet, so `accel` ties them to "RESULT8 or raw, 8 rows" and CIFAR-10 is unchanged (4.3f wires them to the new BLOCK fields).
+
 ### 2026-09-29 -- The DMA hands off at its last slot, so BLOCKs stream with no refill gap
 
 **Context:** The 4.2f scaling study measured about 3.0 cycles per BLOCK of "Other" on every mesh: `cmd_seq` held a BLOCK until the DMA's GO beat left its three-stage pipeline, and the DMA accepted a start only when that pipeline was empty.

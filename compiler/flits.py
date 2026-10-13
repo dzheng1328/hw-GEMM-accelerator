@@ -1,5 +1,5 @@
 """The NoC flit format (rtl/noc_node.v header) in Python, for testbenches:
-build and decode OPERAND and GO flits. A flit is {type[1:0], payload[PW-1:0],
+build and decode OPERAND, GO and RESULT flits. A flit is {type[1:0], payload[PW-1:0],
 dest_y[AW-1:0], dest_x[AW-1:0]}; AW, the coordinate width, is per mesh."""
 
 N, ADDRW = 8, 6
@@ -23,6 +23,11 @@ def unlanes(word):
     return tuple(((word >> (8 * j)) & 0xFF) - (256 if (word >> (8 * j)) & 0x80 else 0) for j in range(N))
 
 
+def unlanes16(word):
+    """4 int16 lanes of a RESULT16 half-row flit's low 64 bits, lane j in bits [16j+15:16j]."""
+    return tuple(((word >> (16 * j)) & 0xFFFF) - (65536 if (word >> (16 * j)) & 0x8000 else 0) for j in range(N // 2))
+
+
 def _flit(aw, ftype, payload, dest):
     x, y = dest
     return (ftype << (PW + 2 * aw)) | (payload << (2 * aw)) | (_fit(y, aw, "dest_y") << aw) | _fit(x, aw, "dest_x")
@@ -33,10 +38,14 @@ def operand(aw, dest, slot, a_col, b_row):
     return _flit(aw, T_OPR, payload, dest)
 
 
-def go(aw, dest, k_chunks, m=0, sh=0, relu=False, requant=False, acc_keep=False, no_ret=False, ret=(0, 0)):
+def go(aw, dest, k_chunks, m=0, sh=0, relu=False, requant=False, acc_keep=False, no_ret=False, ret=(0, 0),
+       q16=False, rows=8):
+    """q16 returns int16 rows (two flits each; implies requant, relu ignored); rows (1-8) limits the
+    block to rows 0..rows-1."""
+    requant = requant or q16
     payload = (_fit(k_chunks, 4, "k_chunks") | (_fit(ret[0], aw, "ret_x") << 4) | (_fit(ret[1], aw, "ret_y") << (4 + aw))
                | (_fit(m, 16, "m") << 16) | (_fit(sh, 6, "sh") << 32) | (int(relu) << 38) | (int(requant) << 39)
-               | (int(acc_keep) << 40) | (int(no_ret) << 41))
+               | (int(acc_keep) << 40) | (int(no_ret) << 41) | (int(q16) << 42) | (_fit(rows - 1, 3, "rows") << 43))
     return _flit(aw, T_GO, payload, dest)
 
 
@@ -53,5 +62,12 @@ def decode(aw, flit):
             return bool((payload >> i) & 1)
         return {"type": "GO", "dest": dest, "k_chunks": payload & 0xF,
                 "ret": ((payload >> 4) & mask, (payload >> (4 + aw)) & mask), "m": (payload >> 16) & 0xFFFF,
-                "sh": (payload >> 32) & 0x3F, "relu": bit(38), "requant": bit(39), "acc_keep": bit(40), "no_ret": bit(41)}
-    raise ValueError(f"flit type {ftype} is not OPERAND or GO")
+                "sh": (payload >> 32) & 0x3F, "relu": bit(38), "requant": bit(39), "acc_keep": bit(40), "no_ret": bit(41),
+                "q16": bit(42), "rows": ((payload >> 43) & 7) + 1}
+    # RESULT (raw cell) and RESULT8 (row; a half-row of int16 lanes when the q16 flag is set) share one payload:
+    # {q16 flag, src_y, src_x, idx[5:0], data[8N-1:0]}.
+    dw = 8 * N
+    return {"type": "RESULT" if ftype == T_RES else "RESULT8", "dest": dest,
+            "src": ((payload >> (dw + 6)) & mask, (payload >> (dw + 6 + aw)) & mask),
+            "idx": (payload >> dw) & 0x3F, "q16": bool((payload >> (dw + 6 + 2 * aw)) & 1),
+            "data": payload & ((1 << dw) - 1)}

@@ -95,7 +95,8 @@ module accel #(
     // flit_pack's BLOCK fields ride through the DMA with each beat, as an
     // opaque tag laid out by these offsets.
     localparam TAG_M = 0, TAG_SH = 16, TAG_RELU = 22, TAG_REQUANT = 23, TAG_ACC_KEEP = 24,
-               TAG_NO_RET = 25, TAG_X = 26, TAG_Y = 26 + AW, TAGW = 26 + 2*AW;
+               TAG_NO_RET = 25, TAG_Q16 = 26, TAG_ROWS = 27, TAG_X = 30, TAG_Y = 30 + AW,
+               TAGW = 30 + 2*AW;
     wire [TAGW-1:0] block_tag, beat_tag;
     assign block_tag[TAG_M +: 16]     = m;
     assign block_tag[TAG_SH +: 6]     = sh;
@@ -103,6 +104,9 @@ module accel #(
     assign block_tag[TAG_REQUANT]     = requant;
     assign block_tag[TAG_ACC_KEEP]    = acc_keep;
     assign block_tag[TAG_NO_RET]      = no_ret;
+    // Nothing issues RESULT16 or a row limit yet: 4.3f wires them to the new BLOCK fields.
+    assign block_tag[TAG_Q16]         = 1'b0;
+    assign block_tag[TAG_ROWS +: 3]   = 3'd7;
     assign block_tag[TAG_X +: AW]     = tile_x;
     assign block_tag[TAG_Y +: AW]     = tile_y;
 
@@ -125,6 +129,7 @@ module accel #(
     flit_pack #(.AW(AW)) pack (
         .clk(clk), .rst(rst),
         .dest_y(beat_tag[TAG_Y +: AW]), .dest_x(beat_tag[TAG_X +: AW]), .no_ret(beat_tag[TAG_NO_RET]),
+        .q16(beat_tag[TAG_Q16]), .rows_m1(beat_tag[TAG_ROWS +: 3]),
         .acc_keep(beat_tag[TAG_ACC_KEEP]), .requant(beat_tag[TAG_REQUANT]), .relu(beat_tag[TAG_RELU]),
         .sh(beat_tag[TAG_SH +: 6]), .m(beat_tag[TAG_M +: 16]),
         .in_valid(beat_valid), .in_ready(beat_ready), .in_go(beat_go), .in_slot(beat_slot),
@@ -137,7 +142,7 @@ module accel #(
     wire [NN*FW-1:0] inj_flit;
     assign inj_flit[FW-1:0] = inj0_flit;
 
-    wire [NN-1:0]       res_valid, res_q8;
+    wire [NN-1:0]       res_valid, res_q8, res_q16;
     wire [NN*AW-1:0]    res_src_x, res_src_y;
     wire [NN*6-1:0]     res_idx;
     wire [NN*64-1:0]    res_data;
@@ -147,7 +152,7 @@ module accel #(
     noc_mesh #(.W(W), .H(H), .AW(AW), .PERF(PERF)) mesh (
         .clk(clk), .rst(rst),
         .inj_valid(inj_valid), .inj_flit(inj_flit), .inj_ready(inj_ready),
-        .res_valid(res_valid), .res_q8(res_q8), .res_src_x(res_src_x), .res_src_y(res_src_y),
+        .res_valid(res_valid), .res_q8(res_q8), .res_q16(res_q16), .res_src_x(res_src_x), .res_src_y(res_src_y),
         .res_idx(res_idx), .res_data(res_data),
         .start({NN{1'b0}}), .k_chunks({(NN*4){1'b0}}),
         .busy(mesh_busy), .done(mesh_done), .acc_out(mesh_acc));
@@ -158,7 +163,7 @@ module accel #(
     generate
         if (NN > 1) begin : g_others
             assign inj_flit[NN*FW-1:FW] = 0;
-            wire unused_others = &{1'b0, inj_ready[NN-1:1], res_q8[NN-1:1], res_src_x[NN*AW-1:AW],
+            wire unused_others = &{1'b0, inj_ready[NN-1:1], res_q8[NN-1:1], res_q16[NN-1:1], res_src_x[NN*AW-1:AW],
                                    res_src_y[NN*AW-1:AW], res_idx[NN*6-1:6], res_data[NN*64-1:64]};
 `ifndef SYNTHESIS
             always @(posedge clk)
@@ -175,9 +180,9 @@ module accel #(
 
     writeback #(.W(W), .H(H), .AW(AW), .ACT_BW(ACT_BW)) wb (
         .clk(clk), .rst(rst),
-        .push(wb_push), .push_tile(wb_tile), .push_raw(wb_raw), .push_base(wb_base), .push_step(wb_step),
+        .push(wb_push), .push_tile(wb_tile), .push_mode(wb_raw ? 2'd0 : 2'd1), .push_rows_m1(3'd7), .push_base(wb_base), .push_step(wb_step),
         .full(wb_full), .idle(wb_idle),
-        .res_valid(res_valid[0]), .res_q8(res_q8[0]), .res_src_x(res_src_x[AW-1:0]),
+        .res_valid(res_valid[0]), .res_q8(res_q8[0]), .res_q16(res_q16[0]), .res_src_x(res_src_x[AW-1:0]),
         .res_src_y(res_src_y[AW-1:0]), .res_idx(res_idx[5:0]), .res_data(res_data[63:0]),
         .act_we(wb_we), .act_waddr(wb_waddr), .act_wdata(wb_wdata));
 

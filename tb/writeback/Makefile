@@ -26,3 +26,40 @@ orphan-check:
 	else \
 	  echo "PASS: an orphan RESULT is fatal under $(SIM)"; \
 	fi
+
+# Negative test: a RESULT16 flit for a RESULT8 entry, and a RESULT8 flit for a
+# RESULT16 entry, must each stop the run on writeback's mode check.
+.PHONY: mode-check
+mode-check:
+	@mkdir -p $(SIM_BUILD); \
+	for probe in q16_for_q8 q8_for_q16; do \
+	  log=$(SIM_BUILD)/mode_check_$$probe.log; \
+	  if WRITEBACK_MODE_PROBE=$$probe $(MAKE) --no-print-directory \
+	       TESTCASE=test_flit_of_the_wrong_mode_is_fatal \
+	       COCOTB_RESULTS_FILE=$(SIM_BUILD)/mode_results_$$probe.xml > $$log 2>&1; then \
+	    echo "FAIL: $$probe did not stop the $(SIM) run (see $$log)"; exit 1; \
+	  elif ! grep -q "matches no pending block" $$log; then \
+	    echo "FAIL: $(SIM) run failed for $$probe, but not on writeback's check (see $$log)"; exit 1; \
+	  else \
+	    echo "PASS: $$probe is fatal under $(SIM)"; \
+	  fi; \
+	done
+
+# Negative test: a block that returns more rows than its entry (overrun), or
+# stops short so the next block's first flit arrives mid-entry (underrun),
+# must each stop the run on writeback's in-order index check.
+.PHONY: rows-check
+rows-check:
+	@mkdir -p $(SIM_BUILD); \
+	for probe in overrun underrun; do \
+	  log=$(SIM_BUILD)/rows_check_$$probe.log; \
+	  if WRITEBACK_ROWS_PROBE=$$probe $(MAKE) --no-print-directory \
+	       TESTCASE=test_flit_outside_its_blocks_rows_is_fatal \
+	       COCOTB_RESULTS_FILE=$(SIM_BUILD)/rows_results_$$probe.xml > $$log 2>&1; then \
+	    echo "FAIL: $$probe did not stop the $(SIM) run (see $$log)"; exit 1; \
+	  elif ! grep -q "out of sequence" $$log; then \
+	    echo "FAIL: $(SIM) run failed for $$probe, but not on writeback's check (see $$log)"; exit 1; \
+	  else \
+	    echo "PASS: $$probe is fatal under $(SIM)"; \
+	  fi; \
+	done

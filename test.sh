@@ -34,6 +34,7 @@ make "$@"
 
 cd "$REPO_ROOT/tb/requant"
 make "$@"
+make q16 "$@"
 
 cd "$REPO_ROOT/tb/noc"
 make "$@"
@@ -56,6 +57,8 @@ make "$@"
 cd "$REPO_ROOT/tb/writeback"
 make "$@"
 make orphan-check "$@"
+make mode-check "$@"
+make rows-check "$@"
 
 cd "$REPO_ROOT/tb/accel"
 make "$@"

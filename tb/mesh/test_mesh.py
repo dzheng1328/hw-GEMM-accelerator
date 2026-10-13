@@ -32,7 +32,7 @@ import numpy as np
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, RisingEdge
 
-from fixedpoint import quantize_multiplier, requant
+from fixedpoint import quantize_multiplier, requant, requant16
 
 W = int(os.environ.get("MESH_W", "2"))
 H = int(os.environ.get("MESH_H", "2"))
@@ -95,18 +95,19 @@ def make_flit(dest, wr_addr, a_col_lanes, b_row_lanes):
     return (payload << (2 * AW)) | ((y & AMASK) << AW) | (x & AMASK)
 
 
-def go_flit(dest, k_chunks, ret, rq=None, acc_keep=False, no_ret=False):
+def go_flit(dest, k_chunks, ret, rq=None, acc_keep=False, no_ret=False, q16=False, rows=N):
     """GO flit: type=1, a compute descriptor carrying the result-return
     address and output mode: rq=None for raw int32 results, or (m, sh, relu)
-    for requantized int8 rows. acc_keep adds onto the previous run's sums
-    instead of clearing them; no_ret keeps the result in the tile (see
-    rtl/noc_node.v for the layout)."""
+    for requantized int8 rows (int16 rows, two flits each, with q16; relu is
+    ignored there). acc_keep adds onto the previous run's sums instead of
+    clearing them; no_ret keeps the result in the tile; rows limits the
+    block to rows 0..rows-1 (see rtl/noc_node.v for the layout)."""
     (x, y), (rx, ry) = dest, ret
     payload = ((ry & AMASK) << (4 + AW)) | ((rx & AMASK) << 4) | (k_chunks & 0xF)
     if rq is not None:
         m, sh, relu = rq
         payload |= (m << 16) | (sh << 32) | (int(relu) << 38) | (1 << 39)
-    payload |= (int(acc_keep) << 40) | (int(no_ret) << 41)
+    payload |= (int(acc_keep) << 40) | (int(no_ret) << 41) | (int(q16) << 42) | (((rows - 1) & 7) << 43)
     return (T_GO << (PW + 2 * AW)) | (payload << (2 * AW)) | ((y & AMASK) << AW) | (x & AMASK)
 
 
@@ -210,7 +211,7 @@ async def run_tiles(dut, io, nodes, k_chunks):
 
 async def collect_results(dut, expected_total):
     """Collect RESULT/RESULT8 flits delivered at every node, in arrival order:
-    {(dest, src): [(q8, idx, data), ...]}."""
+    {(dest, src): [(q8, idx, data, q16), ...]} (q16 marks a RESULT16 half-row)."""
     streams = {}
     count = 0
     for _ in range(RESULT_TIMEOUT_CYCLES):
@@ -222,7 +223,7 @@ async def collect_results(dut, expected_total):
             i = nid(dest)
             if (valid >> i) & 1:
                 src = (field(dut.res_src_x, i, AW), field(dut.res_src_y, i, AW))
-                cell = (field(dut.res_q8, i, 1), field(dut.res_idx, i, 6), field(dut.res_data, i, 8 * N))
+                cell = (field(dut.res_q8, i, 1), field(dut.res_idx, i, 6), field(dut.res_data, i, 8 * N), field(dut.res_q16, i, 1))
                 streams.setdefault((dest, src), []).append(cell)
                 count += 1
         if count == expected_total:
@@ -257,8 +258,8 @@ def round_flits(dest, A, B, rounds, ret, rq=None):
 def stream_to_matrix(stream):
     """One raw block (N*N RESULT flits, one sign-extended int32 cell each)
     -> NxN matrix. Each index must appear exactly once."""
-    assert all(q8 == 0 for q8, _, _ in stream), "RESULT8 flit in a raw stream"
-    cells = {idx: to_signed(data, 8 * N) for _, idx, data in stream}
+    assert all(q8 == 0 for q8, _, _, _ in stream), "RESULT8 flit in a raw stream"
+    cells = {idx: to_signed(data, 8 * N) for _, idx, data, _ in stream}
     assert len(stream) == N * N and len(cells) == N * N, f"malformed stream: {len(stream)} flits"
     return np.array([[cells[i * N + j] for j in range(N)] for i in range(N)])
 
@@ -266,8 +267,8 @@ def stream_to_matrix(stream):
 def q8_stream_to_matrix(stream):
     """One requantized block (N RESULT8 flits, one row of N int8 lanes each,
     lane j = column j) -> NxN matrix. Each row must appear exactly once."""
-    assert all(q8 == 1 for q8, _, _ in stream), "raw RESULT flit in a requantized stream"
-    rows = {idx: [to_signed(data >> (8 * j), 8) for j in range(N)] for _, idx, data in stream}
+    assert all(q8 == 1 and q16 == 0 for q8, _, _, q16 in stream), "raw or RESULT16 flit in a RESULT8 stream"
+    rows = {idx: [to_signed(data >> (8 * j), 8) for j in range(N)] for _, idx, data, _ in stream}
     assert len(stream) == N and sorted(rows) == list(range(N)), f"malformed stream: {len(stream)} flits"
     return np.array([rows[i] for i in range(N)])
 
@@ -583,3 +584,137 @@ async def test_acc_keep_go_waits_for_result_stream(dut):
     partial = reference([row[:64] for row in A], B[:64])
     assert np.array_equal(stream_to_matrix(stream[:N * N]), partial), "round 1 partial sum"
     assert np.array_equal(stream_to_matrix(stream[N * N:]), reference(A, B)), "round 2 total"
+
+
+def q16_stream_to_rows(stream, rows):
+    """A RESULT16 block: 2 flits per row (idx 2i + h, half h = lanes 4h..4h+3
+    as little-endian int16) -> rows x N matrix."""
+    assert all(q8 == 1 and q16 == 1 for q8, _, _, q16 in stream), "non-RESULT16 flit in a RESULT16 stream"
+    halves = {idx: [to_signed(data >> (16 * j), 16) for j in range(N // 2)] for _, idx, data, _ in stream}
+    assert len(stream) == 2 * rows and sorted(halves) == list(range(2 * rows)), f"malformed stream: {len(stream)} flits"
+    return np.array([halves[2 * i] + halves[2 * i + 1] for i in range(rows)])
+
+
+RQ16_CONFIGS = [
+    (*quantize_multiplier(1 / 8), False),     # typical: |acc| ~2**18 -> ~2**15
+    (*quantize_multiplier(1.0), False),       # saturates at both int16 rails
+    (*quantize_multiplier(1 / 3000), False),  # small outputs
+    (1, 0, False),                            # sh = 0
+]
+
+
+@cocotb.test()
+async def test_result16_rows_are_packed_int16(dut):
+    """A GO in RESULT16 mode returns 2 flits per row, each lane bit-exact to
+    model/fixedpoint.py's requant16, reaching both int16 rails."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x16)
+    k_chunks, K = 2, 16
+    targets = [node for node in NODES if node != HOST]
+    mats = {node: (rand_mat(rng, N, K), rand_mat(rng, K, N)) for node in targets}
+    rq = {node: RQ16_CONFIGS[t % len(RQ16_CONFIGS)] for t, node in enumerate(targets)}
+    flits = []
+    for node in targets:
+        flits += operand_flits(node, *mats[node], k_chunks)
+        flits.append(go_flit(node, k_chunks, HOST, rq[node], q16=True))
+    mon = cocotb.start_soon(collect_results(dut, len(targets) * 2 * N))
+    await inject(dut, io, HOST, flits)
+    streams = await mon
+    seen = set()
+    for node in targets:
+        got = q16_stream_to_rows(streams[(HOST, node)], N)
+        m, sh, _ = rq[node]
+        exp = requant16(reference(*mats[node]), m, sh)
+        assert np.array_equal(got, exp), f"tile {node} rq={rq[node]}:\n{got}\nvs\n{exp}"
+        seen |= set(exp.flatten().tolist())
+    assert {32767, -32768} <= seen, "configs never reached both int16 rails"
+
+
+@cocotb.test()
+async def test_row_limit_in_every_mode(dut):
+    """A GO with rows = R returns only rows 0..R-1: 8R raw flits, R RESULT8
+    flits, or 2R RESULT16 flits, for every R in 1..8."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x43)
+    k_chunks, K = 1, 8
+    node = [n for n in NODES if n != HOST][0]
+    for rows in range(1, N + 1):
+        for mode in ("raw", "q8", "q16"):
+            A, B = rand_mat(rng, N, K), rand_mat(rng, K, N)
+            rq = None if mode == "raw" else RQ_CONFIGS[0] if mode == "q8" else RQ16_CONFIGS[0]
+            per_row = {"raw": N, "q8": 1, "q16": 2}[mode]
+            flits = operand_flits(node, A, B, k_chunks) + [go_flit(node, k_chunks, HOST, rq, q16=mode == "q16", rows=rows)]
+            mon = cocotb.start_soon(collect_results(dut, rows * per_row))
+            await inject(dut, io, HOST, flits)
+            stream = (await mon)[(HOST, node)]
+            acc = reference(A, B)[:rows]
+            if mode == "raw":
+                cells = {idx: to_signed(data, 8 * N) for _, idx, data, _ in stream}
+                assert sorted(cells) == list(range(rows * N)), f"rows={rows} raw: indices {sorted(cells)}"
+                got = np.array([[cells[i * N + j] for j in range(N)] for i in range(rows)])
+                exp = acc
+            elif mode == "q8":
+                assert len(stream) == rows
+                got = np.array([[to_signed(d >> (8 * j), 8) for j in range(N)] for _, _, d, _ in sorted(stream, key=lambda c: c[1])])
+                exp = requant(acc, *rq)
+            else:
+                got = q16_stream_to_rows(stream, rows)
+                exp = requant16(acc, rq[0], rq[1])
+            assert np.array_equal(got, exp), f"rows={rows} mode={mode}"
+            await assert_no_results(dut, 30)
+
+
+@cocotb.test()
+async def test_back_to_back_go_with_mixed_row_limits_and_modes(dut):
+    """GOs queued behind an in-flight stream on one tile, with different row
+    limits and output modes (raw, RESULT8, RESULT16), a no_ret block, and an
+    acc_keep block, all injected in one burst over one set of loaded operands:
+    each GO's mode and row limit must take effect when that GO is delivered,
+    not when it was queued, so every stream comes back in order with its own
+    row count and format."""
+    io = await setup(dut)
+    rng = random.Random(MESH_RANDOM_SEED ^ 0x44)
+    k_chunks, K = 1, 8
+    node = [n for n in NODES if n != HOST][0]
+    A, B = rand_mat(rng, N, K), rand_mat(rng, K, N)
+    acc = reference(A, B)
+    # (mode, rows, rq, extra GO fields, the accumulator the stream is requantized from)
+    gos = [
+        ("q16", 8, RQ16_CONFIGS[0], {}, acc),
+        ("raw", 1, None, {}, acc),
+        ("q8", 3, RQ_CONFIGS[0], {}, acc),
+        ("q16", 2, RQ16_CONFIGS[1], {}, acc),
+        ("raw", 8, None, {}, acc),
+        ("q8", 1, RQ_CONFIGS[2], {}, acc),
+        ("q16", 5, RQ16_CONFIGS[2], {}, acc),
+        ("none", 0, None, {"no_ret": True}, acc),
+        ("q16", 2, RQ16_CONFIGS[0], {"acc_keep": True}, 2 * acc),
+    ]
+    flits = operand_flits(node, A, B, k_chunks)
+    for mode, rows, rq, extra, _ in gos:
+        flits.append(go_flit(node, k_chunks, HOST, rq, q16=mode == "q16", rows=rows or N, **extra))
+    per_row = {"raw": N, "q8": 1, "q16": 2}
+    mon = cocotb.start_soon(collect_results(dut, sum(rows * per_row[mode] for mode, rows, *_ in gos if mode != "none")))
+    await inject(dut, io, HOST, flits)
+    stream = (await mon)[(HOST, node)]
+
+    pos = 0
+    for n, (mode, rows, rq, _, want) in enumerate(gos):
+        if mode == "none":
+            continue
+        part, pos = stream[pos:pos + rows * per_row[mode]], pos + rows * per_row[mode]
+        want = want[:rows]
+        if mode == "raw":
+            assert all(q8 == 0 for q8, _, _, _ in part), f"GO {n}: a requantized flit in a raw stream"
+            cells = {idx: to_signed(data, 8 * N) for _, idx, data, _ in part}
+            assert sorted(cells) == list(range(rows * N)), f"GO {n}: raw indices {sorted(cells)}"
+            got, exp = np.array([[cells[i * N + j] for j in range(N)] for i in range(rows)]), want
+        elif mode == "q8":
+            assert all(q8 == 1 and q16 == 0 for q8, _, _, q16 in part), f"GO {n}: wrong flit type in a RESULT8 stream"
+            got = np.array([[to_signed(d >> (8 * j), 8) for j in range(N)] for _, _, d, _ in sorted(part, key=lambda c: c[1])])
+            exp = requant(want, *rq)
+        else:
+            got, exp = q16_stream_to_rows(part, rows), requant16(want, rq[0], rq[1])
+        assert np.array_equal(got, exp), f"GO {n} ({mode}, rows={rows}):\n{got}\nvs\n{exp}"
+    assert pos == len(stream), "flits left over after every GO's stream"
+    await assert_no_results(dut, 30)

@@ -80,7 +80,8 @@ module dma_gather_tb #(
     // latched at start and returned with every beat, laid out by these
     // offsets (rtl/accel.v uses the same layout).
     localparam TAG_M = 0, TAG_SH = 16, TAG_RELU = 22, TAG_REQUANT = 23, TAG_ACC_KEEP = 24,
-               TAG_NO_RET = 25, TAG_X = 26, TAG_Y = 26 + AW, TAGW = 26 + 2*AW;
+               TAG_NO_RET = 25, TAG_Q16 = 26, TAG_ROWS = 27, TAG_X = 30, TAG_Y = 30 + AW,
+               TAGW = 30 + 2*AW;
     wire [TAGW-1:0] tag, b_tag;
     assign tag[TAG_M +: 16]  = m;
     assign tag[TAG_SH +: 6]  = sh;
@@ -88,6 +89,8 @@ module dma_gather_tb #(
     assign tag[TAG_REQUANT]  = requant;
     assign tag[TAG_ACC_KEEP] = acc_keep;
     assign tag[TAG_NO_RET]   = no_ret;
+    assign tag[TAG_Q16]      = 1'b0;      // RESULT16 and the row limit are not in use yet (as in rtl/accel.v)
+    assign tag[TAG_ROWS +: 3] = 3'd7;
     assign tag[TAG_X +: AW]  = tile_x;
     assign tag[TAG_Y +: AW]  = tile_y;
 
@@ -106,6 +109,7 @@ module dma_gather_tb #(
     flit_pack #(.AW(AW)) pack (
         .clk(clk), .rst(rst),
         .dest_y(b_tag[TAG_Y +: AW]), .dest_x(b_tag[TAG_X +: AW]), .no_ret(b_tag[TAG_NO_RET]),
+        .q16(b_tag[TAG_Q16]), .rows_m1(b_tag[TAG_ROWS +: 3]),
         .acc_keep(b_tag[TAG_ACC_KEEP]), .requant(b_tag[TAG_REQUANT]), .relu(b_tag[TAG_RELU]),
         .sh(b_tag[TAG_SH +: 6]), .m(b_tag[TAG_M +: 16]),
         .in_valid(b_valid), .in_ready(b_ready), .in_go(b_go), .in_slot(b_slot), .in_a(b_a), .in_b(b_b),

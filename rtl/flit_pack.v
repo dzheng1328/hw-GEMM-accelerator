@@ -25,6 +25,8 @@ module flit_pack #(
     input  wire [AW-1:0]    dest_y,
     input  wire             acc_keep,
     input  wire             no_ret,
+    input  wire             q16,        // RESULT16 rows (with requant)
+    input  wire [2:0]       rows_m1,    // rows returned, minus one
     input  wire             requant,
     input  wire             relu,
     input  wire [5:0]       sh,
@@ -46,16 +48,16 @@ module flit_pack #(
     localparam [1:0] T_OPR = 2'd0, T_GO = 2'd1;
 
     initial begin
-        if (PW < 42 || 4 + 2*AW > 16)
+        if (PW < 46 || 4 + 2*AW > 16)
             $fatal(1, "flit_pack: PW=%0d / AW=%0d do not fit the GO descriptor", PW, AW);
     end
 
     // GO descriptor (rtl/noc_node.v): [3:0] k_chunks, [4 +: AW] ret_x and
     // [4+AW +: AW] ret_y (both 0: results return to the command processor at
     // (0,0)), [31:16] m, [37:32] sh, [38] relu, [39] rq_en, [40] acc_keep,
-    // [41] no_ret.
+    // [41] no_ret, [42] rq16, [45:43] rows_m1.
     wire [PW-1:0] opr_payload = {in_slot, in_a, in_b};
-    wire [PW-1:0] go_payload  = {{(PW-42){1'b0}}, no_ret, acc_keep, requant, relu, sh, m,
+    wire [PW-1:0] go_payload  = {{(PW-46){1'b0}}, rows_m1, q16, no_ret, acc_keep, requant, relu, sh, m,
                                  {(12-2*AW){1'b0}}, {(2*AW){1'b0}}, in_kchunks};
     wire [FW-1:0] flit = {in_go ? T_GO : T_OPR, in_go ? go_payload : opr_payload, dest_y, dest_x};
 
