@@ -352,6 +352,18 @@ def test_generate_copies_prompt_then_samples():
     assert (greedy == greedy[:, :1]).all()  # temperature 0: every story identical
 
 
+def test_generate_can_return_the_kv_cache():
+    q = ref.random_quantized(4)
+    prompt = np.array([lm_spec.BOS, 10, 20, 30])
+    seeds = np.arange(1, lm_spec.BATCH + 1)
+    log, cache = ref.generate(q, prompt, 6, 256, seeds, return_cache=True)
+    assert (log == ref.generate(q, prompt, 6, 256, seeds)).all()
+    shape = (lm_spec.N_LAYERS, lm_spec.BATCH, lm_spec.CTX, lm_spec.N_KV_HEADS, lm_spec.HEAD_DIM)
+    assert cache["k"].shape == cache["v"].shape == shape
+    for name in ("k", "v"):
+        assert cache[name][:, :, :6].any() and not cache[name][:, :, 6:].any()
+
+
 import lm_quantize
 import torch
 from lm_net import StoryNet
