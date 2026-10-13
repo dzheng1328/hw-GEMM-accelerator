@@ -238,9 +238,10 @@ module noc_node #(
     // engine to go idle -- the sequencer ignores start while busy (the GO
     // would be silently lost), and restarting the tile mid-stream would
     // clear the accumulators being returned. Both stalls are bounded (the
-    // run and the 64-flit stream finish independently of the network), so
-    // holding the flit in the router cannot deadlock. RESULT flits go to the
-    // host-side sink and are never stalled.
+    // run and the result stream, 2 to 64 flits by mode and row limit, finish
+    // independently of the network), so holding the flit in the router
+    // cannot deadlock. RESULT flits go to the host-side sink and are never
+    // stalled.
     wire opr_stall = busy || go_pulse;
     wire go_stall  = opr_stall || (rr_state != 2'd0);
     assign r_out_ready[LOCAL] = !((ltype == T_OPR && opr_stall) ||

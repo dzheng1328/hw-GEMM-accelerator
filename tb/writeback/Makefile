@@ -27,12 +27,12 @@ orphan-check:
 	  echo "PASS: an orphan RESULT is fatal under $(SIM)"; \
 	fi
 
-# Negative test: a RESULT16 flit for a RESULT8 entry, and a RESULT8 flit for a
-# RESULT16 entry, must each stop the run on writeback's mode check.
+# Negative test: a flit of one mode for an entry of another (all six ordered
+# pairs of raw, RESULT8, RESULT16) must each stop the run on writeback's mode check.
 .PHONY: mode-check
 mode-check:
 	@mkdir -p $(SIM_BUILD); \
-	for probe in q16_for_q8 q8_for_q16; do \
+	for probe in q16_for_q8 q8_for_q16 raw_for_q8 raw_for_q16 q8_for_raw q16_for_raw; do \
 	  log=$(SIM_BUILD)/mode_check_$$probe.log; \
 	  if WRITEBACK_MODE_PROBE=$$probe $(MAKE) --no-print-directory \
 	       TESTCASE=test_flit_of_the_wrong_mode_is_fatal \

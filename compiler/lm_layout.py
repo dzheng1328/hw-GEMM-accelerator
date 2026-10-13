@@ -23,7 +23,8 @@ from lm_spec import BATCH, CTX, DIM, GROUP, HEAD_DIM, HIDDEN, KV_DIM, N_KV_HEADS
 
 CHUNK = 64  # the down projection's K chunk (a power of two the gather can address)
 NESTS = BATCH * N_KV_HEADS
-KT_WORDS = HEAD_DIM * CTX // BATCH  # a nest's K^T words (8 dims x 32 position blocks); V follows
+POS_PER_WORD = 8  # K^T bytes per word: positions j with the same j >> 3 share a word (byte j & 7)
+KT_WORDS = HEAD_DIM * (CTX // POS_PER_WORD)  # a nest's K^T words (8 dims x 32 position blocks); V follows
 KV_NEST_WORDS = 2 * KT_WORDS
 Q_NEST_WORDS = HEAD_DIM  # a nest's rotated-q scratch: one word per dim
 KV_LAYER_WORDS = NESTS * KV_NEST_WORDS

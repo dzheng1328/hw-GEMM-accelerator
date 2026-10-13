@@ -75,6 +75,7 @@ def make_blocks(rng, n, modes=(MODE_RAW, MODE_Q8), limit_rows=False):
 def check_memory(dut, blocks):
     for n, blk in enumerate(blocks):
         words = entry_words(blk["base"], blk["step"], blk["mode"] == MODE_RAW, blk["mode"] == MODE_Q16, blk["rows"])
+        assert len(words) == len(blk["data"]), f"block {n}: {len(words)} words for {len(blk['data'])} flits"
         for k, (w, d) in enumerate(zip(words, blk["data"])):
             got = int(dut.g_act[int(w) % 4].bank.mem[int(w) >> 2].value)
             assert got == d, f"block {n} flit {k}: word {int(w)} holds {got:016x}, expected {d:016x}"
@@ -194,13 +195,19 @@ async def test_row_limited_entry_pops_after_its_last_flit(dut):
             base += 200
 
 
-@cocotb.test(skip=os.environ.get("WRITEBACK_MODE_PROBE") not in ("q16_for_q8", "q8_for_q16"))
+# probe name -> (entry mode, mode of the flit that arrives for it): every ordered pair of the three modes.
+MODE_PROBES = {"q16_for_q8": (MODE_Q8, MODE_Q16), "q8_for_q16": (MODE_Q16, MODE_Q8),
+               "raw_for_q8": (MODE_Q8, MODE_RAW), "raw_for_q16": (MODE_Q16, MODE_RAW),
+               "q8_for_raw": (MODE_RAW, MODE_Q8), "q16_for_raw": (MODE_RAW, MODE_Q16)}
+
+
+@cocotb.test(skip=os.environ.get("WRITEBACK_MODE_PROBE") not in MODE_PROBES)
 async def test_flit_of_the_wrong_mode_is_fatal(dut):
-    """Negative test, run only by `make mode-check`: a RESULT16 flit for a
-    RESULT8 entry (and the reverse) must stop the run; reaching the end means
-    the check did NOT fire."""
+    """Negative test, run only by `make mode-check`: a flit of any one mode
+    for an entry of another (all six ordered pairs of raw, RESULT8, RESULT16)
+    must stop the run; reaching the end means the check did NOT fire."""
     await setup(dut)
-    entry_mode, flit_mode = (MODE_Q8, MODE_Q16) if os.environ["WRITEBACK_MODE_PROBE"] == "q16_for_q8" else (MODE_Q16, MODE_Q8)
+    entry_mode, flit_mode = MODE_PROBES[os.environ["WRITEBACK_MODE_PROBE"]]
     await cycle(dut, push=(3, entry_mode, 7, 100, 4))
     await cycle(dut, res=(3, flit_mode, 0, 0x1234))
     for _ in range(3):
