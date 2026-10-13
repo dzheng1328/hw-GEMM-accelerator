@@ -139,16 +139,16 @@ New hardware-defined registers:
 | 2 | BLOCK | Unchanged, plus a register-form flag (above) |
 | 3-6 | WAIT, LOOP, ENDLOOP, END | Unchanged; LOOP nests 4 deep |
 | 7 | ALU | dst = src op (src2 or imm), op in {add, sub, shr, and}; 5-bit register fields |
-| 8 | LOOPR | LOOP whose count is a register; a count of 0 skips the body |
+| 8 | LOOPR | LOOP whose count is a register; a count of 0 is an error, like LOOP 0 |
 | 9 | VOP | One vector command (section 3): sub-op field plus up to three 5-bit operand registers |
 
 Exact bit positions are fixed in `compiler/isa.py`, the single source for the compiler, golden executor, and disassembler.
 ALU: dst `[59:55]`, src `[54:50]`, op `[49:48]` (add, sub, shr by the count mod 32, and), use-imm `[47]`, src2 `[46:42]`, imm `[31:0]`; 32-bit wrap, and a destination of r0 is ignored.
-LOOPR: register `[59:55]`; a count of 0 skips to the matching ENDLOOP, and a count above 65535 is an error.
+LOOPR: register `[59:55]`; a count of 0 or above 65535 is an error (the compiler never emits a zero count, so the sequencer need not scan ahead to skip a body).
 Register-form BLOCK errors: ROUND of 128 or more, ROWS above 7, RMODE above 2.
 VOP: sub-op `[59:56]` (EMBED 1, RMSNORM 2, ROPE 3, KVWRITE 4, SOFTMAX 5, SILU_MUL 6, ADD 7, TRANSPOSE 8, SAMPLE 9), operand registers `[55:51]`, `[50:46]`, `[45:41]`.
 Each sub-op's operand registers hold word addresses; `compiler/isa.py` and the docstrings in `compiler/golden_vop.py` are the definition of the operand conventions, and the compile-time constants (m, sh, eps_q) live in one-word parameter blocks in A memory (`m | sh << 16 | eps_q << 32`).
-New errors (sticky `error`, `error_pc`, `$fatal` in simulation): an invalid VOP sub-op, a fifth nested loop, a register-form ROWS or RMODE out of range.
+New errors (sticky `error`, `error_pc`, `$fatal` in simulation): an invalid VOP sub-op, a fifth nested loop, a LOOPR count of 0 or above 65535, a register-form ROUND, ROWS, or RMODE out of range.
 
 ## 3. The vector unit
 

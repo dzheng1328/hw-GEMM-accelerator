@@ -74,7 +74,7 @@ def test_a_tile_outside_the_mesh_faults_at_its_pc():
 @pytest.mark.parametrize("program, msg, pc", [
     ([0], "invalid opcode 0", 0),
     ([isa.loop(2)] * 5, "LOOP nested deeper than 4", 4),
-    ([isa.loopr(5), isa.end()], "LOOPR without a matching ENDLOOP", 0),
+    ([isa.loopr(5), isa.end()], "LOOPR count 0", 0),
     ([isa.endloop()], "ENDLOOP without an active LOOP", 0),
     ([isa.LOOP << 60], "LOOP count 0", 0),
     ([isa.loop(2), isa.endloop()], "invalid opcode 0", 2),
@@ -242,10 +242,13 @@ def test_nested_loops_run_four_deep_and_loopr_takes_its_count_from_a_register():
     assert g.regs[26] == 2 * 2 * 2 * 3
 
 
-def test_a_loopr_count_of_zero_skips_its_body_including_nested_loops():
-    g = run_prog([isa.loopr(25), isa.loop(2), isa.alu(isa.ALU_ADD, 26, 26, imm=1), isa.endloop(),
-                  isa.alu(isa.ALU_ADD, 26, 26, imm=100), isa.endloop(), isa.alu(isa.ALU_ADD, 27, 0, imm=5)])
-    assert g.regs[26] == 0 and g.regs[27] == 5
+def test_a_loopr_count_of_zero_faults_like_loop_zero():
+    """The compiler never emits a zero count (nblk and rounds are at least 1), so, like LOOP 0, it is a
+    fault rather than a skip that the RTL's sequencer would have to scan ahead for."""
+    prog = [isa.loopr(25), isa.alu(isa.ALU_ADD, 26, 26, imm=1), isa.endloop()]
+    with pytest.raises(GoldenError, match="LOOPR count 0") as e:
+        run_prog(prog)
+    assert e.value.pc == 0
 
 
 def test_a_loopr_count_that_does_not_fit_16_bits_faults():
