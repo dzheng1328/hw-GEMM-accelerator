@@ -265,7 +265,7 @@ The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 - pytest: `model/test_fixedpoint.py` for every new integer op (including edge cases below); `compiler/test_*.py` for every new encoding, lowering of small transformers, golden against the direct reference, and every new ordering-rule fault.
 - `tb/vpu/` (new): every sub-op on random inputs and edge cases (all logits equal, a single valid position, maximum-magnitude residuals, INV_TEMP = 0, prompt copy), bit-exact against `fixedpoint.py`.
 - `tb/mesh/` and `tb/writeback/`: RESULT16 and the row limit.
-- `tb/cmd_seq/`: ALU, LOOPR (including count 0), 4-deep loops, the register form, and every new fault's `error_pc`.
+- `tb/cmd_seq/`: ALU, LOOPR (including its count 0 and above-65535 faults), 4-deep loops, the register form, and every new fault's `error_pc`.
 - `tb/accel/`: random small transformers (1-2 layers, 8-16 steps) compiled and run end to end on 1x1, 2x2, and 4x3, one case per simulator run; every new `$fatal` proven by a negative test.
 - `./test.sh` gains `tb/vpu/` and an 8-step run of the real model on 2x2; `make lm` in `tb/accel/` runs the full 256 steps.
 

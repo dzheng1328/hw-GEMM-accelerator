@@ -74,7 +74,7 @@ class Golden:
                 if count == 0:
                     raise GoldenError(pc, f"{isa.OP_NAMES[op]} count 0")
                 if count > 0xFFFF:
-                    raise GoldenError(pc, f"LOOPR count {count} does not fit in 16 bits")
+                    raise GoldenError(pc, f"{isa.OP_NAMES[op]} count {count} does not fit in 16 bits")
                 if len(loops) == isa.MAX_LOOP_DEPTH:
                     raise GoldenError(pc, f"LOOP nested deeper than {isa.MAX_LOOP_DEPTH}")
                 loops.append([nxt, count])

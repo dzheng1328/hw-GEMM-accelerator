@@ -24,7 +24,7 @@ def directed_vectors():
                 for relu in (0, 1):
                     yield acc, m, sh, relu
     # Accumulators that round to just inside, on, and just past the int16 rails (and their rounding ties),
-    # for scales that map them there: unit scale, halving (exact .5 ties at odd acc), and near-doubling.
+    # for scales that map them there: unit scale, halving (exact .5 ties at odd acc), and 1.5x.
     rail16 = [32765, 32766, 32767, 32768, 32769, 65533, 65534, 65535, 65536, 65537, 65538,
               -32767, -32768, -32769, -32770, -65535, -65536, -65537, -65538, -65539]
     for acc in rail16:
