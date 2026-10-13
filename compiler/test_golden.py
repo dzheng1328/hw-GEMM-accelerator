@@ -266,3 +266,88 @@ def test_the_golden_register_file_is_32_wide_but_a_tracer_reports_the_hardware_1
 def test_an_invalid_vop_sub_op_faults(sub):
     with pytest.raises(GoldenError, match=f"invalid VOP sub-op {sub}"):
         Golden(1, 1, [isa.vop(sub), isa.end()], [], []).run()
+
+
+def test_register_form_result16_lands_two_words_per_row_with_the_row_limit():
+    wmem, act = random_mems(1)
+    wmem[700:708] &= 0x0303030303030303  # keep the products small
+    for r in range(8):
+        act[1000 + r] &= 0x0F0F0F0F0F0F0F0F
+    m, sh = 40000, 6
+    prog = qk_style_setup(700, 1000, 3000) + setregs({isa.ROUND: 0, isa.ROWS: 1, isa.RMODE: isa.RMODE_Q16}) \
+        + [isa.block(isa.Block(0, 0, 0, 0, 0, sh=sh, m=m, reg_form=True))]
+    g = run_prog(prog, wmem, act)
+    acc = expect_acc(g, wmem, act, 700, range(1000, 1008))
+    want = np.clip((acc * m + (1 << (sh - 1))) >> sh, -32768, 32767)
+    got = g.actw[3000:3004].view("<i2").reshape(2, 8)
+    assert np.array_equal(got, want[:2]) and want[:2].any()
+    assert np.array_equal(g.actw[3004:3008], act[3004:3008]), "rows past the limit must not be written"
+
+
+def test_result16_saturates_at_both_int16_rails():
+    wmem, act = random_mems(5)
+    wmem[700:708] = 0x7F7F7F7F7F7F7F7F  # every A column 127
+    act[1000:1008] = 0x817F817F817F817F  # lanes alternate +127, -127: |acc| = 8 * 127 * 127
+    prog = qk_style_setup(700, 1000, 3000) + setregs({isa.ROUND: 0, isa.ROWS: 7, isa.RMODE: isa.RMODE_Q16}) \
+        + [isa.block(isa.Block(0, 0, 0, 0, 0, sh=0, m=0xFFFF, reg_form=True))]
+    g = run_prog(prog, wmem, act)
+    got = g.actw[3000:3016].view("<i2").reshape(8, 8)
+    assert (got[:, 0::2] == 32767).all() and (got[:, 1::2] == -32768).all()
+
+
+def test_register_form_modes_raw_result8_and_the_flags_come_from_the_registers():
+    wmem, act = random_mems(2)
+    wmem[700:708] &= 0x0303030303030303
+    for r in range(8):
+        act[1000 + r] &= 0x0F0F0F0F0F0F0F0F
+    base = qk_style_setup(700, 1000, 3000, ostride=1)
+    blk = isa.block(isa.Block(0, 0, 0, 0, 0, sh=4, m=60000, relu=True, reg_form=True))
+    g = run_prog(base + setregs({isa.ROUND: 0, isa.ROWS: 7, isa.RMODE: isa.RMODE_Q8}) + [blk], wmem, act)
+    acc = expect_acc(g, wmem, act, 700, range(1000, 1008))
+    want = np.clip((acc * 60000 + 8) >> 4, 0, 127)  # relu applies to RESULT8
+    assert np.array_equal(g.act[3000 * 8 : 3008 * 8].view(np.int8).reshape(8, 8), want)
+    g = run_prog(base + setregs({isa.ROUND: 0, isa.ROWS: 2, isa.RMODE: isa.RMODE_RAW}) + [blk], wmem, act)
+    assert np.array_equal(g.actw[3000 : 3000 + 24].view(np.int64).reshape(3, 8), acc[:3])
+
+
+def test_register_form_rounds_accumulate_and_only_the_last_returns():
+    wmem, act = random_mems(3)
+    wmem[700:700 + 136] &= 0x0101010101010101
+    for r in range(256):
+        act[1000 + r] &= 0x0707070707070707
+    regs = dict(cin_log2=8, w_log2=3, ks=136, ostride=8)
+    prog = qk_style_setup(700, 1000, 3000, **regs)
+    prog += setregs({isa.ROWS: 1, isa.RMODE: isa.RMODE_Q8})
+    for rnd in range(3):
+        prog += setregs({isa.ROUND: rnd}) + [isa.block(isa.Block(0, 0, 0, 0, 0, sh=3, m=30000, reg_form=True))]
+    g = run_prog(prog, wmem, act)
+    acc = expect_acc(g, wmem, act, 700, range(1000, 1136), n=136)
+    want = np.clip((acc * 30000 + 4) >> 3, -128, 127)
+    got = g.act[3000 * 8 : 3000 * 8 + 8].view(np.int8)
+    assert np.array_equal(got, want[0]) and np.array_equal(g.actw[3001:3008], act[3001:3008])
+    assert np.array_equal(g.act[3008 * 8 : 3008 * 8 + 8].view(np.int8), want[1])
+
+
+@pytest.mark.parametrize("regs, msg", [
+    ({isa.ROWS: 8}, "ROWS 8 out of range"),
+    ({isa.RMODE: 3}, "RMODE 3 out of range"),
+    ({isa.ROUND: 128}, "ROUND 128 out of range"),
+])
+def test_register_form_registers_out_of_range_fault_at_the_block(regs, msg):
+    prog = qk_style_setup(0, 0, 100) + setregs(regs) + [isa.block(isa.Block(0, 0, 0, 0, 0, reg_form=True))]
+    with pytest.raises(GoldenError, match=msg) as e:
+        run_prog(prog)
+    assert e.value.pc == len(prog) - 1
+
+
+def test_a_register_form_block_with_acc_keep_adds_to_the_previous_block_at_round_zero():
+    wmem, act = random_mems(4)
+    wmem[700:708] &= 0x0101010101010101
+    for r in range(8):
+        act[1000 + r] &= 0x0707070707070707
+    prog = qk_style_setup(700, 1000, 3000) + setregs({isa.ROUND: 0, isa.ROWS: 7, isa.RMODE: isa.RMODE_Q16})
+    prog += [isa.block(isa.Block(0, 0, 0, 0, 0, no_ret=True)),
+             isa.block(isa.Block(0, 0, 0, 0, 0, acc_keep=True, sh=0, m=1, reg_form=True))]
+    g = run_prog(prog, wmem, act)
+    acc = 2 * expect_acc(g, wmem, act, 700, range(1000, 1008))
+    assert np.array_equal(g.actw[3000:3016].view("<i2").reshape(8, 8), acc)

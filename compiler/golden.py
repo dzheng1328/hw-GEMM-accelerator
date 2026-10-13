@@ -9,11 +9,13 @@ BLOCK must not read a word that an outstanding returning BLOCK (one not yet
 covered by a WAIT or END) writes, and two outstanding BLOCKs must not write
 the same word."""
 
+from dataclasses import replace
+
 import numpy as np
 
 import golden_vop
 import isa
-from fixedpoint import requant
+from fixedpoint import requant, requant16
 
 
 class GoldenError(Exception):
@@ -117,7 +119,31 @@ class Golden:
             self.pending[words] = -1
         self.pending_words.clear()
 
+    def _resolve(self, pc, b):
+        """(block, rows, q16): a register-form BLOCK with its round, flags, and
+        result mode filled in from the registers (spec section 2), and the
+        rows it returns; any other BLOCK unchanged, 8 rows, RESULT8 or raw.
+        Register form: round = ROUND; rows = ROWS + 1; RMODE picks raw,
+        RESULT8, or RESULT16 (relu applies to RESULT8 only); the partial sum
+        accumulates when the BLOCK's acc_keep is set or ROUND > 0; and only
+        the last round of KS slots returns."""
+        if not b.reg_form:
+            return b, 8, False
+        R = self.regs
+        if R[isa.ROUND] >= 1 << 7:
+            raise GoldenError(pc, f"register-form ROUND {R[isa.ROUND]} out of range")
+        if R[isa.ROWS] > 7:
+            raise GoldenError(pc, f"register-form ROWS {R[isa.ROWS]} out of range (rows minus 1, 0..7)")
+        if R[isa.RMODE] > isa.RMODE_Q16:
+            raise GoldenError(pc, f"register-form RMODE {R[isa.RMODE]} out of range")
+        rnd, mode = R[isa.ROUND], R[isa.RMODE]
+        final = isa.SLOTS_PER_ROUND * (rnd + 1) >= R[isa.KS]
+        b = replace(b, round=rnd, acc_keep=b.acc_keep or rnd > 0, no_ret=not final, requant=mode != isa.RMODE_RAW,
+                    reg_form=False)
+        return b, R[isa.ROWS] + 1, mode == isa.RMODE_Q16
+
     def _block(self, pc, b):
+        b, rows, q16 = self._resolve(pc, b)
         if b.tile_x >= self.mesh[0] or b.tile_y >= self.mesh[1]:
             raise GoldenError(pc, f"tile ({b.tile_x}, {b.tile_y}) is outside the {self.mesh[0]}x{self.mesh[1]} mesh")
         a, bmat = self.operands(b, pc)
@@ -128,7 +154,7 @@ class Golden:
             raise GoldenError(pc, "accumulator outside int32")
         self.acc[tile] = acc
         if not b.no_ret:
-            self._write_back(pc, b, acc)
+            self._write_back(pc, b, acc, rows, q16)
 
     def operands(self, b, pc=0):
         """(a, bmat), each (n, 8) int64: the A columns and B rows the DMA
@@ -203,19 +229,25 @@ class Golden:
         out[~is_tap & lane_ok] = bias_val
         return out
 
-    def result_words(self, b):
+    def result_words(self, b, rows=8, q16=False):
         """Activation word addresses BLOCK b's results land at under the
-        current registers (spec: write-back): 8 RESULT8 rows, or 64 raw
-        cells in row-major order."""
+        current registers (spec: write-back), for its first `rows` rows: one
+        word per RESULT8 row, two per RESULT16 row (half h of row i at
+        base + i * OSTRIDE + h), or 8 raw cells per row, in row-major order."""
         out, ostride = self.regs[isa.OUT_BASE], self.regs[isa.OSTRIDE]
-        rows = 8 * b.group + np.arange(8)
+        idx = 8 * b.group + np.arange(rows)
+        if q16:
+            return (out + idx[:, None] * ostride + b.pixel_block + np.arange(2)[None, :]).reshape(-1)
         if b.requant:
-            return out + rows * ostride + b.pixel_block
-        return (out + (rows[:, None] * ostride + b.pixel_block) * 8 + np.arange(8)[None, :]).reshape(-1)
+            return out + idx * ostride + b.pixel_block
+        return (out + (idx[:, None] * ostride + b.pixel_block) * 8 + np.arange(8)[None, :]).reshape(-1)
 
-    def _write_back(self, pc, b, acc):
-        words = self.result_words(b)
-        if b.requant:
+    def _write_back(self, pc, b, acc, rows, q16):
+        words = self.result_words(b, rows, q16)
+        acc = acc[:rows]
+        if q16:
+            data = np.ascontiguousarray(requant16(acc, b.m, b.sh).astype("<i2")).view("<u8").reshape(-1)
+        elif b.requant:
             data = np.ascontiguousarray(requant(acc, b.m, b.sh, b.relu).astype(np.int8)).view("<u8").reshape(-1)
         else:
             data = acc.reshape(-1).astype(np.int64).view("<u8")
@@ -248,8 +280,9 @@ class Tracer(Golden):
         return a, bmat
 
     def _block(self, pc, b):
+        rb, rows, q16 = self._resolve(pc, b)
         super()._block(pc, b)
-        words = None if b.no_ret else self.result_words(b)
+        words = None if rb.no_ret else self.result_words(rb, rows, q16)
         self.blocks.append((pc, b, tuple(self.regs[: isa.N_REGS]), self.epoch, words))
         self.wb_words += 0 if words is None else len(words)
 
