@@ -73,7 +73,8 @@ def test_a_tile_outside_the_mesh_faults_at_its_pc():
 
 @pytest.mark.parametrize("program, msg, pc", [
     ([0], "invalid opcode 0", 0),
-    ([isa.loop(2), isa.loop(2)], "LOOP inside an active loop", 1),
+    ([isa.loop(2)] * 5, "LOOP nested deeper than 4", 4),
+    ([isa.loopr(5), isa.end()], "LOOPR without a matching ENDLOOP", 0),
     ([isa.endloop()], "ENDLOOP without an active LOOP", 0),
     ([isa.LOOP << 60], "LOOP count 0", 0),
     ([isa.loop(2), isa.endloop()], "invalid opcode 0", 2),
@@ -186,3 +187,82 @@ def test_result_words_are_where_a_block_writes():
             written[words] = True
     changed = np.flatnonzero(act[: len(act0)] != act0)
     assert written[changed].all(), "golden changed a word no BLOCK's result_words covers"
+
+
+# --- 4.3d: ALU, LOOPR, nested loops, the register-form BLOCK, RESULT16, the row limit ---
+
+def setregs(regs):
+    """ALU commands that set registers by name (isa.T, isa.ROUND, ... or r<index>)."""
+    return [isa.alu(isa.ALU_ADD, r, 0, imm=v) for r, v in regs.items()]
+
+
+def run_prog(prog, wmem=(), act=(), mesh=(1, 1)):
+    g = Golden(*mesh, prog + [isa.end()], wmem, act)
+    g.run()
+    return g
+
+
+def qk_style_setup(wmem_base, in_word, out_word, cin_log2=3, w_log2=3, ks=8, ostride=2, **extra):
+    regs = {isa.IN_BASE: in_word * 8, isa.OUT_BASE: out_word, isa.W_BASE: wmem_base, isa.CIN_LOG2: cin_log2,
+            isa.H_LOG2: 0, isa.W_LOG2: w_log2, isa.WOUT_LOG2: w_log2, isa.STRIDE: 1, isa.PAD: 0, isa.KSIZE: 1,
+            isa.KS: ks, isa.BIAS: ks, isa.OSTRIDE: ostride}
+    regs.update(extra)
+    return setregs(regs)
+
+
+def random_mems(seed=0):
+    rng = np.random.default_rng(seed)
+    wmem = rng.integers(0, 2**63, isa.WEIGHT_WORDS, dtype=np.uint64)
+    act = rng.integers(0, 2**63, isa.ACT_WORDS, dtype=np.uint64)
+    return wmem, act
+
+
+def expect_acc(g, wmem, act, w_word, b_words, n=8):
+    a = wmem[w_word : w_word + n].view(np.int8).reshape(n, 8).astype(np.int64)
+    b = np.stack([act[w : w + 1].view(np.int8).astype(np.int64) for w in b_words])
+    return a.T @ b
+
+
+def test_alu_operations_wrap_and_use_registers_or_immediates():
+    g = run_prog([isa.alu(isa.ALU_ADD, 25, 0, imm=0xFFFF_FFF0), isa.alu(isa.ALU_ADD, 26, 25, imm=0x20),
+                  isa.alu(isa.ALU_SUB, 27, 0, imm=1), isa.alu(isa.ALU_SHR, 28, 27, imm=28),
+                  isa.alu(isa.ALU_AND, 29, 25, imm=0xFFFF_FFF8), isa.alu(isa.ALU_SUB, 30, 26, src2=25),
+                  isa.alu(isa.ALU_ADD, 0, 0, imm=7), isa.alu(isa.ALU_SHR, 31, 25, imm=33)])
+    assert g.regs[26] == 0x10 and g.regs[27] == 0xFFFF_FFFF and g.regs[28] == 0xF
+    assert g.regs[29] == 0xFFFF_FFF0 and g.regs[30] == 0x20 and g.regs[0] == 0
+    assert g.regs[31] == 0x7FFF_FFF8  # a shift count is taken mod 32
+
+
+def test_nested_loops_run_four_deep_and_loopr_takes_its_count_from_a_register():
+    g = run_prog([
+        isa.alu(isa.ALU_ADD, 25, 0, imm=3),
+        isa.loop(2), isa.loop(2), isa.loop(2), isa.loopr(25),
+        isa.alu(isa.ALU_ADD, 26, 26, imm=1),
+        isa.endloop(), isa.endloop(), isa.endloop(), isa.endloop()])
+    assert g.regs[26] == 2 * 2 * 2 * 3
+
+
+def test_a_loopr_count_of_zero_skips_its_body_including_nested_loops():
+    g = run_prog([isa.loopr(25), isa.loop(2), isa.alu(isa.ALU_ADD, 26, 26, imm=1), isa.endloop(),
+                  isa.alu(isa.ALU_ADD, 26, 26, imm=100), isa.endloop(), isa.alu(isa.ALU_ADD, 27, 0, imm=5)])
+    assert g.regs[26] == 0 and g.regs[27] == 5
+
+
+def test_a_loopr_count_that_does_not_fit_16_bits_faults():
+    with pytest.raises(GoldenError, match="does not fit in 16 bits"):
+        run_prog([isa.alu(isa.ALU_ADD, 25, 0, imm=1 << 16), isa.loopr(25), isa.endloop()])
+
+
+def test_the_golden_register_file_is_32_wide_but_a_tracer_reports_the_hardware_16():
+    prog = [isa.alu(isa.ALU_ADD, 25, 0, imm=3)] + qk_style_setup(0, 0, 100) + [
+        isa.block(isa.Block(0, 0, 0, 0, 0, no_ret=True)), isa.end()]
+    g = Tracer(1, 1, prog, [], [])
+    g.run()
+    assert len(g.regs) == isa.N_REGS_LM and g.regs[25] == 3
+    assert len(g.blocks[0][2]) == isa.N_REGS
+
+
+@pytest.mark.parametrize("sub", [0, 10, 15])
+def test_an_invalid_vop_sub_op_faults(sub):
+    with pytest.raises(GoldenError, match=f"invalid VOP sub-op {sub}"):
+        Golden(1, 1, [isa.vop(sub), isa.end()], [], []).run()

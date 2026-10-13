@@ -11,6 +11,7 @@ the same word."""
 
 import numpy as np
 
+import golden_vop
 import isa
 from fixedpoint import requant
 
@@ -38,7 +39,8 @@ class Golden:
         self.prog = _load(program, isa.PROGRAM_WORDS, "program")
         self.wmem = _load(weights, isa.WEIGHT_WORDS, "weight")
         self.act = _load(act, isa.ACT_WORDS, "activation").view(np.uint8)
-        self.regs = [0] * isa.N_REGS
+        self.actw = self.act.view("<u8")  # the same memory, a word at a time
+        self.regs = [0] * isa.N_REGS_LM
         self.acc = {}
         # pc of the outstanding BLOCK that writes each activation word, or -1.
         self.pending = np.full(isa.ACT_WORDS, -1, dtype=np.int64)
@@ -46,7 +48,7 @@ class Golden:
 
     def run(self, max_commands=10_000_000):
         """Execute from pc 0 through END; returns the activation memory bytes."""
-        pc, loop = 0, None
+        pc, loops = 0, []
         for _ in range(max_commands):
             if pc >= isa.PROGRAM_WORDS:
                 raise GoldenError(pc, "ran past the end of program memory")
@@ -56,24 +58,35 @@ class Golden:
                 dst, src, imm = arg
                 if dst:
                     self.regs[dst] = (self.regs[src] + imm) & isa.REG_MASK
+            elif op == isa.ALU:
+                self._alu(arg)
             elif op == isa.BLOCK:
                 self._block(pc, arg)
+            elif op == isa.VOP:
+                self._retire()  # a VOP drains every outstanding BLOCK, like WAIT, before it starts
+                golden_vop.execute(self, pc, arg)
             elif op == isa.WAIT:
                 self._retire()
-            elif op == isa.LOOP:
-                if loop is not None:
-                    raise GoldenError(pc, "LOOP inside an active loop")
-                if arg == 0:
+            elif op in (isa.LOOP, isa.LOOPR):
+                count = arg if op == isa.LOOP else self.regs[arg]
+                if op == isa.LOOP and count == 0:
                     raise GoldenError(pc, "LOOP count 0")
-                loop = [nxt, arg]
-            elif op == isa.ENDLOOP:
-                if loop is None:
-                    raise GoldenError(pc, "ENDLOOP without an active LOOP")
-                loop[1] -= 1
-                if loop[1]:
-                    nxt = loop[0]
+                if count > 0xFFFF:
+                    raise GoldenError(pc, f"LOOPR count {count} does not fit in 16 bits")
+                if count == 0:
+                    nxt = self._after_body(pc)
+                elif len(loops) == isa.MAX_LOOP_DEPTH:
+                    raise GoldenError(pc, f"LOOP nested deeper than {isa.MAX_LOOP_DEPTH}")
                 else:
-                    loop = None
+                    loops.append([nxt, count])
+            elif op == isa.ENDLOOP:
+                if not loops:
+                    raise GoldenError(pc, "ENDLOOP without an active LOOP")
+                loops[-1][1] -= 1
+                if loops[-1][1]:
+                    nxt = loops[-1][0]
+                else:
+                    loops.pop()
             elif op == isa.END:
                 self._retire()
                 return self.act
@@ -81,6 +94,23 @@ class Golden:
                 raise GoldenError(pc, f"invalid opcode {op}")
             pc = nxt
         raise GoldenError(pc, f"no END within {max_commands} commands")
+
+    def _alu(self, a):
+        if not a.dst:
+            return
+        x, y = self.regs[a.src], a.imm if a.src2 is None else self.regs[a.src2]
+        r = {isa.ALU_ADD: x + y, isa.ALU_SUB: x - y, isa.ALU_SHR: x >> (y & 31), isa.ALU_AND: x & y}[a.op]
+        self.regs[a.dst] = r & isa.REG_MASK
+
+    def _after_body(self, pc):
+        """The pc after the ENDLOOP matching the LOOPR at pc (a count of 0 skips the body)."""
+        depth = 1
+        for i in range(pc + 1, isa.PROGRAM_WORDS):
+            op = int(self.prog[i]) >> 60
+            depth += (op in (isa.LOOP, isa.LOOPR)) - (op == isa.ENDLOOP)
+            if not depth:
+                return i + 1
+        raise GoldenError(pc, "LOOPR without a matching ENDLOOP")
 
     def _retire(self):
         for words in self.pending_words:
@@ -220,7 +250,7 @@ class Tracer(Golden):
     def _block(self, pc, b):
         super()._block(pc, b)
         words = None if b.no_ret else self.result_words(b)
-        self.blocks.append((pc, b, tuple(self.regs), self.epoch, words))
+        self.blocks.append((pc, b, tuple(self.regs[: isa.N_REGS]), self.epoch, words))
         self.wb_words += 0 if words is None else len(words)
 
     def _retire(self):

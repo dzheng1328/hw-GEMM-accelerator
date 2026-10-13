@@ -19,7 +19,8 @@ from hwview import dma_ports, entry_words
 from nets import NETS, random_net
 
 MESH = (4, 3)
-BLOCK_PORTS = tuple(isa.BLOCK_FIELDS)
+# The register-form bit is 4.3d's; the RTL gains it in 4.3f.
+BLOCK_PORTS = tuple(f for f in isa.BLOCK_FIELDS if f != "reg_form")
 REG_PORTS = ("in_base", "w_base", "cin_log2", "h_log2", "w_log2", "wout_log2", "stride2", "pad",
              "ksize", "ks", "bias_start", "bias_val")
 PUSH_PORTS = ("wb_push", "wb_tile", "wb_raw", "wb_base", "wb_step")
@@ -204,7 +205,7 @@ def check_trace(env, tracer):
 def golden_regs(program):
     g = Golden(*MESH, program, [], [])
     g.run()
-    return g.regs
+    return g.regs[: isa.N_REGS]  # the golden executor has isa.N_REGS_LM; the RTL has isa.N_REGS
 
 
 def dut_regs(dut):
@@ -265,7 +266,7 @@ async def test_loops_match_golden(dut):
     env.stop()
     assert dut.done.value and not dut.error.value
     check_trace(env, tracer)
-    assert dut_regs(dut) == tracer.regs
+    assert dut_regs(dut) == tracer.regs[: isa.N_REGS]
 
 
 @cocotb.test()
@@ -399,10 +400,10 @@ async def test_start_clears_registers(dut):
 # Fault programs; golden supplies each expected pc.
 FAULTS = [
     [0],                                           # opcode 0: zeroed memory
-    [isa.add(1, 0, 1), 7 << 60],                   # first opcode past END
+    [isa.add(1, 0, 1), 10 << 60],                  # first opcode past VOP (7 to 9 are 4.3d's ALU, LOOPR, VOP)
     [15 << 60],
     [isa.add(1, 0, 1)],                            # runs off the program into zeroed memory
-    [isa.loop(2), isa.loop(2)],
+    # No nested-LOOP case: the golden executor nests 4 deep from 4.3d, the RTL only from 4.3f.
     [isa.endloop()],
     [isa.LOOP << 60],                              # LOOP 0
     [blk(4, 0)],                                   # tile_x = W
