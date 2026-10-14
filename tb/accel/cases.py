@@ -25,7 +25,8 @@ N_RANDOM = 4
 # "real" the frozen model with its own. lm_t0 samples greedily, lm_t256 at temperature 1 (Q8.8).
 LM_CASES = {"lm_t0": ("random0", 10, 0), "lm_t256": ("random1", 12, 256)}
 LM_EXTRA = {"lm_real8": ("real", 8, 0), "lm_real8_t256": ("real", 8, 256),
-            "lm_rounds": ("random2", 66, 256)}  # T = 7 to 8 and 63 to 64: AV's second round
+            "lm_rounds": ("random2", 66, 256),  # T = 7 to 8 and 63 to 64: AV's second round
+            "lm_full": ("random3", 256, 256)}   # every position up to T = 255 (about 8 minutes)
 CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)] + list(LM_CASES)
 # Fault probes: tiny programs that must stop the run on a cmd_seq $fatal (`make error-check`).
 # name -> (program builder, the message fragment the log must hold, golden's fault pc). wrong_mesh is

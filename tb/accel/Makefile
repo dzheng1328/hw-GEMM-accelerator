@@ -8,6 +8,7 @@
 #   make error-check                      each fault probe (cases.py probes) must stop the run on its own message
 #   make stray-check                      a RESULT away from (0,0) must stop the run (Icarus)
 #   make vpu-check                        the VPU's memory-port guards must stop the run (Icarus)
+#   make reset-check                      a reset during a VOP must leave the chip idle and runnable
 #   make lint-configs                     lint sizes no run covers
 #   make cifar                            all 128 CIFAR-10 images; writes docs/perf/cifar.{json,md}
 #   make scaling                          the same on 1x1 .. 4x4; writes docs/perf/scaling.{json,md}
@@ -54,7 +55,7 @@ COCOTB_RESULTS_FILE = $(SIM_BUILD)/results_$(or $(ACCEL_CASE),$(ACCEL_PROBE),non
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 .DEFAULT_GOAL := cases
-.PHONY: cases error-check stray-check vpu-check lint-configs cifar scaling
+.PHONY: cases error-check stray-check vpu-check reset-check lint-configs cifar scaling
 
 cases:
 	@for c in $(or $(ACCEL_CASES),$$(python $(PWD)/cases.py list)); do \
@@ -111,6 +112,15 @@ vpu-check:
 	    echo "PASS: $$probe is fatal (Icarus)"; \
 	  fi; \
 	done
+
+# Positive test: a reset while a VOP runs (cases.VOP_NOP's VADD) must return the sequencer, the VPU and
+# the memory request lines to idle, and a fresh start must run to done.
+reset-check:
+	@mkdir -p $(SIM_BUILD); \
+	python $(PWD)/cases.py emit vop_nop $(MESH_W) $(MESH_H) $(CASE_DIR)/vop_nop || exit 1; \
+	$(MAKE) --no-print-directory sim ACCEL_CASE=vop_nop ACCEL_PROBE=reset_vop > $(SIM_BUILD)/reset_check.log 2>&1 \
+	  && echo "PASS: a reset during a VOP returns the chip to idle ($(SIM))" \
+	  || { echo "FAIL: reset during a VOP (see $(SIM_BUILD)/reset_check.log)"; exit 1; }
 
 # Sizes no run covers: perf counters compiled out, one row, and 8x8 at AW=3.
 LINT_CONFIGS = -GPERF=0 -GW=3_-GH=1 -GW=8_-GH=8_-GAW=3

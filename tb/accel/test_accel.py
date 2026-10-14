@@ -212,6 +212,26 @@ async def test_vpu_running_with_the_dma_busy_is_fatal(dut):
     raise AssertionError("a busy DMA during a VOP did not stop the run")
 
 
+@cocotb.test(skip=PROBE != "reset_vop")
+async def test_reset_during_a_vop_returns_everything_to_idle(dut):
+    """Run only by `make reset-check`: a reset while the VPU runs leaves the sequencer, the VPU and every memory
+    request line idle, and the machine runs a program again from a fresh start."""
+    await start_vop_nop(dut)
+    for _ in range(3):
+        await RisingEdge(dut.clk)
+    assert int(dut.accel.vpu_busy.value), "the reset is meant to hit a running VOP"
+    dut.rst.value = 1
+    for _ in range(2):
+        await RisingEdge(dut.clk)
+    dut.rst.value = 0
+    await FallingEdge(dut.clk)
+    a = dut.accel
+    assert not (int(a.vpu_busy.value) or int(dut.done.value) or int(dut.error.value)), "not idle after the reset"
+    for line in ("v_act_re", "v_act_we", "v_a_re", "v_a_we"):
+        assert not int(getattr(a, line).value), f"{line} is active after the reset"
+    await run(dut, 5000)
+
+
 @cocotb.test(skip=PROBE != "vpu_stray")
 async def test_a_vpu_request_while_idle_is_fatal(dut):
     """Run only by `make vpu-check` (Icarus): a VPU memory request outside a VOP must stop the run."""

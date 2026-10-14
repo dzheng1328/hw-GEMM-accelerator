@@ -418,6 +418,37 @@ async def test_vops_drain_first_hold_the_sequencer_and_pass_their_operands(dut):
 
 
 @cocotb.test()
+async def test_a_vop_can_be_first_back_to_back_and_last(dut):
+    """A VOP as the first command (pc 0 is fetched into it), several in a row,
+    and one right before END; the second program restarts the first's finished run."""
+    await setup_dut(dut)
+    for prog in ([isa.vop(isa.VADD, 0, 0), isa.end()],
+                 [isa.vop(isa.VADD, 0, 0), isa.vop(isa.TRANSPOSE, 0, 0, 0), isa.vop(isa.VADD, 0, 0), isa.end()]):
+        tracer = Tracer(*MESH, prog, [], [])
+        tracer.run()
+        await load(dut, prog)
+        env = Env(dut, random.Random(40))
+        await run(dut, env)
+        env.stop()
+        assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
+        check_trace(env, tracer)
+        assert len(env.vops) == len(prog) - 1
+
+
+@cocotb.test()
+async def test_loopr_runs_its_largest_count(dut):
+    """65535 iterations: the 16-bit counter neither wraps early nor stops late (65536 is a probe in tb/accel)."""
+    await setup_dut(dut)
+    prog = [setr(25, 65535), isa.loopr(25), isa.alu(isa.ALU_ADD, 26, 26, imm=1), isa.endloop(), isa.end()]
+    await load(dut, prog)
+    env = Env(dut, random.Random(41))
+    await run(dut, env, max_cycles=300_000)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    assert dut_regs(dut)[26] == 65535 and dut_regs(dut) == golden_regs(prog)
+
+
+@cocotb.test()
 async def test_a_vpu_fault_is_the_vops_fault(dut):
     """The VPU's sticky fault stops the sequencer at the VOP's pc, even
     though the VOP started; a start afterwards changes nothing."""
