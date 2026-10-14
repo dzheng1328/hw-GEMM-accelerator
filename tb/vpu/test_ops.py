@@ -126,3 +126,13 @@ async def test_rope(dut):
         img = Images(rng)
         cycles = await check(dut, img, SUBS["ROPE"], ra=1000, rb=2000, rc=4000, t=t)
     dut._log.info(f"ROPE: {cycles} cycles")
+
+
+@cocotb.test()
+async def test_kvwrite(dut):
+    await start_clock(dut)
+    rng = rng_for("kvwrite")
+    for t in (0, 5, 8, 255):
+        img = Images(rng)
+        cycles = await check(dut, img, SUBS["KVWRITE"], ra=1000, rb=1100, rc=20000, t=t)
+    dut._log.info(f"KVWRITE: {cycles} cycles")
