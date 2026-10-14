@@ -16,6 +16,10 @@ ifeq ($(SUITE),exp)
 TOPLEVEL = vpu_expcheck
 MODULE = test_exp
 VERILOG_SOURCES = $(PWD)/vpu_expcheck.v $(PWD)/../../rtl/vpu_exp.v $(PWD)/../../rtl/vpu_exparg.v
+else ifeq ($(SUITE),rsqrt)
+TOPLEVEL = vpu_rsqrt
+MODULE = test_rsqrt
+VERILOG_SOURCES = $(PWD)/../../rtl/vpu_rsqrt.v
 else
 $(error unknown SUITE $(SUITE))
 endif
