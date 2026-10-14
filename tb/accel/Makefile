@@ -19,7 +19,11 @@ VERILOG_SOURCES = $(RTL)/pe.v $(RTL)/systolic_array.v $(RTL)/skew_feeder.v $(RTL
                   $(RTL)/gemm_sequencer.v $(RTL)/gemm_tile.v $(RTL)/router.v $(RTL)/flit_buf.v \
                   $(RTL)/node_perf.v $(RTL)/requant.v $(RTL)/noc_node.v $(RTL)/noc_mesh.v \
                   $(RTL)/sim_mem.v $(RTL)/dma_gather.v $(RTL)/flit_pack.v $(RTL)/cmd_seq.v \
-                  $(RTL)/writeback.v $(RTL)/cmd_perf.v $(RTL)/accel.v $(PWD)/accel_tb.v
+                  $(RTL)/writeback.v $(RTL)/cmd_perf.v \
+                  $(addprefix $(RTL)/, vpu.v vpu_add.v vpu_transpose.v vpu_embed.v vpu_rmsnorm.v vpu_silu.v vpu_rope.v \
+                      vpu_kvwrite.v vpu_softmax.v vpu_sample.v vpu_rsqrt.v vpu_exp.v vpu_exparg.v vpu_lanes.v vpu_rng.v \
+                      vpu_perf.v) \
+                  $(RTL)/accel.v $(PWD)/accel_tb.v
 TOPLEVEL = accel_tb
 MODULE = test_accel
 

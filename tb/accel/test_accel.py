@@ -16,7 +16,9 @@ from cocotb.triggers import FallingEdge, First, RisingEdge, Timer
 from cocotb.utils import get_sim_time
 
 import cases
+import isa
 from cifar_report import check_split
+from emit import images
 from golden import Tracer
 from lower import read_buffer, read_output
 
@@ -77,6 +79,32 @@ def read_act(dut, n_words):
     return np.array([int(banks[w % 4][w >> 2].value) for w in range(n_words)], dtype=np.uint64)
 
 
+def read_amem(dut, n_words):
+    """A memory words 0 .. n_words - 1 (the weight memory, which the VPU also writes)."""
+    mem = dut.accel.wt_mem.mem
+    return np.array([int(mem[w].value) for w in range(n_words)], dtype=np.uint64)
+
+
+def check_lm(dut, b, g, lm, got_act):
+    """Levels 3 and 2 of the ladder on the RTL's own memory: the token log
+    equals model/lm_reference.py's, and the K and V caches (the state that
+    outlives a step) equal the reference's. The memories already equal the
+    golden's word for word."""
+    from types import SimpleNamespace
+
+    from lm_reference import generate
+    from lower_lm import read_cache, read_tokens
+
+    q, prompt, seeds, steps, inv_temp = lm
+    ref, ref_cache = generate(q, prompt, steps, inv_temp, seeds, return_cache=True)
+    rtl = SimpleNamespace(actw=got_act, act=got_act.view(np.uint8))
+    assert np.array_equal(read_tokens(b, rtl), ref), "the RTL's token log differs from model/lm_reference.py's"
+    cache = read_cache(b, rtl)
+    assert np.array_equal(cache["k"], ref_cache["k"]) and np.array_equal(cache["v"], ref_cache["v"]), \
+        "the RTL's K or V cache differs from model/lm_reference.py's"
+    return {"steps": steps, "inv_temp": inv_temp, "tokens": read_tokens(b, rtl).T.tolist()}
+
+
 def check_cifar(b, words, n):
     """Level 1 of the ladder on the RTL's own memory: every image's logits
     and the last image's activations at every layer equal
@@ -106,13 +134,23 @@ async def test_case_matches_golden(dut):
         await run(dut, 1_000_000)
         raise AssertionError(f"probe {CASE} ran to done: the error path did not stop the run")
     b = cases.case_build(CASE, *MESH)
-    g = Tracer(*MESH, b.program, b.lowered.weights, b.act)
-    want = g.run().view(np.uint64)[: b.lowered.mem.total_words]
-    cycles = await run(dut, cases.cycle_budget(g.slots, g.wb_words, MESH[0] * MESH[1]))
+    lm = cases.lm_case(CASE)
+    g = Tracer(*MESH, *images(b))
+    g.run(50_000_000)
+    # Conv stacks compare the words the compiler allocated; a story model compares every word of both memories.
+    want = g.actw if lm else g.actw[: b.lowered.mem.total_words]
+    budget = cases.cycle_budget(g.slots, g.wb_words, MESH[0] * MESH[1])
+    cycles = await run(dut, budget + (cases.lm_extra_cycles(lm[3], len(g.vops), g.slots) if lm else 0))
     got = read_act(dut, len(want))
     bad = np.flatnonzero(got != want)
     assert not bad.size, (f"{bad.size} of {len(want)} activation words differ; first word {bad[0]}: "
                           f"got {int(got[bad[0]]):016x}, want {int(want[bad[0]]):016x}")
+    if lm:
+        got_a = read_amem(dut, isa.WEIGHT_WORDS)
+        bad = np.flatnonzero(got_a != g.wmem)
+        assert not bad.size, (f"{bad.size} of {isa.WEIGHT_WORDS} A memory words differ; first word {bad[0]}: "
+                              f"got {int(got_a[bad[0]]):016x}, want {int(g.wmem[bad[0]]):016x}")
+        dut._log.info("%s", check_lm(dut, b, g, lm, got))
     perf = dut.accel.g_perf.perf
     counts = {n: int(getattr(perf, n).value) for n in COUNTERS}
     # blocks counts DMA starts; slot_cyc and go_cyc count OPERAND and GO
@@ -126,8 +164,18 @@ async def test_case_matches_golden(dut):
     check_split(counts)
     other = counts["other_cyc"] / len(g.blocks)
     dut._log.info("other_cyc %d over %d BLOCKs: %.3f per BLOCK", counts["other_cyc"], len(g.blocks), other)
-    assert other <= OTHER_PER_BLOCK_MAX, (
-        f"{other:.3f} Other cycles per BLOCK (limit {OTHER_PER_BLOCK_MAX}): a refill gap between BLOCKs? {counts}")
+    if lm:
+        # A story-model program interleaves BLOCKs with ALUs, loops and VOPs; the zero-gap guard below is
+        # CIFAR-10's. The VPU's busy cycles are counted as wait_cyc (cmd_seq's wait_stall covers a VOP).
+        vpu = dut.accel.vpu.g_perf.perf.cnt
+        busy = [int(vpu[i].value) for i in range(10)]
+        assert busy[0] == sum(busy[1:]) and busy[0] > 0, busy
+        assert counts["wait_cyc"] >= busy[0], (counts, busy)
+        used = {v[1] for v in g.vops}
+        assert all((busy[sub] > 0) == (sub in used) for sub in range(1, 10)), (busy, used)
+    else:
+        assert other <= OTHER_PER_BLOCK_MAX, (
+            f"{other:.3f} Other cycles per BLOCK (limit {OTHER_PER_BLOCK_MAX}): a refill gap between BLOCKs? {counts}")
     n = cases.is_cifar(CASE)
     if n is not None:
         record = check_cifar(b, got, n)

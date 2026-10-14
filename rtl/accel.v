@@ -8,13 +8,20 @@
 // gathers, OPERAND/GO flits, RESULT write-back -- happens on chip.
 //
 //   program --> cmd_seq --BLOCK--> dma_gather --beats--> flit_pack --> node (0,0) injection
-//                 ^   |               ^ weights, activation banks (read)
-//                 |   +--entry--> writeback <-- node (0,0) RESULT delivery
-//                 +---full/idle------+    +--> activation banks (write)
+//                 ^   |  |            ^ A memory, activation banks (read)
+//                 |   |  +--entry--> writeback <-- node (0,0) RESULT delivery
+//                 |   |     ^ full/idle  +--> activation banks (write)
+//                 |   +--VOP--> vpu <--> both memories (while it runs)
+//                 +--done/fault--+
+//
+// While the VPU runs (cmd_seq drained the DMA and write-back first, and
+// holds every later command until the VPU is done) it owns the memories:
+// `own` selects its read and write ports over the DMA's and write-back's.
+// A memory ("weights" in 4.2) is 64K words; the VPU also writes it.
 //
 // The memories are rtl/sim_mem.v, loaded at time 0 from the files named by
 // the plusargs +program=, +weights=, +act_bank0= .. +act_bank3=
-// (compiler/emit.py's images). Only node (0,0) injects; the other nodes'
+// (compiler/emit.py's images; the weights file is A memory). Only node (0,0) injects; the other nodes'
 // injection ports are tied off, and a RESULT delivered anywhere but (0,0) is
 // a simulation $fatal (every GO returns to (0,0), so it would be a routing
 // bug).
@@ -37,7 +44,7 @@ module accel #(
     localparam TIW    = (NN > 1) ? $clog2(NN) : 1;
     localparam ACT_BW = 15;            // activation bank address bits (4 x 32K words)
     localparam WA     = ACT_BW + 2;    // activation word address bits
-    localparam WT_AW  = 15;            // weight memory address bits (32K words)
+    localparam WT_AW  = 16;            // A memory address bits (64K words)
     localparam PC_W   = 12;            // program memory address bits (4K words)
     localparam FW     = 2 + 134 + 2*AW;  // flit width (rtl/noc_node.v)
 
@@ -63,7 +70,7 @@ module accel #(
     wire [15:0]         m;
     wire                reg_form, q16;
     wire [2:0]          rows_m1;
-    wire                vop_start;
+    wire                vop_start, vop_done, vop_fault;
     wire [3:0]          vop_sub;
     wire [31:0]         vop_ra, vop_rb, vop_rc, vop_t, vop_plen, vop_inv_temp;
     wire                wb_push, wb_raw, wb_idle;
@@ -88,11 +95,7 @@ module accel #(
         .wb_full(wb_full), .wb_idle(wb_idle),
         .vop_start(vop_start), .vop_sub(vop_sub), .vop_ra(vop_ra), .vop_rb(vop_rb), .vop_rc(vop_rc),
         .vop_t(vop_t), .vop_plen(vop_plen), .vop_inv_temp(vop_inv_temp),
-        .vop_done(1'b0), .vop_fault(1'b0));
-
-    // The vector unit joins in the next commit; until then a VOP never completes, which is fine for
-    // every program that has none (CIFAR-10).
-    wire unused_vop = &{1'b0, vop_start, vop_sub, vop_ra, vop_rb, vop_rc, vop_t, vop_plen, vop_inv_temp};
+        .vop_done(vop_done), .vop_fault(vop_fault));
 
     // reg_form is cmd_seq's own: its resolved fields are what the rest sees.
     wire unused_reg_form = &{1'b0, reg_form};
@@ -201,26 +204,63 @@ module accel #(
         .res_src_y(res_src_y[AW-1:0]), .res_idx(res_idx[5:0]), .res_data(res_data[63:0]),
         .act_we(wb_we), .act_waddr(wb_waddr), .act_wdata(wb_wdata));
 
+    // ---- Vector unit ----
+    // FATAL = 0: cmd_seq owns the fault, with its pc (error, error_pc and its own $fatal).
+    wire          vpu_busy;
+    wire          v_act_re, v_act_we, v_a_re, v_a_we;
+    wire [WA-1:0] v_act_raddr, v_act_waddr;
+    wire [63:0]   v_act_wdata, v_a_wdata, v_act_rdata;
+    wire [WT_AW-1:0] v_a_raddr, v_a_waddr;
+
+    vpu #(.FATAL(0), .PERF(PERF)) vpu (
+        .clk(clk), .rst(rst), .start(vop_start), .sub(vop_sub), .ra(vop_ra), .rb(vop_rb), .rc(vop_rc),
+        .t(vop_t), .plen(vop_plen), .inv_temp(vop_inv_temp),
+        .busy(vpu_busy), .done(vop_done), .fault(vop_fault),
+        .act_re(v_act_re), .act_raddr(v_act_raddr), .act_rdata(v_act_rdata),
+        .act_we(v_act_we), .act_waddr(v_act_waddr), .act_wdata(v_act_wdata),
+        .a_re(v_a_re), .a_raddr(v_a_raddr), .a_rdata(wt_rdata),
+        .a_we(v_a_we), .a_waddr(v_a_waddr), .a_wdata(v_a_wdata));
+
+    // The VPU owns both memories from the cycle after its start until its last write has been
+    // committed: while busy (its requests are low otherwise, which the check below enforces).
+    wire own = vpu_busy;
+
+`ifndef SYNTHESIS
+    always @(posedge clk)
+        if (!rst && !own && (v_act_re || v_act_we || v_a_re || v_a_we))
+            $fatal(1, "accel: the VPU requested a memory port while it is not running");
+`endif
+
     // ---- Memories ----
     sim_mem #(.AW(PC_W), .INIT_ARG("program=%s")) prog_mem (
         .clk(clk), .re(prog_re), .raddr(prog_raddr), .rdata(prog_rdata),
         .we(1'b0), .waddr({PC_W{1'b0}}), .wdata(64'd0));
 
     sim_mem #(.AW(WT_AW), .INIT_ARG("weights=%s")) wt_mem (
-        .clk(clk), .re(wt_re), .raddr(wt_raddr), .rdata(wt_rdata),
-        .we(1'b0), .waddr({WT_AW{1'b0}}), .wdata(64'd0));
+        .clk(clk), .re(own ? v_a_re : wt_re), .raddr(own ? v_a_raddr : wt_raddr), .rdata(wt_rdata),
+        .we(v_a_we), .waddr(v_a_waddr), .wdata(v_a_wdata));
 
-    // Activation word w is in bank w mod 4 at bank address w >> 2.
+    // Activation word w is in bank w mod 4 at bank address w >> 2. The VPU reads one word a cycle,
+    // so every bank reads the same bank address and the VPU takes the bank its address named
+    // (registered: the read data arrives a cycle after the request).
+    reg [1:0] v_rsel;
+    always @(posedge clk)
+        if (v_act_re) v_rsel <= v_act_raddr[1:0];
+    assign v_act_rdata = act_rdata[{v_rsel, 6'b000000} +: 64];
+
     genvar b;
     generate
         for (b = 0; b < 4; b = b + 1) begin : g_act
             localparam [1:0] BI = b;
             localparam [8*12-1:0] ARG = (b == 0) ? "act_bank0=%s" : (b == 1) ? "act_bank1=%s"
                                       : (b == 2) ? "act_bank2=%s" : "act_bank3=%s";
+            wire bank_we = own ? (v_act_we && v_act_waddr[1:0] == BI) : (wb_we && wb_waddr[1:0] == BI);
             sim_mem #(.AW(ACT_BW), .INIT_ARG(ARG)) bank (
-                .clk(clk), .re(act_re), .raddr(act_raddr[b*ACT_BW +: ACT_BW]),
+                .clk(clk), .re(own ? v_act_re : act_re),
+                .raddr(own ? v_act_raddr[WA-1:2] : act_raddr[b*ACT_BW +: ACT_BW]),
                 .rdata(act_rdata[b*64 +: 64]),
-                .we(wb_we && wb_waddr[1:0] == BI), .waddr(wb_waddr[WA-1:2]), .wdata(wb_wdata));
+                .we(bank_we), .waddr(own ? v_act_waddr[WA-1:2] : wb_waddr[WA-1:2]),
+                .wdata(own ? v_act_wdata : wb_wdata));
         end
     endgenerate
 

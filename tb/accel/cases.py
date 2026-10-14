@@ -12,11 +12,18 @@ CIFAR-10 network on the first N test images of model/cifar_quantized.npz."""
 
 import sys
 import zlib
+from pathlib import Path
 
 import numpy as np
 
 N_RANDOM = 4
-CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)]
+# Story-model cases (spec 4.3 section 5): name -> (model, steps, inv_temp). "random<N>" is
+# model/lm_reference.random_quantized(N) with the prompt and seeds of compiler/check_lm.py,
+# "real" the frozen model with its own. lm_t0 samples greedily, lm_t256 at temperature 1 (Q8.8).
+LM_CASES = {"lm_t0": ("random0", 10, 0), "lm_t256": ("random1", 12, 256)}
+LM_EXTRA = {"lm_real8": ("real", 8, 0), "lm_real8_t256": ("real", 8, 256),
+            "lm_rounds": ("random2", 66, 256)}  # T = 7 to 8 and 63 to 64: AV's second round
+CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)] + list(LM_CASES)
 PROBES = ("wrong_mesh",)
 N_CIFAR_IMAGES = 128  # test images frozen in model/cifar_quantized.npz
 
@@ -62,6 +69,22 @@ def case_net(name):
     return q, layers, rng.integers(-128, 128, (n_images,) + shape)
 
 
+def lm_case(name):
+    """(q, prompt, seeds, steps, inv_temp) of a story-model case, or None."""
+    spec = LM_CASES.get(name) or LM_EXTRA.get(name)
+    if spec is None:
+        return None
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "model"))
+    from check_lm import RANDOM_PROMPT, RANDOM_SEEDS
+    from lm_reference import NPZ_PATH, random_quantized
+
+    model, steps, inv_temp = spec
+    if model == "real":
+        q = dict(np.load(NPZ_PATH))
+        return q, q["prompt_ids"], q["seeds"], steps, inv_temp
+    return random_quantized(int(model[len("random"):])), RANDOM_PROMPT, RANDOM_SEEDS, steps, inv_temp
+
+
 def cycle_budget(slots, wb_words, tiles):
     """Cycles a case gets before the test calls it hung. Node (0,0) injects
     at most one OPERAND slot and delivers at most one result word per cycle,
@@ -70,6 +93,16 @@ def cycle_budget(slots, wb_words, tiles):
     and 2.3x on one tile, so this ends a deadlocked run within about three
     times its real length."""
     return 2 * (slots + wb_words) + 2 * slots // tiles + 10_000
+
+
+def lm_extra_cycles(steps, vops, slots):
+    """The story model's cycles on top of cycle_budget's: the VPU's, which run alone (the mesh
+    idles; SAMPLE alone reads the vocabulary three times, about 3K cycles a step, and SOFTMAX
+    grows with the position), the drains in front of every VOP, and each step's ALUs and loop
+    bookkeeping. The VPU's share grows with the context just as the attention slots do, so
+    2 cycles per slot stands for it at any length. Measured against 1x1, 2x2 and 4x3 runs of
+    8 to 66 steps and a 256-step one: 1.5 to 2.8 times the real cycles."""
+    return 9_000 * steps + 40 * vops + 2 * slots + 20_000
 
 
 def is_cifar(name):
@@ -83,6 +116,12 @@ def case_build(name, w, h):
     """The case compiled for a WxH build (a wider mesh for wrong_mesh)."""
     from build import build
 
+    lm = lm_case(name)
+    if lm is not None:
+        from lower_lm import lm_build
+
+        q, prompt, seeds, steps, inv_temp = lm
+        return lm_build(q, w, h, steps, inv_temp, prompt, seeds)
     n = is_cifar(name)
     if n is not None:
         from build import cifar_build
