@@ -160,3 +160,84 @@ async def test_softmax(dut):
         img = softmax_images(rng, kind)
         cycles = await check(dut, img, SUBS["SOFTMAX"], ra=6000, rb=8000, rc=30, t=t)
         dut._log.info(f"SOFTMAX {kind} t={t}: {cycles} cycles")
+
+
+def sample_images(rng, kind):
+    img = Images(rng)
+    if kind == "equal":
+        logits = np.full((512, 8), 77)
+    elif kind == "single":
+        logits = rng.integers(-500, 500, (512, 8))
+        logits[rng.integers(0, 512, 8), np.arange(8)] = 30000
+    else:
+        logits = rng.integers(-3000, 3000, (512, 8))
+    for v in range(512):  # word 2v: stories 0-3; word 2v + 1: stories 4-7
+        put_i16(img.act, 6000 + 2 * v, logits[v, :4])
+        put_i16(img.act, 6000 + 2 * v + 1, logits[v, 4:])
+    m, sh = scale(rng, 8, 16)
+    put_param(img, 300, m, sh)
+    img.amem[400:404] = rng.integers(1, 2**64, 4, dtype=np.uint64)
+    return img
+
+
+@cocotb.test()
+async def test_sample(dut):
+    await start_clock(dut)
+    rng = rng_for("sample")
+    for kind in ("random", "equal", "single"):
+        for inv in (0, 256, 100, 65535, 1):
+            img = sample_images(rng, kind)
+            cycles = await check(dut, img, SUBS["SAMPLE"], ra=6000, rb=300, rc=400, t=5, plen=3, inv_temp=inv)
+        dut._log.info(f"SAMPLE {kind}: {cycles} cycles")
+    # the prompt copy writes nothing, whatever the logits
+    img = sample_images(rng, "random")
+    await check(dut, img, SUBS["SAMPLE"], expect_change=False, ra=6000, rb=300, rc=400, t=1, plen=9, inv_temp=256)
+    # a long run at temperature 1.0 and 0: the generator states carry from step to step
+    img = sample_images(rng, "random")
+    for t in range(2, 30):
+        await check(dut, img, SUBS["SAMPLE"], ra=6000, rb=300, rc=400, t=t, plen=3, inv_temp=256)
+
+
+def seeds_with_r16(rng, want):
+    """8 xorshift32 states whose first draw (the new state's top 16 bits) is want[i]."""
+    from fixedpoint import xorshift32
+    pool = rng.integers(1, 2**32, 4_000_000)
+    r16 = xorshift32(pool) >> 16
+    out = []
+    for w in want:
+        hit = np.flatnonzero(r16 == w)
+        assert len(hit), f"no seed draws {w}"
+        out.append(int(pool[hit[0]]))
+    return out
+
+
+@cocotb.test()
+async def test_sample_inverse_cdf_boundaries(dut):
+    """The first entry whose running sum EXCEEDS u: a draw of 0, and draws that put u exactly on a
+    running sum (all logits equal, so e = 2^16 everywhere and the sums are multiples of 2^16)."""
+    await start_clock(dut)
+    rng = rng_for("cdf")
+    # u = 0: only the dominant entry has e > 0, so the token is its index, not entry 0
+    img = sample_images(rng, "single")
+    put_param(img, 300, 50000, 8)  # z = 29500 * 50000 >> 8: every other entry underflows to e = 0
+    img.amem[400:404] = np.array(seeds_with_r16(rng, [0] * 8), dtype="<u4").view("<u8")
+    await check(dut, img, SUBS["SAMPLE"], ra=6000, rb=300, rc=400, t=5, plen=3, inv_temp=256)
+    # u = r16 * 512 lands exactly on the running sum of entry r16 / 128 - 1
+    img = sample_images(rng, "equal")
+    img.amem[400:404] = np.array(seeds_with_r16(rng, [128, 256, 128 * 7, 128 * 100, 128 * 511, 128 * 300, 128 * 2, 640]),
+                                 dtype="<u4").view("<u8")
+    await check(dut, img, SUBS["SAMPLE"], ra=6000, rb=300, rc=400, t=5, plen=3, inv_temp=256)
+
+
+@cocotb.test()
+async def test_sample_prompt_boundary(dut):
+    """Where T + 1 meets PLEN: below it the log already holds the prompt token and nothing is written, at it and
+    above it the token is drawn. PLEN is a full 32-bit register, and INV_TEMP is only checked when a token is drawn."""
+    await start_clock(dut)
+    rng = rng_for("plen")
+    for t, plen, draws in [(5, 7, False), (5, 6, True), (5, 5, True), (5, 0, True), (5, 0xFFFFFFFF, False), (5, 1 << 31, False),
+                           (0, 1, True), (0, 2, False), (254, 255, True), (254, 256, False)]:
+        img = sample_images(rng, "random")
+        await check(dut, img, SUBS["SAMPLE"], expect_change=draws, ra=6000, rb=300, rc=400, t=t, plen=plen, inv_temp=256)
+    img = sample_images(rng, "random")  # a prompt-copy step takes no fault from an INV_TEMP a drawn step would reject
+    await check(dut, img, SUBS["SAMPLE"], expect_change=False, ra=6000, rb=300, rc=400, t=1, plen=9, inv_temp=1 << 16)

@@ -35,6 +35,10 @@ def fault_cases():
     img = image()
     put_param(img, 10, 1 << 15, 8, 0)  # an all-zero residual and eps_q = 0: u = 0
     cases["rmsnorm_zero_rsqrt_input"] = (img, dict(sub=SUBS["RMSNORM"], ra=1000, rb=2000, rc=10))
+    img = image()
+    put_param(img, 10, 1 << 15, 8)
+    cases["sample_inv_temp_beyond_q8_8"] = (img, dict(sub=SUBS["SAMPLE"], ra=1000, rb=10, rc=20, t=4, plen=3,
+                                                      inv_temp=1 << 16))
     return cases
 
 

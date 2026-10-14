@@ -70,7 +70,7 @@ lanes16:
 # simulation on the VPU's own $fatal (passes only if the probe run fails AND names it).
 FAULT_PROBES = invalid_sub_op_0 invalid_sub_op_10 t_at_context_embed t_at_context_rope t_at_context_kvwrite \
     t_at_context_softmax t_at_context_sample embed_token_outside_vocabulary embed_negative_token \
-    rmsnorm_zero_rsqrt_input
+    rmsnorm_zero_rsqrt_input sample_inv_temp_beyond_q8_8
 .PHONY: fault-check
 fault-check:
 	@mkdir -p $(SIM_ROOT); \
