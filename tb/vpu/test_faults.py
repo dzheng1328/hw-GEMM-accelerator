@@ -9,7 +9,7 @@ import cocotb
 import numpy as np
 from cocotb.triggers import FallingEdge, RisingEdge
 
-from vpulib import SUBS, Images, run_op, start_clock
+from vpulib import SUBS, Images, put_i16, put_param, run_op, start_clock
 
 
 def fault_cases():
@@ -24,6 +24,14 @@ def fault_cases():
     cases["invalid_sub_op_10"] = (image(), dict(sub=10))
     for name in ("EMBED", "ROPE", "KVWRITE", "SOFTMAX", "SAMPLE"):
         cases[f"t_at_context_{name.lower()}"] = (image(), dict(sub=SUBS[name], t=256, plen=1, inv_temp=256))
+    img = image()
+    put_i16(img.act, 0, [1, 2, 3, 512, 5, 6, 7, 8])  # story 3's token is outside the 512-token vocabulary
+    put_param(img, 10, 1 << 15, 8)
+    cases["embed_token_outside_vocabulary"] = (img, dict(sub=SUBS["EMBED"], ra=100, rb=2000, rc=10, t=0))
+    img = image()
+    put_i16(img.act, 0, [1, 2, 3, -1, 5, 6, 7, 8])
+    put_param(img, 10, 1 << 15, 8)
+    cases["embed_negative_token"] = (img, dict(sub=SUBS["EMBED"], ra=100, rb=2000, rc=10, t=0))
     return cases
 
 

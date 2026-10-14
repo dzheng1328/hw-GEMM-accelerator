@@ -69,7 +69,7 @@ lanes16:
 # Negative tests: with FATAL = 1 each fault, and a start while busy, must end the
 # simulation on the VPU's own $fatal (passes only if the probe run fails AND names it).
 FAULT_PROBES = invalid_sub_op_0 invalid_sub_op_10 t_at_context_embed t_at_context_rope t_at_context_kvwrite \
-    t_at_context_softmax t_at_context_sample
+    t_at_context_softmax t_at_context_sample embed_token_outside_vocabulary embed_negative_token
 .PHONY: fault-check
 fault-check:
 	@mkdir -p $(SIM_ROOT); \

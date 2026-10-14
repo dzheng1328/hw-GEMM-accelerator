@@ -40,3 +40,18 @@ async def test_transpose(dut):
         dut._log.info(f"TRANSPOSE x{count}: {cycles} cycles")
     img = Images(rng)  # in place
     await check(dut, img, SUBS["TRANSPOSE"], ra=4000, rb=4000, rc=3)
+
+
+@cocotb.test()
+async def test_embed(dut):
+    await start_clock(dut)
+    rng = rng_for("embed")
+    for t, tokens, (m, sh) in [(0, rng.integers(0, 512, 8), scale(rng, 4, 12)),
+                               (3, rng.integers(0, 512, 8), scale(rng, 4, 12)),
+                               (255, [0, 511, 0, 511, 1, 2, 510, 255], (65535, 0)),   # saturates the int16 rails
+                               (17, [7] * 8, (1 << 15, 6))]:
+        img = Images(rng)
+        put_i16(img.act, 2 * t, tokens)
+        put_param(img, 999, m, sh)
+        cycles = await check(dut, img, SUBS["EMBED"], ra=1000, rb=5000, rc=999, t=t)
+    dut._log.info(f"EMBED: {cycles} cycles")
