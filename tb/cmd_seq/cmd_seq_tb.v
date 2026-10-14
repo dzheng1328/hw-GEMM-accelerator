@@ -52,6 +52,9 @@ module cmd_seq_tb #(
     output wire          relu,
     output wire [5:0]    sh,
     output wire [15:0]   m,
+    output wire          reg_form,
+    output wire          q16,
+    output wire [2:0]    rows_m1,
     output wire          wb_push,
     output wire [3:0]    wb_tile,
     output wire          wb_raw,
@@ -80,6 +83,7 @@ module cmd_seq_tb #(
         .bias_start(bias_start), .bias_val(bias_val),
         .tile_x(tile_x), .tile_y(tile_y), .acc_keep(acc_keep), .no_ret(no_ret), .requant(requant),
         .relu(relu), .sh(sh), .m(m),
+        .reg_form(reg_form), .q16(q16), .rows_m1(rows_m1),
         .wb_push(wb_push), .wb_tile(wb_tile), .wb_raw(wb_raw), .wb_base(wb_base), .wb_step(wb_step),
         .wb_full(wb_full), .wb_idle(wb_idle));
 

@@ -11,7 +11,13 @@
 //            and; 32-bit wrap; a destination of r0 is ignored (r0-r31)
 //   BLOCK    stall while the tile's write-back FIFO is full (returning
 //            BLOCKs only), then start rtl/dma_gather.v, push the write-back
-//            entry, and wait for the DMA's handoff
+//            entry, and wait for the DMA's handoff. A register-form BLOCK
+//            (reg_form, bit 16) takes its round, row limit and result mode
+//            from ROUND, ROWS and RMODE: it accumulates when acc_keep is set
+//            or ROUND > 0, returns only on the last round of KS slots, and
+//            returns RESULT8, RESULT16 or raw cells, the first ROWS + 1 rows.
+//            The round, acc_keep, no_ret, requant, q16 and rows_m1 outputs
+//            carry the resolved values.
 //   WAIT     stall until rtl/writeback.v and the DMA are idle
 //   LOOP     push (pc + 1, count); ENDLOOP counts down and jumps back
 //   LOOPR    LOOP whose count is a register's value
@@ -74,7 +80,7 @@ module cmd_seq #(
     input  wire                dma_handoff,   // the DMA no longer reads the BLOCK's inputs
     output wire [5:0]          group,
     output wire [7:0]          pixel_block,
-    output wire [6:0]          round,
+    output wire [6:0]          round,         // resolved (register form: ROUND)
     output wire [2:0]          ky0,
     output wire [2:0]          kx0,
     output wire [ACT_BW+4:0]   in_base,
@@ -92,12 +98,15 @@ module cmd_seq #(
     // rtl/flit_pack.v.
     output wire [AW-1:0]       tile_x,
     output wire [AW-1:0]       tile_y,
-    output wire                acc_keep,
-    output wire                no_ret,
-    output wire                requant,
+    output wire                acc_keep,      // resolved (register form: or ROUND > 0)
+    output wire                no_ret,        // resolved (register form: not the last round)
+    output wire                requant,       // resolved (register form: RMODE != raw)
     output wire                relu,
     output wire [5:0]          sh,
     output wire [15:0]         m,
+    output wire                reg_form,      // the BLOCK's register-form bit
+    output wire                q16,           // RESULT16 rows (also the write-back entry's mode)
+    output wire [2:0]          rows_m1,       // rows the BLOCK returns, minus one (also the entry's)
     // rtl/writeback.v.
     output wire                wb_push,
     output wire [TIW-1:0]      wb_tile,
@@ -114,7 +123,9 @@ module cmd_seq #(
     // Hardware-defined registers (compiler/isa.py).
     localparam R_IN_BASE = 1, R_OUT_BASE = 2, R_W_BASE = 3, R_CIN_LOG2 = 4, R_H_LOG2 = 5,
                R_W_LOG2 = 6, R_WOUT_LOG2 = 7, R_STRIDE = 8, R_PAD = 9, R_KSIZE = 10,
-               R_KS = 11, R_BIAS = 12, R_OSTRIDE = 13;
+               R_KS = 11, R_BIAS = 12, R_OSTRIDE = 13,
+               R_ROUND = 19, R_ROWS = 20, R_RMODE = 21;
+    localparam [31:0] SLOTS_PER_ROUND = 32'd64;
     // S_HALT: stopped by END (done) or a fault (error).
     localparam [1:0] S_IDLE = 2'd0, S_EXEC = 2'd1, S_BLOCK = 2'd2, S_HALT = 2'd3;
     localparam [PC_W-1:0] PC_ONE = 1;
@@ -145,15 +156,12 @@ module cmd_seq #(
 
     assign group       = insn[53:48];
     assign pixel_block = insn[47:40];
-    assign round       = insn[39:33];
     assign ky0         = insn[32:30];
     assign kx0         = insn[29:27];
-    assign acc_keep    = insn[26];
-    assign no_ret      = insn[25];
-    assign requant     = insn[24];
     assign relu        = insn[23];
     assign sh          = insn[22:17];
     assign m           = insn[15:0];
+    assign reg_form    = insn[16];
     assign tile_x      = bx[AW-1:0];
     assign tile_y      = by[AW-1:0];
 
@@ -189,12 +197,27 @@ module cmd_seq #(
     wire        loop_any = is_loop || is_loopr;
     wire [1:0]  top      = depth[1:0] - 2'd1;                         // innermost loop, when depth > 0
 
+    // ---- Register-form BLOCK: round, row limit and result mode from registers ----
+    wire [31:0] rf_round = regs[R_ROUND];
+    wire [31:0] rf_rows  = regs[R_ROWS];
+    wire [31:0] rf_rmode = regs[R_RMODE];
+    wire        rf_final = ({25'd0, rf_round[6:0]} + 32'd1) * SLOTS_PER_ROUND >= regs[R_KS];
+    wire        rf       = is_block && reg_form;
+    wire        bad_rf   = rf && (rf_round > 32'd127 || rf_rows > 32'd7 || rf_rmode > 32'd2);
+
+    assign round    = reg_form ? rf_round[6:0] : insn[39:33];
+    assign acc_keep = insn[26] || (reg_form && rf_round[6:0] != 7'd0);
+    assign no_ret   = reg_form ? !rf_final : insn[25];
+    assign requant  = reg_form ? (rf_rmode != 32'd0) : insn[24];
+    assign q16      = reg_form && rf_rmode == 32'd2;
+    assign rows_m1  = reg_form ? rf_rows[2:0] : 3'd7;
+
     wire bad_op   = !(is_add || is_block || is_wait || is_loop || is_endloop || is_end || is_alu || is_loopr);
     wire bad_tile = is_block && tile_out;
     wire bad_deep = loop_any && depth == 3'd4;
     wire bad_cnt  = loop_any && (loop_n == 32'd0 || loop_n > 32'd65535);
     wire bad_endl = is_endloop && depth == 3'd0;
-    wire fault    = exec && (bad_op || bad_tile || bad_deep || bad_cnt || bad_endl);
+    wire fault    = exec && (bad_op || bad_tile || bad_rf || bad_deep || bad_cnt || bad_endl);
 
     wire drain  = (is_wait || is_end) && (!wb_idle || dma_busy);
     wire credit = is_block && !no_ret && wb_full[tile];
@@ -306,6 +329,12 @@ module cmd_seq #(
                 $fatal(1, "cmd_seq: invalid opcode %0d at pc %0d", op, pc);
             else if (bad_tile)
                 $fatal(1, "cmd_seq: BLOCK tile (%0d, %0d) is outside the %0dx%0d mesh at pc %0d", bx, by, W, H, pc);
+            else if (bad_rf && rf_round > 32'd127)
+                $fatal(1, "cmd_seq: register-form ROUND %0d out of range at pc %0d", rf_round, pc);
+            else if (bad_rf && rf_rows > 32'd7)
+                $fatal(1, "cmd_seq: register-form ROWS %0d out of range (rows minus 1, 0..7) at pc %0d", rf_rows, pc);
+            else if (bad_rf)
+                $fatal(1, "cmd_seq: register-form RMODE %0d out of range at pc %0d", rf_rmode, pc);
             else if (bad_deep)
                 $fatal(1, "cmd_seq: LOOP nested deeper than 4 at pc %0d", pc);
             else if (bad_cnt)

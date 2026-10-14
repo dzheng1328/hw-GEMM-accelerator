@@ -6,6 +6,7 @@ write-back FIFO; ADD, LOOP, and restart match golden; every fault stops at
 golden's pc and stays stopped."""
 
 import random
+from dataclasses import replace
 
 import cocotb
 import numpy as np
@@ -19,8 +20,10 @@ from hwview import dma_ports, entry_words
 from nets import NETS, random_net
 
 MESH = (4, 3)
-# The register-form bit is 4.3d's; the RTL gains it in 4.3f.
-BLOCK_PORTS = tuple(f for f in isa.BLOCK_FIELDS if f != "reg_form")
+# The BLOCK ports carry the resolved round, flags and result mode of a register form (golden's
+# Tracer.resolved); q16 and rows_m1 are also the write-back entry's mode and row limit.
+BLOCK_PORTS = tuple(isa.BLOCK_FIELDS)
+ROW_PORTS = ("q16", "rows_m1")
 REG_PORTS = ("in_base", "w_base", "cin_log2", "h_log2", "w_log2", "wout_log2", "stride2", "pad",
              "ksize", "ks", "bias_start", "bias_val")
 PUSH_PORTS = ("wb_push", "wb_tile", "wb_raw", "wb_base", "wb_step")
@@ -37,6 +40,14 @@ _loaded = 0  # program words written by earlier tests (zeroed on the next load)
 
 def blk(x, y, pb=0, **flags):
     return isa.block(isa.Block(x, y, 0, pb, 0, **flags))
+
+
+def rf_blk(x, y, pb=0, **flags):
+    return isa.block(isa.Block(x, y, 0, pb, 0, reg_form=True, **flags))
+
+
+def setr(reg, value):
+    return isa.alu(isa.ALU_ADD, reg, 0, imm=value)
 
 
 def net_build(name, n_images=2, seed=0):
@@ -126,19 +137,19 @@ class Env:
             start = bool(dut.dma_start.value)
             self.cycles.append((start, ready, s0_left == 1))
             if s0_left:
-                assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed before handoff"
+                assert ports(dut, BLOCK_PORTS + REG_PORTS + ROW_PORTS) == held, f"BLOCK {n}: DMA inputs changed before handoff"
                 assert not start, f"BLOCK {n}: dma_start while the DMA is not ready"
             if start:
                 assert ready, "dma_start while the DMA is not ready"
                 push = ports(dut, PUSH_PORTS)
                 self.issues.append({"block": block_of(dut), "regs": ports(dut, REG_PORTS), "push": push,
-                                    "pending": [i for _, i in self.pending]})
+                                    "rows": ports(dut, ROW_PORTS), "pending": [i for _, i in self.pending]})
                 n = len(self.issues) - 1
                 if push["wb_push"]:
                     tile = push["wb_tile"]
                     assert sum(t == tile for t, _ in self.pending) < 2, f"BLOCK {n} pushed to tile {tile}'s full FIFO"
                     self.pending.append((tile, n))
-                held = ports(dut, BLOCK_PORTS + REG_PORTS)
+                held = ports(dut, BLOCK_PORTS + REG_PORTS + ROW_PORTS)
             await RisingEdge(dut.clk)
             drains = [d - 1 for d in drains if d > 1]
             if start:
@@ -185,9 +196,11 @@ async def run(dut, env, max_cycles=200_000):
 
 def check_trace(env, tracer):
     assert len(env.issues) == len(tracer.blocks), f"{len(env.issues)} BLOCKs issued, golden ran {len(tracer.blocks)}"
-    for n, (issue, (pc, b, regs, epoch, words)) in enumerate(zip(env.issues, tracer.blocks)):
+    for n, (issue, (pc, b, regs, epoch, words), (rb, rows, q16)) in enumerate(zip(env.issues, tracer.blocks, tracer.resolved)):
         where = f"BLOCK {n} (pc {pc})"
-        assert issue["block"] == b, f"{where}: issued {issue['block']}, expected {b}"
+        want = replace(rb, reg_form=b.reg_form)
+        assert issue["block"] == want, f"{where}: issued {issue['block']}, expected {want}"
+        assert issue["rows"] == {"q16": int(q16), "rows_m1": rows - 1}, f"{where}: rows {issue['rows']}, expected {rows} q16={q16}"
         assert issue["regs"] == dma_ports(regs), f"{where}: DMA registers {issue['regs']}, expected {dma_ports(regs)}"
         push = issue["push"]
         if words is None:
@@ -195,8 +208,8 @@ def check_trace(env, tracer):
         else:
             assert push["wb_push"], f"{where} returns results but pushed no entry"
             assert push["wb_tile"] == b.tile_y * MESH[0] + b.tile_x, f"{where}: entry for tile {push['wb_tile']}"
-            assert push["wb_raw"] == int(not b.requant), f"{where}: entry raw={push['wb_raw']}"
-            got = entry_words(push["wb_base"], push["wb_step"], push["wb_raw"])
+            assert push["wb_raw"] == int(not rb.requant), f"{where}: entry raw={push['wb_raw']}"
+            got = entry_words(push["wb_base"], push["wb_step"], push["wb_raw"], q16, rows)
             assert np.array_equal(got, words), f"{where}: entry covers {got[:4]}..., golden writes {words[:4]}..."
         stale = [i for i in issue["pending"] if tracer.blocks[i][3] != epoch]
         assert not stale, f"{where} issued before BLOCK {stale[0]}'s write-back drained (a WAIT lies between them)"
@@ -295,6 +308,37 @@ async def test_nested_loops_and_loopr_match_golden(dut):
     await run(dut, env)
     env.stop()
     assert dut.done.value and not dut.error.value
+    check_trace(env, tracer)
+    assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
+async def test_register_form_blocks_resolve_like_golden(dut):
+    """ROUND, ROWS and RMODE decide a register form's round, accumulation,
+    return and result mode: a K = 200 sum in four rounds (0-2 accumulate and
+    do not return, 3 returns RESULT8), a K = 128 sum whose last round ends
+    exactly on a round boundary, RESULT16 with a row limit, RESULT8 with relu,
+    raw cells with a row limit, and an immediate-form BLOCK that must ignore
+    all three registers even when they are out of range."""
+    await setup_dut(dut)
+    R, W, Q = isa.ROUND, isa.ROWS, isa.RMODE
+    prog = SETUP + [setr(isa.KS, 200), setr(W, 7), setr(Q, isa.RMODE_Q8)]
+    for rnd in range(4):
+        prog += [setr(R, rnd), rf_blk(1, 1, sh=3, m=9)]
+    # K = 128 is exactly two rounds: round 1 is the last (64 * 2 >= 128) and returns.
+    prog += [isa.wait(), setr(isa.KS, 128), setr(R, 0), rf_blk(1, 1, 6, sh=3, m=9), setr(R, 1), rf_blk(1, 1, 6, sh=3, m=9)]
+    prog += [isa.wait(), setr(isa.KS, 8), setr(R, 0), setr(W, 1), setr(Q, isa.RMODE_Q16), rf_blk(0, 0, 2, sh=5, m=77),
+             isa.wait(), setr(W, 7), setr(Q, isa.RMODE_Q8), rf_blk(2, 0, 3, relu=True, sh=2, m=5),
+             isa.wait(), setr(W, 2), setr(Q, isa.RMODE_RAW), rf_blk(3, 0, 4), isa.wait(),
+             setr(R, 999), setr(W, 9), setr(Q, 9), blk(3, 0, 5), isa.end()]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    assert [(rows, q16) for _, rows, q16 in tracer.resolved][-4:] == [(2, True), (8, False), (3, False), (8, False)]
+    await load(dut, prog)
+    env = Env(dut, random.Random(13))
+    await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
     check_trace(env, tracer)
     assert dut_regs(dut) == tracer.regs
 
@@ -462,6 +506,11 @@ FAULTS = [
     [isa.alu(isa.ALU_ADD, 25, 0, imm=1 << 16), isa.loopr(25)],  # a count above 65535
     [isa.alu(isa.ALU_ADD, 25, 0, imm=0xFFFF_FFFF), isa.loopr(25)],
     [isa.loopr(0)],                                # r0 reads zero
+    [setr(isa.ROUND, 128), rf_blk(0, 0)],          # register form: ROUND beyond 7 bits
+    [setr(isa.ROWS, 8), rf_blk(0, 0)],             # ROWS is rows minus one: 0..7
+    [setr(isa.RMODE, 3), rf_blk(0, 0)],
+    [setr(isa.RMODE, 0xFFFF_FFFF), rf_blk(0, 0)],
+    [setr(isa.ROUND, 128), rf_blk(4, 0)],          # ROUND first, then the tile (both fault at this pc)
     [blk(4, 0)],                                   # tile_x = W
     [isa.add(1, 0, 1), blk(0, 3)],                 # tile_y = H
 ]

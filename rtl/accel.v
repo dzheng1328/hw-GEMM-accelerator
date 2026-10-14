@@ -61,6 +61,8 @@ module accel #(
     wire                acc_keep, no_ret, requant, relu;
     wire [5:0]          sh;
     wire [15:0]         m;
+    wire                reg_form, q16;
+    wire [2:0]          rows_m1;
     wire                wb_push, wb_raw, wb_idle;
     wire [TIW-1:0]      wb_tile;
     wire [WA-1:0]       wb_base;
@@ -78,8 +80,12 @@ module accel #(
         .bias_start(bias_start), .bias_val(bias_val),
         .tile_x(tile_x), .tile_y(tile_y), .acc_keep(acc_keep), .no_ret(no_ret), .requant(requant),
         .relu(relu), .sh(sh), .m(m),
+        .reg_form(reg_form), .q16(q16), .rows_m1(rows_m1),
         .wb_push(wb_push), .wb_tile(wb_tile), .wb_raw(wb_raw), .wb_base(wb_base), .wb_step(wb_step),
         .wb_full(wb_full), .wb_idle(wb_idle));
+
+    // reg_form is cmd_seq's own: its resolved fields are what the rest sees.
+    wire unused_reg_form = &{1'b0, reg_form};
 
     // ---- DMA and flit formatting ----
     wire                act_re, wt_re;
@@ -104,9 +110,8 @@ module accel #(
     assign block_tag[TAG_REQUANT]     = requant;
     assign block_tag[TAG_ACC_KEEP]    = acc_keep;
     assign block_tag[TAG_NO_RET]      = no_ret;
-    // Nothing issues RESULT16 or a row limit yet: 4.3f wires them to the new BLOCK fields.
-    assign block_tag[TAG_Q16]         = 1'b0;
-    assign block_tag[TAG_ROWS +: 3]   = 3'd7;
+    assign block_tag[TAG_Q16]         = q16;
+    assign block_tag[TAG_ROWS +: 3]   = rows_m1;
     assign block_tag[TAG_X +: AW]     = tile_x;
     assign block_tag[TAG_Y +: AW]     = tile_y;
 
@@ -180,7 +185,7 @@ module accel #(
 
     writeback #(.W(W), .H(H), .AW(AW), .ACT_BW(ACT_BW)) wb (
         .clk(clk), .rst(rst),
-        .push(wb_push), .push_tile(wb_tile), .push_mode(wb_raw ? 2'd0 : 2'd1), .push_rows_m1(3'd7), .push_base(wb_base), .push_step(wb_step),
+        .push(wb_push), .push_tile(wb_tile), .push_mode(wb_raw ? 2'd0 : (q16 ? 2'd2 : 2'd1)), .push_rows_m1(rows_m1), .push_base(wb_base), .push_step(wb_step),
         .full(wb_full), .idle(wb_idle),
         .res_valid(res_valid[0]), .res_q8(res_q8[0]), .res_q16(res_q16[0]), .res_src_x(res_src_x[AW-1:0]),
         .res_src_y(res_src_y[AW-1:0]), .res_idx(res_idx[5:0]), .res_data(res_data[63:0]),
