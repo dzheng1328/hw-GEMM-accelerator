@@ -187,14 +187,14 @@ SILU_MUL loads its layer's table into the VPU first (64 words, 64 cycles).
 
 ### Datapath and RTL structure
 
-Four int16 lanes wide (the width of one logits or score word; int8 feature words are handled as two halves), on one narrow 64-bit read port and one write port per memory: one word read and one word written per cycle, the 8 stories in lockstep, with max, sum, and sum-of-squares accumulators for reductions.
+Lanes sized to the word: four for int16 words (the width of one logits or score word, in EMBED, RMSNORM and SOFTMAX), eight for the int8 words of ROPE and SILU_MUL; on one narrow 64-bit read port and one write port per memory: one word read and one word written per cycle, the 8 stories in lockstep, with max, sum, and sum-of-squares accumulators for reductions.
 The VPU owns both memories while it is busy, and 4.3f muxes the ports onto the DMA and write-back ports.
 SAMPLE reads the vocabulary three times (max; exp and sum; running-sum walk) over 2 words per vocabulary entry: about 3K cycles per step for all 8 stories.
 
 | File | Role |
 |---|---|
 | `rtl/vpu.v` | Command latch, faults, the OR of the nine sub-ops' memory requests; each sub-op is its own `rtl/vpu_<name>.v` |
-| `rtl/vpu_lanes.v` | 4-lane multiply, rounding shift, saturate |
+| `rtl/vpu_lanes.v` | 4- or 8-lane multiply, rounding shift, saturate (parameters `LANES`, `QW`) |
 | `rtl/vpu_exp.v`, `rtl/vpu_exparg.v` | exp, and the exponent argument that feeds it |
 | `rtl/vpu_rsqrt.v` | rsqrt and reciprocal |
 | `rtl/vpu_rng.v` | 8 xorshift32 generators |

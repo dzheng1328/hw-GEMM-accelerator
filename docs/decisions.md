@@ -21,19 +21,19 @@ of the alternatives. Useful for your own memory, and directly answers the
 ### 2026-10-14 -- 4.3e: the vector unit's RTL contract, and where it departs from the spec
 **Context:** The 4.3 spec fixed what each VOP sub-op computes but left the VPU's memory interface, lane width, pipelining and fault policy open, and its section 3 assumed eight lanes.
 **Options considered:** Memory ports: narrow generic ports (one 64-bit read and one 64-bit write port per memory) or ports shaped to the DMA's banks.
-Lanes: eight, or four int16 lanes with int8 feature words handled as two halves.
+Lanes: eight everywhere, or a lane count that follows each sub-op's word (an int16 word holds four values, an int8 word eight).
 Datapaths: pipelined multiplier chains, or combinational between the read data and the write register.
 Faults: re-check every address in the RTL, or trust the compiler on addresses and check only what the RTL can see itself.
-**Decision:** Narrow generic ports that 4.3f muxes onto the DMA and write-back ports while the VPU is busy, four int16 lanes, and combinational datapaths between the read data and a registered write request.
+**Decision:** Narrow generic ports that 4.3f muxes onto the DMA and write-back ports while the VPU is busy, a lane count that follows the word (four for the int16 paths of EMBED, RMSNORM and SOFTMAX, eight for ROPE and SILU_MUL, whose words hold eight int8 values), and combinational datapaths between the read data and a registered write request.
 Each sub-op is its own module with registered requests that are low when it is idle, and `vpu.v` ORs the nine together.
 The RTL faults, sticky and with `$fatal` unless `FATAL = 0`, on an invalid sub-op, `T >= 256`, a token outside the vocabulary, a zero rsqrt input and `INV_TEMP >= 65536`; address ranges stay golden checks.
 `busy` ends when the last write is committed, `done` is high the first cycle `busy` is low, a `start` in that cycle is accepted, and `vpu_perf` counts busy cycles per sub-op.
 The legal shift domain of every shifted op ends at 63, because `_round_shift`'s rounding term overflows int64 at 64, so `fixedpoint.rmsnorm_q` and the golden fault beyond it (the real model peaks near 41).
 **Why:** A narrow generic interface keeps the VPU testable alone against `golden_vop` on whole memory images, and the cycle cost of the port sharing is measured in 4.3g instead of guessed here.
-Four lanes match the width of one logits or score word, and one word per cycle is the port limit whatever the lane count.
+A lane per value in the word keeps one word per cycle on each port, and that is the port limit whatever the lane count.
 The compiler already owns address ranges and the golden checks them, so the RTL only checks what it could get wrong by itself.
 **Result:** All nine sub-ops are bit-exact against `golden_vop` on whole memory images, under Verilator with `-Wall` fatal and under Icarus, with no new lint waiver.
-The spec's section 3 now says four lanes, and the measured cycles are in the learnings log.
+The spec's section 3 now describes the lane counts, and the measured cycles are in the learnings log.
 **Hand-off:** 4.3f receives the port list of `rtl/vpu.v`, the contract that the VPU owns both memories while `busy`, the `done` timing (the next command may start in the `done` cycle) and `vpu_perf`'s counters.
 It adds the A-memory write port, the mux in `accel.v` and `cmd_seq`'s decode of opcodes 7-9, and restores the depth-5 nested-LOOP fault, the `reg_form` port and the opcode 7-9 fault tests in `tb/cmd_seq/`.
 
