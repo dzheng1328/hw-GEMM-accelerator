@@ -22,6 +22,7 @@ import numpy as np
 
 M_BITS = 16
 SH_BITS = 6
+MAX_SHIFT = (1 << SH_BITS) - 1  # _round_shift's rounding term 1 << (sh - 1) overflows int64 beyond this
 
 
 def quantize_multiplier(M: float) -> tuple[int, int]:
@@ -207,4 +208,6 @@ def rmsnorm_q(x, eps_q: int, m, sh):
     assert n & (n - 1) == 0, "RMSNORM width must be a power of two"
     u = ((x * x).sum(-1) >> (n.bit_length() - 1)) + eps_q
     r, k = rsqrt_q(u)
+    if int(np.max(sh + 15 + k)) > MAX_SHIFT:
+        raise ValueError(f"RMSNORM shift {int(np.max(sh + 15 + k))} exceeds {MAX_SHIFT}, the largest _round_shift defines")
     return np.clip(_round_shift(x * r[..., None] * m, sh + 15 + k[..., None]), -128, 127)

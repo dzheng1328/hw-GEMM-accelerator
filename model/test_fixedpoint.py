@@ -188,6 +188,15 @@ def test_rmsnorm_q_tracks_float():
     assert np.max(np.abs(y * s_n - np.clip(ref, -128 * s_n, 127 * s_n))) <= s_n
 
 
+def test_rmsnorm_q_rejects_a_shift_beyond_63():
+    """_round_shift's rounding term 1 << (sh - 1) overflows int64 at a shift of 64, so rtl/vpu_rmsnorm.v's
+    domain, and the golden's, stops at sh + 15 + k = 63. x = 100 everywhere gives u = 10018, k = 6."""
+    x = np.full((1, 64), 100)
+    assert rmsnorm_q(x, 18, 1 << 15, 42).shape == (1, 64)  # 42 + 15 + 6 = 63
+    with pytest.raises(ValueError, match="exceeds 63"):
+        rmsnorm_q(x, 18, 1 << 15, 43)
+
+
 def test_seed_table_sizes_match_the_spec():
     """docs/specs/2026-09-28-tiny-lm-vector-unit-design.md section 3 documents these sizes for rtl/vpu_rsqrt.v."""
     from fixedpoint import RECIP_LUT, RSQRT_LUT

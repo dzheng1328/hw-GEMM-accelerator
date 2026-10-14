@@ -100,7 +100,11 @@ class Vpu:
         """ra = residual (int16 feature words, 64), rb = destination (int8
         feature words), rc = parameter word (m, sh, eps_q)."""
         m, sh, eps = self.param(param)
-        self.put8(dst, rmsnorm_q(self.get16(src, DIM).copy(), eps, m, sh))
+        try:
+            y = rmsnorm_q(self.get16(src, DIM).copy(), eps, m, sh)
+        except ValueError as e:  # a zero rsqrt input, or a shift beyond 63
+            self.fail(str(e))
+        self.put8(dst, y)
 
     def rope(self, qf, kf, qs):
         """ra = q (int8 feature words, 64), rb = k (int8 feature words, 32,
@@ -180,6 +184,8 @@ class Vpu:
         if self.T + 1 < self.g.regs[isa.PLEN]:
             return
         inv = self.g.regs[isa.INV_TEMP]
+        if inv >= 1 << 16:
+            self.fail(f"INV_TEMP {inv} does not fit Q8.8 in 16 bits")
         m, sh, _ = self.param(param)
         state = self._words(self.g.wmem, seeds, 4, "seeds")
         tok, new = sample_q(self.get16(logits, VOCAB), inv, m, sh, state.view("<u4").astype(np.int64))
