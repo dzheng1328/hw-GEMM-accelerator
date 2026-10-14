@@ -35,6 +35,24 @@ COMPILE_ARGS += -P$(TOPLEVEL).QW=$(LANES_QW)
 else
 COMPILE_ARGS += -GQW=$(LANES_QW)
 endif
+else ifneq ($(filter $(SUITE),ops faults fatal),)
+TOPLEVEL = vpu
+VPU_RTL = $(addprefix $(PWD)/../../rtl/, vpu.v vpu_add.v vpu_transpose.v vpu_embed.v vpu_rmsnorm.v vpu_silu.v \
+    vpu_rope.v vpu_kvwrite.v vpu_softmax.v vpu_sample.v vpu_rsqrt.v vpu_exp.v vpu_exparg.v vpu_lanes.v vpu_rng.v \
+    vpu_perf.v requant.v)
+VERILOG_SOURCES = $(VPU_RTL)
+# ops: every sub-op against the golden; faults: the same build with FATAL = 0, so a fault raises
+# the `fault` output; fatal: FATAL = 1, one probe per `make fault-check` run.
+MODULE = $(if $(filter ops,$(SUITE)),test_ops,$(if $(filter faults,$(SUITE)),test_faults,test_fatal))
+ifneq ($(SUITE),fatal)
+ifneq ($(SUITE),ops)
+ifeq ($(SIM),icarus)
+COMPILE_ARGS += -P$(TOPLEVEL).FATAL=0
+else
+COMPILE_ARGS += -GFATAL=0
+endif
+endif
+endif
 else
 $(error unknown SUITE $(SUITE))
 endif
