@@ -304,6 +304,15 @@ def test_a_tracer_records_the_resolved_register_form_block():
     assert rb1 == g.blocks[1][1] and (rows1, q161) == (8, False)
 
 
+def test_a_tracer_records_each_vops_operand_values_and_drains_like_wait():
+    prog = setregs({22: 1000, 23: 2000, 24: 3, isa.T: 5, isa.PLEN: 9, isa.INV_TEMP: 300}) + [
+        isa.vop(isa.TRANSPOSE, 22, 23, 24), isa.vop(isa.VADD, 23, 22), isa.end()]
+    g = Tracer(1, 1, prog, [], [])
+    g.run()
+    assert g.vops == [(6, isa.TRANSPOSE, 1000, 2000, 3, 5, 9, 300), (7, isa.VADD, 2000, 1000, 0, 5, 9, 300)]
+    assert g.epoch == 3  # each VOP and the END retire like a WAIT
+
+
 def test_result16_saturates_at_both_int16_rails():
     wmem, act = random_mems(5)
     wmem[700:708] = 0x7F7F7F7F7F7F7F7F  # every A column 127

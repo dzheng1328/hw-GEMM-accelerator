@@ -22,6 +22,13 @@
 //   LOOP     push (pc + 1, count); ENDLOOP counts down and jumps back
 //   LOOPR    LOOP whose count is a register's value
 //   END      stall until write-back and the DMA are idle, then raise done
+//   VOP      drain like WAIT (every outstanding BLOCK written back), pulse
+//            vop_start with the sub-op and its operand registers' values,
+//            and wait for rtl/vpu.v's done; the next command starts after it.
+//            The VPU owns the memories meanwhile (rtl/accel.v's mux), so
+//            nothing else issues. A VPU fault is the command's fault. The
+//            wait_stall output covers both the drain and the VPU's run, so
+//            cmd_perf counts a VOP as wait_cyc (4.3g splits it out).
 //
 // Fetch reads ahead. Program memory reads are registered, so the executing
 // command is prog_rdata itself, and a command that completes reads its
@@ -42,9 +49,10 @@
 // word (base) and the per-row step (OSTRIDE, times 8 for raw), fixed at
 // issue so a later ADD cannot move results still in flight.
 //
-// Faults -- an invalid opcode, a tile outside the W x H mesh, a fifth nested
-// LOOP, LOOP 0, a LOOPR count of 0 or above 65535, ENDLOOP with no loop --
-// set the sticky error and error_pc and stop fetch; with FATAL (the default) the simulation ends with $fatal.
+// Faults -- an invalid opcode, an invalid VOP sub-op, a tile outside the W x H
+// mesh, a register-form ROUND, ROWS or RMODE out of range, a fifth nested
+// LOOP, LOOP 0, a LOOPR count of 0 or above 65535, ENDLOOP with no loop, and
+// whatever rtl/vpu.v faults on -- set the sticky error and error_pc and stop fetch; with FATAL (the default) the simulation ends with $fatal.
 // start restarts a finished program (registers and loop cleared) but not a
 // faulted one: that takes rst.
 module cmd_seq #(
@@ -114,24 +122,36 @@ module cmd_seq #(
     output wire [WA-1:0]       wb_base,
     output wire [11:0]         wb_step,
     input  wire [(1<<TIW)-1:0] wb_full,
-    input  wire                wb_idle
+    input  wire                wb_idle,
+    // rtl/vpu.v: vop_start is a single-cycle pulse, the operands are the
+    // registers' values then, and the VPU latches them.
+    output wire                vop_start,
+    output wire [3:0]          vop_sub,
+    output wire [31:0]         vop_ra,
+    output wire [31:0]         vop_rb,
+    output wire [31:0]         vop_rc,
+    output wire [31:0]         vop_t,
+    output wire [31:0]         vop_plen,
+    output wire [31:0]         vop_inv_temp,
+    input  wire                vop_done,      // the command finished (one cycle)
+    input  wire                vop_fault      // sticky: the VPU rejected or failed the command
 );
 
     localparam [3:0] OP_ADD = 4'd1, OP_BLOCK = 4'd2, OP_WAIT = 4'd3,
                      OP_LOOP = 4'd4, OP_ENDLOOP = 4'd5, OP_END = 4'd6,
-                     OP_ALU = 4'd7, OP_LOOPR = 4'd8;
+                     OP_ALU = 4'd7, OP_LOOPR = 4'd8, OP_VOP = 4'd9;
     // Hardware-defined registers (compiler/isa.py).
     localparam R_IN_BASE = 1, R_OUT_BASE = 2, R_W_BASE = 3, R_CIN_LOG2 = 4, R_H_LOG2 = 5,
                R_W_LOG2 = 6, R_WOUT_LOG2 = 7, R_STRIDE = 8, R_PAD = 9, R_KSIZE = 10,
                R_KS = 11, R_BIAS = 12, R_OSTRIDE = 13,
-               R_ROUND = 19, R_ROWS = 20, R_RMODE = 21;
+               R_T = 16, R_PLEN = 17, R_INV_TEMP = 18, R_ROUND = 19, R_ROWS = 20, R_RMODE = 21;
     localparam [31:0] SLOTS_PER_ROUND = 32'd64;
-    // S_HALT: stopped by END (done) or a fault (error).
-    localparam [1:0] S_IDLE = 2'd0, S_EXEC = 2'd1, S_BLOCK = 2'd2, S_HALT = 2'd3;
+    // S_HALT: stopped by END (done) or a fault (error). S_VOP: a VOP is running in the VPU.
+    localparam [2:0] S_IDLE = 3'd0, S_EXEC = 3'd1, S_BLOCK = 3'd2, S_HALT = 3'd3, S_VOP = 3'd4;
     localparam [PC_W-1:0] PC_ONE = 1;
     localparam [31:0] W32 = W, H32 = H;
 
-    reg [1:0]      state;
+    reg [2:0]      state;
     reg [PC_W-1:0] pc;           // address of prog_rdata, the executing command
     reg [31:0]     regs [0:31];  // regs[0] is never written: r0 reads zero
     // The loop stack: depth entries, the innermost at index depth - 1.
@@ -173,6 +193,7 @@ module cmd_seq #(
     wire is_loopr   = (op == OP_LOOPR);
     wire is_endloop = (op == OP_ENDLOOP);
     wire is_end     = (op == OP_END);
+    wire is_vop     = (op == OP_VOP);
     wire exec       = (state == S_EXEC);
 
     wire [31:0]    tile_lin = {29'd0, by} * W32 + {29'd0, bx};
@@ -212,29 +233,44 @@ module cmd_seq #(
     assign q16      = reg_form && rf_rmode == 32'd2;
     assign rows_m1  = reg_form ? rf_rows[2:0] : 3'd7;
 
-    wire bad_op   = !(is_add || is_block || is_wait || is_loop || is_endloop || is_end || is_alu || is_loopr);
+    wire [3:0] sub_op = insn[59:56];
+    wire bad_op   = !(is_add || is_block || is_wait || is_loop || is_endloop || is_end || is_alu || is_loopr || is_vop);
+    wire bad_sub  = is_vop && (sub_op == 4'd0 || sub_op > 4'd9);
     wire bad_tile = is_block && tile_out;
     wire bad_deep = loop_any && depth == 3'd4;
     wire bad_cnt  = loop_any && (loop_n == 32'd0 || loop_n > 32'd65535);
     wire bad_endl = is_endloop && depth == 3'd0;
-    wire fault    = exec && (bad_op || bad_tile || bad_rf || bad_deep || bad_cnt || bad_endl);
+    wire fault    = exec && (bad_op || bad_sub || bad_tile || bad_rf || bad_deep || bad_cnt || bad_endl);
 
-    wire drain  = (is_wait || is_end) && (!wb_idle || dma_busy);
+    wire drain  = (is_wait || is_end || is_vop) && (!wb_idle || dma_busy);
     wire credit = is_block && !no_ret && wb_full[tile];
     wire issue  = exec && !fault && is_block && !credit && dma_ready;
-    wire step   = exec && !fault && !is_block && !drain;   // a non-BLOCK command completes
+    wire vop_go = exec && !fault && is_vop && !drain;
+    wire step   = exec && !fault && !is_block && !is_vop && !drain;   // a command other than BLOCK or VOP completes
+    wire in_vop = (state == S_VOP);
+    wire vop_fin = in_vop && !vop_fault && vop_done;
 
     wire            loop_back = is_endloop && (loop_left[top] != 16'd1);
     wire [PC_W-1:0] pc_next   = loop_back ? loop_pc[top] : pc + PC_ONE;
     wire            restart   = start && (state == S_IDLE || (state == S_HALT && done));
 
-    assign prog_re    = restart || step || (state == S_BLOCK && dma_handoff);
+    assign prog_re    = restart || step || vop_fin || (state == S_BLOCK && dma_handoff);
     assign prog_raddr = restart ? {PC_W{1'b0}} : pc_next;
 
-    assign busy         = (state == S_EXEC) || (state == S_BLOCK);
-    assign wait_stall   = exec && !fault && drain;
+    assign busy         = (state == S_EXEC) || (state == S_BLOCK) || in_vop;
+    assign wait_stall   = (exec && !fault && drain) || in_vop;
     assign credit_stall = exec && !fault && credit;
     assign dma_start    = issue;
+
+    // ---- VOP: the sub-op and its operand registers ----
+    assign vop_start    = vop_go;
+    assign vop_sub      = sub_op;
+    assign vop_ra       = regs[insn[55:51]];
+    assign vop_rb       = regs[insn[50:46]];
+    assign vop_rc       = regs[insn[45:41]];
+    assign vop_t        = regs[R_T];
+    assign vop_plen     = regs[R_PLEN];
+    assign vop_inv_temp = regs[R_INV_TEMP];
 
     // ---- Layer registers, narrowed to the DMA's ports ----
     assign in_base    = regs[R_IN_BASE][ACT_BW+4:0];
@@ -292,6 +328,8 @@ module cmd_seq #(
                     error_pc <= pc;
                 end else if (issue) begin
                     state <= S_BLOCK;
+                end else if (vop_go) begin
+                    state <= S_VOP;
                 end else if (step) begin
                     pc <= pc_next;
                     if (is_add && dst != 4'd0)
@@ -316,6 +354,14 @@ module cmd_seq #(
                     state <= S_EXEC;
                     pc    <= pc_next;
                 end
+                S_VOP: if (vop_fault) begin
+                    state    <= S_HALT;
+                    error    <= 1'b1;
+                    error_pc <= pc;
+                end else if (vop_done) begin
+                    state <= S_EXEC;
+                    pc    <= pc_next;
+                end
                 default: ;
             endcase
         end
@@ -327,6 +373,8 @@ module cmd_seq #(
         if (!rst && fault && FATAL != 0) begin
             if (bad_op)
                 $fatal(1, "cmd_seq: invalid opcode %0d at pc %0d", op, pc);
+            else if (bad_sub)
+                $fatal(1, "cmd_seq: invalid VOP sub-op %0d at pc %0d", sub_op, pc);
             else if (bad_tile)
                 $fatal(1, "cmd_seq: BLOCK tile (%0d, %0d) is outside the %0dx%0d mesh at pc %0d", bx, by, W, H, pc);
             else if (bad_rf && rf_round > 32'd127)
@@ -342,6 +390,8 @@ module cmd_seq #(
             else
                 $fatal(1, "cmd_seq: ENDLOOP without an active LOOP at pc %0d", pc);
         end
+        if (!rst && in_vop && vop_fault && FATAL != 0)
+            $fatal(1, "cmd_seq: the VPU faulted on the VOP at pc %0d", pc);
     end
 `endif
 

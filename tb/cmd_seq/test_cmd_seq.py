@@ -24,6 +24,9 @@ MESH = (4, 3)
 # Tracer.resolved); q16 and rows_m1 are also the write-back entry's mode and row limit.
 BLOCK_PORTS = tuple(isa.BLOCK_FIELDS)
 ROW_PORTS = ("q16", "rows_m1")
+VOP_PORTS = ("vop_sub", "vop_ra", "vop_rb", "vop_rc", "vop_t", "vop_plen", "vop_inv_temp")
+# The sub-ops rtl/vpu.v rejects at T >= 256: EMBED, ROPE, KVWRITE, SOFTMAX, SAMPLE.
+USES_T = (isa.EMBED, isa.ROPE, isa.KVWRITE, isa.SOFTMAX, isa.SAMPLE)
 REG_PORTS = ("in_base", "w_base", "cin_log2", "h_log2", "w_log2", "wout_log2", "stride2", "pad",
              "ksize", "ks", "bias_start", "bias_val")
 PUSH_PORTS = ("wb_push", "wb_tile", "wb_raw", "wb_base", "wb_step")
@@ -63,7 +66,7 @@ async def setup_dut(dut):
 
 
 async def reset(dut):
-    for sig in ("start", "prog_we", "dma_busy", "dma_handoff", "wb_full"):
+    for sig in ("start", "prog_we", "dma_busy", "dma_handoff", "wb_full", "vop_done", "vop_fault"):
         getattr(dut, sig).value = 0
     dut.wb_idle.value = 1
     dut.dma_ready.value = 1
@@ -104,17 +107,27 @@ class Env:
     cycle), rtl/dma_gather.v's !active && (!go_pend || adv); busy covers S0,
     a pending GO, and every drain. Write-back retires entries at random,
     oldest first per tile, at most `budget` more of them (None: no limit).
-    `cycles` records (dma_start, dma_ready, dma_handoff) for every cycle."""
+    `cycles` records (dma_start, dma_ready, dma_handoff) for every cycle.
+    The VPU model follows rtl/vpu.v's contract: one vop_start pulse, only
+    once write-back and the DMA have drained and no VOP is running; vop_done
+    for one cycle after 1 to vop_cycles[1] cycles, or, for a sub-op that uses
+    T with T >= 256, a sticky vop_fault instead. Nothing may issue to the
+    DMA while a VOP runs, and wait_stall must hold for its whole run."""
 
-    def __init__(self, dut, rng, dma_cycles=(1, 12), drain_cycles=(1, 4), retire_prob=0.3, go_accept=0.7):
+    def __init__(self, dut, rng, dma_cycles=(1, 12), drain_cycles=(1, 4), retire_prob=0.3, go_accept=0.7,
+                 vop_cycles=(1, 8)):
         self.dut, self.rng = dut, rng
         self.dma_cycles, self.drain_cycles, self.retire_prob = dma_cycles, drain_cycles, retire_prob
         self.go_accept = go_accept
+        self.vop_cycles = vop_cycles
         self.issues = []   # {"block", "regs", "push", "pending"} per BLOCK issued
+        self.vops = []     # the VOP_PORTS of every vop_start
+        self.vop_inflight = False
         self.pending = []  # (tile, issue index) of entries not yet written back, oldest first
         self.budget = None
         self.cycles = []
-        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback())]
+        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback()),
+                      cocotb.start_soon(self.vpu())]
 
     def stop(self):
         for t in self.tasks:
@@ -141,6 +154,7 @@ class Env:
                 assert not start, f"BLOCK {n}: dma_start while the DMA is not ready"
             if start:
                 assert ready, "dma_start while the DMA is not ready"
+                assert not self.vop_inflight, "dma_start while a VOP runs"
                 push = ports(dut, PUSH_PORTS)
                 self.issues.append({"block": block_of(dut), "regs": ports(dut, REG_PORTS), "push": push,
                                     "rows": ports(dut, ROW_PORTS), "pending": [i for _, i in self.pending]})
@@ -162,6 +176,35 @@ class Env:
                     drains.append(rng.randint(*self.drain_cycles))
             elif accept:
                 go_pending = False
+
+    async def vpu(self):
+        dut, rng = self.dut, self.rng
+        left, bad, pulse = None, False, False
+        while True:
+            await FallingEdge(dut.clk)
+            if dut.vop_start.value:
+                assert not self.vop_inflight, "vop_start while a VOP runs"
+                assert not self.pending and not dut.dma_busy.value and dut.wb_idle.value, \
+                    "vop_start before write-back and the DMA drained"
+                op = ports(dut, VOP_PORTS)
+                self.vops.append(op)
+                self.vop_inflight = True
+                left, bad = rng.randint(*self.vop_cycles), op["vop_sub"] in USES_T and op["vop_t"] >= 256
+            elif self.vop_inflight:
+                assert dut.wait_stall.value and dut.busy.value, "wait_stall dropped while a VOP runs"
+            await RisingEdge(dut.clk)
+            dut.vop_done.value = 0
+            if pulse:
+                pulse, self.vop_inflight = False, False
+            if left is not None:
+                left -= 1
+                if left == 0:
+                    left = None
+                    pulse = True   # the sequencer leaves the VOP at the next edge, to EXEC or to HALT
+                    if bad:
+                        dut.vop_fault.value = 1
+                    else:
+                        dut.vop_done.value = 1
 
     async def writeback(self):
         dut = self.dut
@@ -195,6 +238,9 @@ async def run(dut, env, max_cycles=200_000):
 
 
 def check_trace(env, tracer):
+    assert len(env.vops) == len(tracer.vops), f"{len(env.vops)} VOPs started, golden ran {len(tracer.vops)}"
+    for n, (got, (pc, *want)) in enumerate(zip(env.vops, tracer.vops)):
+        assert [got[p] for p in VOP_PORTS] == want, f"VOP {n} (pc {pc}): started with {got}, golden has {want}"
     assert len(env.issues) == len(tracer.blocks), f"{len(env.issues)} BLOCKs issued, golden ran {len(tracer.blocks)}"
     for n, (issue, (pc, b, regs, epoch, words), (rb, rows, q16)) in enumerate(zip(env.issues, tracer.blocks, tracer.resolved)):
         where = f"BLOCK {n} (pc {pc})"
@@ -341,6 +387,56 @@ async def test_register_form_blocks_resolve_like_golden(dut):
     assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
     check_trace(env, tracer)
     assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
+async def test_vops_drain_first_hold_the_sequencer_and_pass_their_operands(dut):
+    """A VOP starts only once the BLOCKs before it (returning or not) have
+    drained, carries its three registers and T, PLEN and INV_TEMP, holds back
+    every later command until done, and does not disturb the loop around it."""
+    await setup_dut(dut)
+    prog = SETUP + [
+        setr(22, 1000), setr(23, 2000), setr(24, 3), setr(isa.T, 2), setr(isa.PLEN, 9), setr(isa.INV_TEMP, 300),
+        blk(0, 0), blk(1, 0, 1), blk(2, 0, 2),
+        isa.vop(isa.VADD, 22, 23, 24),
+        blk(3, 0, 3), isa.vop(isa.TRANSPOSE, 22, 23, 24), isa.vop(isa.SAMPLE, 22, 23, 24),
+        isa.loop(3), blk(0, 1, 4, no_ret=True), isa.vop(isa.VADD, 23, 22), isa.add(14, 14, 1), isa.endloop(),
+        isa.vop(isa.VADD, 0, 0, 0),
+        isa.end(),
+    ]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    assert len(tracer.vops) == 7
+    await load(dut, prog)
+    for seed, (lo, hi) in enumerate(((1, 1), (1, 8), (20, 30))):
+        env = Env(dut, random.Random(20 + seed), vop_cycles=(lo, hi))
+        await run(dut, env)
+        env.stop()
+        assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
+        check_trace(env, tracer)
+        assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
+async def test_a_vpu_fault_is_the_vops_fault(dut):
+    """The VPU's sticky fault stops the sequencer at the VOP's pc, even
+    though the VOP started; a start afterwards changes nothing."""
+    await setup_dut(dut)
+    prog = [setr(isa.T, 255), setr(isa.PLEN, 999), isa.vop(isa.SAMPLE), setr(isa.T, 256), isa.vop(isa.SAMPLE), isa.end()]
+    want = golden_fault_pc(prog)
+    assert want == 4
+    await load(dut, prog)
+    env = Env(dut, random.Random(30))
+    await run(dut, env)
+    assert dut.error.value and not dut.done.value and int(dut.error_pc.value) == want
+    assert len(env.vops) == 2
+    dut.start.value = 1
+    await RisingEdge(dut.clk)
+    dut.start.value = 0
+    for _ in range(10):
+        await FallingEdge(dut.clk)
+        assert dut.error.value and not dut.busy.value and int(dut.error_pc.value) == want
+    env.stop()
 
 
 @cocotb.test()
@@ -511,6 +607,9 @@ FAULTS = [
     [setr(isa.RMODE, 3), rf_blk(0, 0)],
     [setr(isa.RMODE, 0xFFFF_FFFF), rf_blk(0, 0)],
     [setr(isa.ROUND, 128), rf_blk(4, 0)],          # ROUND first, then the tile (both fault at this pc)
+    [isa.VOP << 60],                               # VOP sub-op 0
+    [isa.add(1, 0, 1), (isa.VOP << 60) | (10 << 56)],
+    [(isa.VOP << 60) | (15 << 56)],
     [blk(4, 0)],                                   # tile_x = W
     [isa.add(1, 0, 1), blk(0, 3)],                 # tile_y = H
 ]
@@ -537,6 +636,7 @@ async def test_every_fault_stops_at_its_pc(dut):
         assert dut.error.value and not dut.done.value, f"{prog}: no fault"
         assert int(dut.error_pc.value) == want, f"{prog}: error_pc {int(dut.error_pc.value)}, golden {want}"
         assert not env.issues, f"{prog}: a BLOCK issued"
+        assert not env.vops, f"{prog}: a VOP started"
         # Sticky: another start changes nothing.
         dut.start.value = 1
         await RisingEdge(dut.clk)

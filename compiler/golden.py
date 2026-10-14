@@ -66,7 +66,7 @@ class Golden:
                 self._block(pc, arg)
             elif op == isa.VOP:
                 self._retire()  # a VOP drains every outstanding BLOCK, like WAIT, before it starts
-                golden_vop.execute(self, pc, arg)
+                self._vop(pc, arg)
             elif op == isa.WAIT:
                 self._retire()
             elif op in (isa.LOOP, isa.LOOPR):
@@ -93,6 +93,9 @@ class Golden:
                 raise GoldenError(pc, f"invalid opcode {op}")
             pc = nxt
         raise GoldenError(pc, f"no END within {max_commands} commands")
+
+    def _vop(self, pc, v):
+        golden_vop.execute(self, pc, v)
 
     def _alu(self, a):
         if not a.dst:
@@ -258,12 +261,14 @@ class Tracer(Golden):
     resolved holds, in the same order, (block, rows, q16): the block with a
     register form's round, flags and result mode filled in (what the RTL's
     ports carry), the rows it returns and whether they are RESULT16;
+    vops holds every executed VOP as (pc, sub, ra, rb, rc, t, plen,
+    inv_temp), the operand registers' values when it started;
     slots and wb_words are the total OPERAND slots streamed and words
     written back."""
 
     def __init__(self, mesh_w, mesh_h, program, weights, act):
         super().__init__(mesh_w, mesh_h, program, weights, act)
-        self.blocks, self.resolved, self.epoch, self.slots, self.wb_words = [], [], 0, 0, 0
+        self.blocks, self.resolved, self.vops, self.epoch, self.slots, self.wb_words = [], [], [], 0, 0, 0
 
     def operands(self, b, pc=0):
         a, bmat = super().operands(b, pc)
@@ -277,6 +282,11 @@ class Tracer(Golden):
         self.blocks.append((pc, b, tuple(self.regs), self.epoch, words))
         self.resolved.append((rb, rows, q16))
         self.wb_words += 0 if words is None else len(words)
+
+    def _vop(self, pc, v):
+        R = self.regs
+        self.vops.append((pc, v.sub, R[v.ra], R[v.rb], R[v.rc], R[isa.T], R[isa.PLEN], R[isa.INV_TEMP]))
+        super()._vop(pc, v)
 
     def _retire(self):
         super()._retire()

@@ -63,6 +63,9 @@ module accel #(
     wire [15:0]         m;
     wire                reg_form, q16;
     wire [2:0]          rows_m1;
+    wire                vop_start;
+    wire [3:0]          vop_sub;
+    wire [31:0]         vop_ra, vop_rb, vop_rc, vop_t, vop_plen, vop_inv_temp;
     wire                wb_push, wb_raw, wb_idle;
     wire [TIW-1:0]      wb_tile;
     wire [WA-1:0]       wb_base;
@@ -82,7 +85,14 @@ module accel #(
         .relu(relu), .sh(sh), .m(m),
         .reg_form(reg_form), .q16(q16), .rows_m1(rows_m1),
         .wb_push(wb_push), .wb_tile(wb_tile), .wb_raw(wb_raw), .wb_base(wb_base), .wb_step(wb_step),
-        .wb_full(wb_full), .wb_idle(wb_idle));
+        .wb_full(wb_full), .wb_idle(wb_idle),
+        .vop_start(vop_start), .vop_sub(vop_sub), .vop_ra(vop_ra), .vop_rb(vop_rb), .vop_rc(vop_rc),
+        .vop_t(vop_t), .vop_plen(vop_plen), .vop_inv_temp(vop_inv_temp),
+        .vop_done(1'b0), .vop_fault(1'b0));
+
+    // The vector unit joins in the next commit; until then a VOP never completes, which is fine for
+    // every program that has none (CIFAR-10).
+    wire unused_vop = &{1'b0, vop_start, vop_sub, vop_ra, vop_rb, vop_rc, vop_t, vop_plen, vop_inv_temp};
 
     // reg_form is cmd_seq's own: its resolved fields are what the rest sees.
     wire unused_reg_form = &{1'b0, reg_form};
