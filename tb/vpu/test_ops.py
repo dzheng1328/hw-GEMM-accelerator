@@ -55,3 +55,50 @@ async def test_embed(dut):
         put_param(img, 999, m, sh)
         cycles = await check(dut, img, SUBS["EMBED"], ra=1000, rb=5000, rc=999, t=t)
     dut._log.info(f"EMBED: {cycles} cycles")
+
+
+@cocotb.test()
+async def test_rmsnorm(dut):
+    await start_clock(dut)
+    rng = rng_for("rmsnorm")
+    cases = {"random": None, "small": 40, "max": "max", "zero": "zero", "min": "min", "mixed": "mixed"}
+    for name, kind in cases.items():
+        img = Images(rng)
+        x = rng.integers(-32768, 32768, (64, 8))
+        if kind == "zero":
+            x[:] = 0
+        elif kind == "max":
+            x[:] = 32767
+        elif kind == "min":
+            x[:] = -32768
+        elif kind == "mixed":
+            x[:, :4] = 0
+            x[:, 4:] = rng.integers(-3, 4, (64, 4))
+        elif kind:
+            x = rng.integers(-kind, kind + 1, (64, 8))
+        for f in range(64):  # word 2f: stories 0-3; word 2f + 1: stories 4-7
+            put_i16(img.act, 3000 + 2 * f, x[f, :4])
+            put_i16(img.act, 3000 + 2 * f + 1, x[f, 4:])
+        m, sh = scale(rng, 5, 30)
+        put_param(img, 40, m, sh, int(rng.integers(1, 1 << 12)))
+        cycles = await check(dut, img, SUBS["RMSNORM"], ra=3000, rb=4000, rc=40)
+        dut._log.info(f"RMSNORM {name}: {cycles} cycles")
+
+
+@cocotb.test()
+async def test_rmsnorm_at_the_shift_limit(dut):
+    """sh + 15 + k = 63 is the largest shift the golden accepts (fixedpoint.MAX_SHIFT): the rounding term 1 << 62 and
+    the 48-bit product must neither overflow nor truncate. All 8 stories share one magnitude, so one sh fits every k."""
+    from fixedpoint import MAX_SHIFT, rsqrt_q
+    await start_clock(dut)
+    rng = rng_for("rmsnorm63")
+    for mag in (1, 100, 3000, 32767):
+        img = Images(rng)
+        x = mag * rng.choice([-1, 1], (64, 8))
+        for f in range(64):
+            put_i16(img.act, 3000 + 2 * f, x[f, :4])
+            put_i16(img.act, 3000 + 2 * f + 1, x[f, 4:])
+        eps = 18
+        k = int(rsqrt_q(np.array([mag * mag + eps]))[1][0])
+        put_param(img, 40, 1 << 15, MAX_SHIFT - 15 - k, eps)
+        await check(dut, img, SUBS["RMSNORM"], ra=3000, rb=4000, rc=40)

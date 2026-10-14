@@ -32,6 +32,9 @@ def fault_cases():
     put_i16(img.act, 0, [1, 2, 3, -1, 5, 6, 7, 8])
     put_param(img, 10, 1 << 15, 8)
     cases["embed_negative_token"] = (img, dict(sub=SUBS["EMBED"], ra=100, rb=2000, rc=10, t=0))
+    img = image()
+    put_param(img, 10, 1 << 15, 8, 0)  # an all-zero residual and eps_q = 0: u = 0
+    cases["rmsnorm_zero_rsqrt_input"] = (img, dict(sub=SUBS["RMSNORM"], ra=1000, rb=2000, rc=10))
     return cases
 
 
