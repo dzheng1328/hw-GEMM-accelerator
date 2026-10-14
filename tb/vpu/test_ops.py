@@ -102,3 +102,17 @@ async def test_rmsnorm_at_the_shift_limit(dut):
         k = int(rsqrt_q(np.array([mag * mag + eps]))[1][0])
         put_param(img, 40, 1 << 15, MAX_SHIFT - 15 - k, eps)
         await check(dut, img, SUBS["RMSNORM"], ra=3000, rb=4000, rc=40)
+
+
+@cocotb.test()
+async def test_silu_mul(dut):
+    await start_clock(dut)
+    rng = rng_for("silu")
+    for trial in range(3):
+        img = Images(rng)
+        m, sh = scale(rng, 10, 24)
+        put_param(img, 200, m, sh)
+        table = rng.integers(-32768, 32768, 256) if trial else np.round(np.arange(-128, 128) * 30.0)
+        put_i16(img.amem, 201, table)
+        cycles = await check(dut, img, SUBS["SILU_MUL"], ra=3000, rb=4000, rc=200)
+    dut._log.info(f"SILU_MUL: {cycles} cycles")
