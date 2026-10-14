@@ -116,3 +116,13 @@ async def test_silu_mul(dut):
         put_i16(img.amem, 201, table)
         cycles = await check(dut, img, SUBS["SILU_MUL"], ra=3000, rb=4000, rc=200)
     dut._log.info(f"SILU_MUL: {cycles} cycles")
+
+
+@cocotb.test()
+async def test_rope(dut):
+    await start_clock(dut)
+    rng = rng_for("rope")
+    for t in (0, 1, 7, 100, 255):
+        img = Images(rng)
+        cycles = await check(dut, img, SUBS["ROPE"], ra=1000, rb=2000, rc=4000, t=t)
+    dut._log.info(f"ROPE: {cycles} cycles")
