@@ -292,6 +292,30 @@ def test_sample_inside_the_prompt_copies_nothing_and_draws_nothing():
     assert np.array_equal(g.wmem[60:64].view("<u4"), state)
 
 
+def test_rmsnorm_faults_on_a_zero_rsqrt_input_and_on_a_shift_beyond_63():
+    m, sh = quantize_multiplier(32.0)
+
+    def zeros(g):
+        g.wmem[40] = param(m, sh, 0)  # an all-zero residual and eps_q = 0 give u = 0
+
+    with pytest.raises(GoldenError, match="rsqrt input outside"):
+        run_vop(isa.RMSNORM, 3000, 4000, 40, setup=zeros)
+
+    def far(g):
+        put16(g, 3000, np.full((8, DIM), 100))
+        g.wmem[40] = param(1 << 15, 43, 18)  # 43 + 15 + 6 = 64
+
+    with pytest.raises(GoldenError, match="exceeds 63"):
+        run_vop(isa.RMSNORM, 3000, 4000, 40, setup=far)
+
+
+def test_sample_faults_on_an_inv_temp_beyond_q8_8_but_not_inside_the_prompt():
+    setup = logits_setup(np.zeros((8, VOCAB), np.int64), np.arange(1, 9), 1, 0)
+    with pytest.raises(GoldenError, match="INV_TEMP"):
+        run_vop(isa.SAMPLE, 7000, 50, 60, regs={isa.T: 4, isa.PLEN: 3, isa.INV_TEMP: 1 << 16}, setup=setup)
+    run_vop(isa.SAMPLE, 7000, 50, 60, regs={isa.T: 1, isa.PLEN: 9, isa.INV_TEMP: 1 << 16}, setup=setup)  # copies nothing
+
+
 @pytest.mark.parametrize("sub", [isa.EMBED, isa.ROPE, isa.KVWRITE, isa.SOFTMAX, isa.SAMPLE])
 def test_ops_that_index_by_position_fault_when_t_reaches_the_context(sub):
     with pytest.raises(GoldenError, match="is not below the context"):

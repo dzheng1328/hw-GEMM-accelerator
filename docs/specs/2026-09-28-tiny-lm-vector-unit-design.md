@@ -187,14 +187,15 @@ SILU_MUL loads its layer's table into the VPU first (64 words, 64 cycles).
 
 ### Datapath and RTL structure
 
-Eight lanes wide: one word read and one word written per cycle, the 8 stories in lockstep (8 int8 lanes or 4 int16 lanes per word), with max, sum, and sum-of-squares accumulators for reductions.
+Lanes sized to the word: four for int16 words (the width of one logits or score word, in EMBED, RMSNORM and SOFTMAX), eight for the int8 words of ROPE and SILU_MUL; on one narrow 64-bit read port and one write port per memory: one word read and one word written per cycle, the 8 stories in lockstep, with max, sum, and sum-of-squares accumulators for reductions.
+The VPU owns both memories while it is busy, and 4.3f muxes the ports onto the DMA and write-back ports.
 SAMPLE reads the vocabulary three times (max; exp and sum; running-sum walk) over 2 words per vocabulary entry: about 3K cycles per step for all 8 stories.
 
 | File | Role |
 |---|---|
-| `rtl/vpu.v` | Sub-op decode, per-pass address generation, memory port requests |
-| `rtl/vpu_lanes.v` | 8-lane multiply, rounding shift, saturate |
-| `rtl/vpu_exp.v` | exp |
+| `rtl/vpu.v` | Command latch, faults, the OR of the nine sub-ops' memory requests; each sub-op is its own `rtl/vpu_<name>.v` |
+| `rtl/vpu_lanes.v` | 4- or 8-lane multiply, rounding shift, saturate (parameters `LANES`, `QW`) |
+| `rtl/vpu_exp.v`, `rtl/vpu_exparg.v` | exp, and the exponent argument that feeds it |
 | `rtl/vpu_rsqrt.v` | rsqrt and reciprocal |
 | `rtl/vpu_rng.v` | 8 xorshift32 generators |
 | `rtl/vpu_perf.v` | Busy cycles per sub-op, in the `node_perf` style |
@@ -263,7 +264,7 @@ The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 ### Tests
 
 - pytest: `model/test_fixedpoint.py` for every new integer op (including edge cases below); `compiler/test_*.py` for every new encoding, lowering of small transformers, golden against the direct reference, and every new ordering-rule fault.
-- `tb/vpu/` (new): every sub-op on random inputs and edge cases (all logits equal, a single valid position, maximum-magnitude residuals, INV_TEMP = 0, prompt copy), bit-exact against `fixedpoint.py`.
+- `tb/vpu/` (new): the arithmetic units bit-exact against `fixedpoint.py`, and every sub-op on random inputs and edge cases (all logits equal, a single valid position, maximum-magnitude residuals, INV_TEMP = 0, prompt copy) bit-exact against `golden_vop.py` on whole memory images.
 - `tb/mesh/` and `tb/writeback/`: RESULT16 and the row limit.
 - `tb/cmd_seq/`: ALU, LOOPR (including its count 0 and above-65535 faults), 4-deep loops, the register form, and every new fault's `error_pc`.
 - `tb/accel/`: random small transformers (1-2 layers, 8-16 steps) compiled and run end to end on 1x1, 2x2, and 4x3, one case per simulator run; every new `$fatal` proven by a negative test.
@@ -295,7 +296,7 @@ The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 | 4.3b | Tokenizer, training, quantization, new `fixedpoint.py` ops, `lm_reference.py` | - | Loss gate met; sample stories from the int8 reference read coherently |
 | 4.3c | RESULT16, GO row limit | - | `tb/requant` (QW 16), `tb/mesh`, and `tb/writeback` pass with the new modes |
 | 4.3d (done 2026-10-13) | ISA additions, `lower_lm.py`, golden executor, `check_lm.py`, A-memory depth 512 KB | b | Golden equals `lm_reference.py` for several meshes |
-| 4.3e | `rtl/vpu*.v`, `tb/vpu/` | b | Every sub-op bit-exact on random and edge inputs |
+| 4.3e (done) | `rtl/vpu*.v`, `tb/vpu/` | b | Every sub-op bit-exact on random and edge inputs |
 | 4.3f | `cmd_seq` extensions, `accel` integration, A-memory VPU write port | c, d, e | Random small transformers pass end to end on 1x1, 2x2, 4x3 |
 | 4.3g | Stories on the chip: `make lm`, `docs/perf/lm.md`, the trace, the scaling table | f | Exit criteria above |
 
