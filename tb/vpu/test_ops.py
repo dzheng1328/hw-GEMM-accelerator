@@ -28,3 +28,15 @@ async def test_add(dut):
     img = Images(rng)
     cycles = await check(dut, img, SUBS["ADD"], ra=70000, rb=70128)  # adjacent buffers, high addresses
     dut._log.info(f"ADD: {cycles} cycles")
+
+
+@cocotb.test()
+async def test_transpose(dut):
+    await start_clock(dut)
+    rng = rng_for("transpose")
+    for count in (0, 1, 2, 5, 32):
+        img = Images(rng)
+        cycles = await check(dut, img, SUBS["TRANSPOSE"], expect_change=count > 0, ra=3000, rb=9000, rc=count)
+        dut._log.info(f"TRANSPOSE x{count}: {cycles} cycles")
+    img = Images(rng)  # in place
+    await check(dut, img, SUBS["TRANSPOSE"], ra=4000, rb=4000, rc=3)

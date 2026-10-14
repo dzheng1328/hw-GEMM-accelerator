@@ -65,3 +65,31 @@ include $(shell cocotb-config --makefiles)/Makefile.sim
 .PHONY: lanes16
 lanes16:
 	$(MAKE) SUITE=lanes LANES_QW=16
+
+# Negative tests: with FATAL = 1 each fault, and a start while busy, must end the
+# simulation on the VPU's own $fatal (passes only if the probe run fails AND names it).
+FAULT_PROBES = invalid_sub_op_0 invalid_sub_op_10 t_at_context_embed t_at_context_rope t_at_context_kvwrite \
+    t_at_context_softmax t_at_context_sample
+.PHONY: fault-check
+fault-check:
+	@mkdir -p $(SIM_ROOT); \
+	for probe in $(FAULT_PROBES); do \
+	  log=$(SIM_ROOT)/vpu_fault_$$probe.log; \
+	  if VPU_PROBE=$$probe $(MAKE) --no-print-directory SUITE=fatal \
+	       COCOTB_RESULTS_FILE=$(SIM_ROOT)/sim_build_vpu_fatal/results_$$probe.xml > $$log 2>&1; then \
+	    echo "FAIL: $$probe did not stop the $(SIM) run (see $$log)"; exit 1; \
+	  elif ! grep -q "vpu: fault" $$log; then \
+	    echo "FAIL: $(SIM) run failed for $$probe, but not on the VPU's fault check (see $$log)"; exit 1; \
+	  else \
+	    echo "PASS: $$probe is fatal under $(SIM)"; \
+	  fi; \
+	done; \
+	log=$(SIM_ROOT)/vpu_fault_start_while_busy.log; \
+	if VPU_PROBE=start_while_busy $(MAKE) --no-print-directory SUITE=fatal \
+	     COCOTB_RESULTS_FILE=$(SIM_ROOT)/sim_build_vpu_fatal/results_busy.xml > $$log 2>&1; then \
+	  echo "FAIL: start while busy did not stop the $(SIM) run (see $$log)"; exit 1; \
+	elif ! grep -q "vpu: start while busy" $$log; then \
+	  echo "FAIL: $(SIM) run failed, but not on the VPU's start-while-busy check (see $$log)"; exit 1; \
+	else \
+	  echo "PASS: start while busy is fatal under $(SIM)"; \
+	fi
