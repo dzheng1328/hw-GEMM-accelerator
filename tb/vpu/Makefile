@@ -20,6 +20,10 @@ else ifeq ($(SUITE),rsqrt)
 TOPLEVEL = vpu_rsqrt
 MODULE = test_rsqrt
 VERILOG_SOURCES = $(PWD)/../../rtl/vpu_rsqrt.v
+else ifeq ($(SUITE),rng)
+TOPLEVEL = vpu_rng
+MODULE = test_rng
+VERILOG_SOURCES = $(PWD)/../../rtl/vpu_rng.v
 else
 $(error unknown SUITE $(SUITE))
 endif
