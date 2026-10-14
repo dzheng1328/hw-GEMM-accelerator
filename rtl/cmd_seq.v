@@ -2,16 +2,19 @@
 
 // rtl/cmd_seq.v -- the command processor's sequencer (milestone 4.2,
 // docs/specs/2026-09-25-command-processor-cifar10-design.md sections 2-3):
-// fetch, decode, the sixteen registers, the one-level loop, and the
+// fetch, decode, the 32 registers, the four-deep loop stack, and the
 // ordering the hardware owns. compiler/golden.py is the reference and
 // compiler/isa.py the encoding.
 //
-//   ADD      dst = src + imm; r0 stays zero
+//   ADD      dst = src + imm (r0-r15); r0 stays zero
+//   ALU      dst = src op (src2 or imm), op in add, sub, shr (count mod 32),
+//            and; 32-bit wrap; a destination of r0 is ignored (r0-r31)
 //   BLOCK    stall while the tile's write-back FIFO is full (returning
 //            BLOCKs only), then start rtl/dma_gather.v, push the write-back
 //            entry, and wait for the DMA's handoff
 //   WAIT     stall until rtl/writeback.v and the DMA are idle
 //   LOOP     push (pc + 1, count); ENDLOOP counts down and jumps back
+//   LOOPR    LOOP whose count is a register's value
 //   END      stall until write-back and the DMA are idle, then raise done
 //
 // Fetch reads ahead. Program memory reads are registered, so the executing
@@ -33,9 +36,9 @@
 // word (base) and the per-row step (OSTRIDE, times 8 for raw), fixed at
 // issue so a later ADD cannot move results still in flight.
 //
-// Faults -- an invalid opcode, a tile outside the W x H mesh, LOOP inside a
-// loop, LOOP 0, ENDLOOP with no loop -- set the sticky error and error_pc
-// and stop fetch; with FATAL (the default) the simulation ends with $fatal.
+// Faults -- an invalid opcode, a tile outside the W x H mesh, a fifth nested
+// LOOP, LOOP 0, a LOOPR count of 0 or above 65535, ENDLOOP with no loop --
+// set the sticky error and error_pc and stop fetch; with FATAL (the default) the simulation ends with $fatal.
 // start restarts a finished program (registers and loop cleared) but not a
 // faulted one: that takes rst.
 module cmd_seq #(
@@ -106,7 +109,8 @@ module cmd_seq #(
 );
 
     localparam [3:0] OP_ADD = 4'd1, OP_BLOCK = 4'd2, OP_WAIT = 4'd3,
-                     OP_LOOP = 4'd4, OP_ENDLOOP = 4'd5, OP_END = 4'd6;
+                     OP_LOOP = 4'd4, OP_ENDLOOP = 4'd5, OP_END = 4'd6,
+                     OP_ALU = 4'd7, OP_LOOPR = 4'd8;
     // Hardware-defined registers (compiler/isa.py).
     localparam R_IN_BASE = 1, R_OUT_BASE = 2, R_W_BASE = 3, R_CIN_LOG2 = 4, R_H_LOG2 = 5,
                R_W_LOG2 = 6, R_WOUT_LOG2 = 7, R_STRIDE = 8, R_PAD = 9, R_KSIZE = 10,
@@ -118,16 +122,22 @@ module cmd_seq #(
 
     reg [1:0]      state;
     reg [PC_W-1:0] pc;           // address of prog_rdata, the executing command
-    reg [31:0]     regs [0:15];  // regs[0] is never written: r0 reads zero
-    reg            loop_on;
-    reg [PC_W-1:0] loop_pc;
-    reg [15:0]     loop_left;
+    reg [31:0]     regs [0:31];  // regs[0] is never written: r0 reads zero
+    // The loop stack: depth entries, the innermost at index depth - 1.
+    reg [2:0]      depth;
+    reg [PC_W-1:0] loop_pc   [0:3];
+    reg [15:0]     loop_left [0:3];
 
     // ---- Decode ----
     wire [63:0] insn  = prog_rdata;
     wire [3:0]  op    = insn[63:60];
     wire [3:0]  dst   = insn[59:56];
     wire [3:0]  src   = insn[55:52];
+    wire [4:0]  a_dst = insn[59:55];   // ALU and LOOPR use five-bit register fields
+    wire [4:0]  a_src = insn[54:50];
+    wire [1:0]  a_op  = insn[49:48];
+    wire        a_imm = insn[47];
+    wire [4:0]  a_src2 = insn[46:42];
     wire [31:0] imm   = insn[31:0];
     wire [15:0] count = insn[15:0];
     wire [2:0]  bx    = insn[59:57];
@@ -150,7 +160,9 @@ module cmd_seq #(
     wire is_add     = (op == OP_ADD);
     wire is_block   = (op == OP_BLOCK);
     wire is_wait    = (op == OP_WAIT);
+    wire is_alu     = (op == OP_ALU);
     wire is_loop    = (op == OP_LOOP);
+    wire is_loopr   = (op == OP_LOOPR);
     wire is_endloop = (op == OP_ENDLOOP);
     wire is_end     = (op == OP_END);
     wire exec       = (state == S_EXEC);
@@ -160,19 +172,37 @@ module cmd_seq #(
     wire           tile_out = ({29'd0, bx} >= W32) || ({29'd0, by} >= H32);
     wire           unused_tile_lin = &{1'b0, tile_lin};
 
-    wire bad_op   = !(is_add || is_block || is_wait || is_loop || is_endloop || is_end);
+    // ---- ALU, loop count, loop stack ----
+    wire [31:0] alu_x = regs[a_src];
+    wire [31:0] alu_y = a_imm ? imm : regs[a_src2];
+    reg  [31:0] alu_r;
+    always @* begin
+        case (a_op)
+            2'd0:    alu_r = alu_x + alu_y;
+            2'd1:    alu_r = alu_x - alu_y;
+            2'd2:    alu_r = alu_x >> alu_y[4:0];
+            default: alu_r = alu_x & alu_y;
+        endcase
+    end
+
+    wire [31:0] loop_n   = is_loopr ? regs[a_dst] : {16'd0, count};   // the count a LOOP or LOOPR pushes
+    wire        loop_any = is_loop || is_loopr;
+    wire [1:0]  top      = depth[1:0] - 2'd1;                         // innermost loop, when depth > 0
+
+    wire bad_op   = !(is_add || is_block || is_wait || is_loop || is_endloop || is_end || is_alu || is_loopr);
     wire bad_tile = is_block && tile_out;
-    wire bad_loop = is_loop && (loop_on || count == 16'd0);
-    wire bad_endl = is_endloop && !loop_on;
-    wire fault    = exec && (bad_op || bad_tile || bad_loop || bad_endl);
+    wire bad_deep = loop_any && depth == 3'd4;
+    wire bad_cnt  = loop_any && (loop_n == 32'd0 || loop_n > 32'd65535);
+    wire bad_endl = is_endloop && depth == 3'd0;
+    wire fault    = exec && (bad_op || bad_tile || bad_deep || bad_cnt || bad_endl);
 
     wire drain  = (is_wait || is_end) && (!wb_idle || dma_busy);
     wire credit = is_block && !no_ret && wb_full[tile];
     wire issue  = exec && !fault && is_block && !credit && dma_ready;
     wire step   = exec && !fault && !is_block && !drain;   // a non-BLOCK command completes
 
-    wire            loop_back = is_endloop && (loop_left != 16'd1);
-    wire [PC_W-1:0] pc_next   = loop_back ? loop_pc : pc + PC_ONE;
+    wire            loop_back = is_endloop && (loop_left[top] != 16'd1);
+    wire [PC_W-1:0] pc_next   = loop_back ? loop_pc[top] : pc + PC_ONE;
     wire            restart   = start && (state == S_IDLE || (state == S_HALT && done));
 
     assign prog_re    = restart || step || (state == S_BLOCK && dma_handoff);
@@ -216,10 +246,12 @@ module cmd_seq #(
             error     <= 1'b0;
             error_pc  <= {PC_W{1'b0}};
             pc        <= {PC_W{1'b0}};
-            loop_on   <= 1'b0;
-            loop_pc   <= {PC_W{1'b0}};
-            loop_left <= 16'd0;
-            for (r = 0; r < 16; r = r + 1)
+            depth     <= 3'd0;
+            for (r = 0; r < 4; r = r + 1) begin
+                loop_pc[r]   <= {PC_W{1'b0}};
+                loop_left[r] <= 16'd0;
+            end
+            for (r = 0; r < 32; r = r + 1)
                 regs[r] <= 32'd0;
         end else begin
             case (state)
@@ -227,8 +259,8 @@ module cmd_seq #(
                     state   <= S_EXEC;
                     pc      <= {PC_W{1'b0}};
                     done    <= 1'b0;
-                    loop_on <= 1'b0;
-                    for (r = 1; r < 16; r = r + 1)
+                    depth   <= 3'd0;
+                    for (r = 1; r < 32; r = r + 1)
                         regs[r] <= 32'd0;
                 end
                 S_EXEC: if (fault) begin
@@ -240,15 +272,17 @@ module cmd_seq #(
                 end else if (step) begin
                     pc <= pc_next;
                     if (is_add && dst != 4'd0)
-                        regs[dst] <= regs[src] + imm;
-                    if (is_loop) begin
-                        loop_on   <= 1'b1;
-                        loop_pc   <= pc + PC_ONE;
-                        loop_left <= count;
+                        regs[{1'b0, dst}] <= regs[{1'b0, src}] + imm;
+                    if (is_alu && a_dst != 5'd0)
+                        regs[a_dst] <= alu_r;
+                    if (loop_any) begin
+                        loop_pc[depth[1:0]]   <= pc + PC_ONE;
+                        loop_left[depth[1:0]] <= loop_n[15:0];
+                        depth                 <= depth + 3'd1;
                     end
                     if (is_endloop) begin
-                        if (loop_back) loop_left <= loop_left - 16'd1;
-                        else           loop_on   <= 1'b0;
+                        if (loop_back) loop_left[top] <= loop_left[top] - 16'd1;
+                        else           depth          <= depth - 3'd1;
                     end
                     if (is_end) begin
                         state <= S_HALT;
@@ -272,10 +306,10 @@ module cmd_seq #(
                 $fatal(1, "cmd_seq: invalid opcode %0d at pc %0d", op, pc);
             else if (bad_tile)
                 $fatal(1, "cmd_seq: BLOCK tile (%0d, %0d) is outside the %0dx%0d mesh at pc %0d", bx, by, W, H, pc);
-            else if (bad_loop && loop_on)
-                $fatal(1, "cmd_seq: LOOP inside an active loop at pc %0d", pc);
-            else if (bad_loop)
-                $fatal(1, "cmd_seq: LOOP count 0 at pc %0d", pc);
+            else if (bad_deep)
+                $fatal(1, "cmd_seq: LOOP nested deeper than 4 at pc %0d", pc);
+            else if (bad_cnt)
+                $fatal(1, "cmd_seq: %s count %0d is not 1 to 65535 at pc %0d", is_loopr ? "LOOPR" : "LOOP", loop_n, pc);
             else
                 $fatal(1, "cmd_seq: ENDLOOP without an active LOOP at pc %0d", pc);
         end

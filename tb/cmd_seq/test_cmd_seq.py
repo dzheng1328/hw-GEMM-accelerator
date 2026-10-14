@@ -205,7 +205,7 @@ def check_trace(env, tracer):
 def golden_regs(program):
     g = Golden(*MESH, program, [], [])
     g.run()
-    return g.regs[: isa.N_REGS]  # the golden executor has isa.N_REGS_LM; the RTL has isa.N_REGS
+    return g.regs
 
 
 def dut_regs(dut):
@@ -248,6 +248,58 @@ async def test_random_adds_match_golden_one_per_cycle(dut):
 
 
 @cocotb.test()
+async def test_random_alu_programs_match_golden_one_per_cycle(dut):
+    """ALU over all 32 registers: every operation, a register or an immediate
+    second operand, shift counts above 31, r0 as a destination, 32-bit wrap."""
+    await setup_dut(dut)
+    rng = random.Random(11)
+    imms = lambda: rng.choice((rng.randrange(1 << 32), rng.randrange(-(1 << 31), 0), 1, 31, 32, 33, 0xFFFF_FFFF))
+    prog = [isa.alu(isa.ALU_ADD, r, 0, imm=rng.randrange(1 << 32)) for r in range(1, 32)]  # seed every register
+    for _ in range(400):
+        op, dst, src = rng.randrange(4), rng.randrange(32), rng.randrange(32)
+        if rng.random() < 0.5:
+            prog.append(isa.alu(op, dst, src, src2=rng.randrange(32)))
+        else:
+            prog.append(isa.alu(op, dst, src, imm=imms()))
+    prog.append(isa.end())
+    await load(dut, prog)
+    env = Env(dut, rng)
+    cycles = await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    assert dut_regs(dut) == golden_regs(prog)
+    assert dut_regs(dut)[0] == 0
+    assert cycles == len(prog) + 1, f"{cycles} cycles for {len(prog)} commands: not one command per cycle"
+
+
+@cocotb.test()
+async def test_nested_loops_and_loopr_match_golden(dut):
+    """Four loops deep with LOOPR counts from registers (3, 1, and 2 around a
+    LOOP 2), ALUs and BLOCKs in every body, and ENDLOOPs back to back."""
+    await setup_dut(dut)
+    prog = SETUP + [
+        isa.alu(isa.ALU_ADD, 22, 0, imm=3), isa.alu(isa.ALU_ADD, 23, 0, imm=1), isa.alu(isa.ALU_ADD, 24, 0, imm=2),
+        isa.loopr(22), isa.alu(isa.ALU_ADD, 25, 25, imm=1),
+        isa.loopr(23), isa.alu(isa.ALU_ADD, 26, 26, imm=1),
+        isa.loop(2), blk(1, 0, no_ret=True), isa.alu(isa.ALU_ADD, 27, 27, imm=1),
+        isa.loopr(24), isa.alu(isa.ALU_ADD, 28, 28, imm=1), blk(2, 0, no_ret=True), isa.endloop(),
+        isa.endloop(), isa.endloop(), isa.endloop(),
+        isa.alu(isa.ALU_ADD, 29, 25, src2=28),
+        isa.end(),
+    ]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    assert tracer.regs[25:29] == [3, 3, 6, 12], tracer.regs[25:29]
+    await load(dut, prog)
+    env = Env(dut, random.Random(12))
+    await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    check_trace(env, tracer)
+    assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
 async def test_loops_match_golden(dut):
     """A loop whose body starts with a BLOCK, a LOOP of 1 around a no_ret
     BLOCK, and an ENDLOOP that falls straight into END."""
@@ -266,7 +318,7 @@ async def test_loops_match_golden(dut):
     env.stop()
     assert dut.done.value and not dut.error.value
     check_trace(env, tracer)
-    assert dut_regs(dut) == tracer.regs[: isa.N_REGS]
+    assert dut_regs(dut) == tracer.regs
 
 
 @cocotb.test()
@@ -400,12 +452,16 @@ async def test_start_clears_registers(dut):
 # Fault programs; golden supplies each expected pc.
 FAULTS = [
     [0],                                           # opcode 0: zeroed memory
-    [isa.add(1, 0, 1), 10 << 60],                  # first opcode past VOP (7 to 9 are 4.3d's ALU, LOOPR, VOP)
+    [isa.add(1, 0, 1), 10 << 60],                  # first opcode past VOP (7 to 9 are ALU, LOOPR, VOP)
     [15 << 60],
     [isa.add(1, 0, 1)],                            # runs off the program into zeroed memory
-    # No nested-LOOP case: the golden executor nests 4 deep from 4.3d, the RTL only from 4.3f.
     [isa.endloop()],
     [isa.LOOP << 60],                              # LOOP 0
+    [isa.loop(1)] * 4 + [isa.loop(1)],             # a fifth nested loop (four are legal)
+    [isa.loopr(25)],                               # LOOPR of a zero register
+    [isa.alu(isa.ALU_ADD, 25, 0, imm=1 << 16), isa.loopr(25)],  # a count above 65535
+    [isa.alu(isa.ALU_ADD, 25, 0, imm=0xFFFF_FFFF), isa.loopr(25)],
+    [isa.loopr(0)],                                # r0 reads zero
     [blk(4, 0)],                                   # tile_x = W
     [isa.add(1, 0, 1), blk(0, 3)],                 # tile_y = H
 ]
