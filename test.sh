@@ -3,7 +3,8 @@
 # via rtl/tile.v, rtl/operand_mem.v, rtl/gemm_sequencer.v via rtl/gemm_tile.v,
 # rtl/router.v, rtl/requant.v, the two-node NoC via rtl/noc_pair.v, the WxH mesh via
 # rtl/noc_mesh.v at 2x2 and 4x3, the command processor's front end, rtl/cmd_seq.v,
-# rtl/writeback.v, the accelerator end to end via rtl/accel.v at 2x2, 4x3, and 1x1,
+# rtl/writeback.v, the vector unit rtl/vpu.v and its arithmetic units (tb/vpu/), the accelerator end
+# to end via rtl/accel.v at 2x2, 4x3, and 1x1,
 # MNIST, the perf harness), from any directory, in any fresh shell (no need to
 # `source .venv` or `cd` yourself first).
 #
@@ -59,6 +60,16 @@ make "$@"
 make orphan-check "$@"
 make mode-check "$@"
 make rows-check "$@"
+
+cd "$REPO_ROOT/tb/vpu"
+make SUITE=exp "$@"
+make SUITE=rsqrt "$@"
+make SUITE=rng "$@"
+make SUITE=lanes "$@"
+make lanes16 "$@"
+make SUITE=ops "$@"
+make SUITE=faults "$@"
+make fault-check "$@"
 
 cd "$REPO_ROOT/tb/accel"
 make "$@"

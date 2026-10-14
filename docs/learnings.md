@@ -23,6 +23,24 @@ actually resolved.
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-14 -- 4.3e measured cycles against the spec's estimates
+
+**Phase:** Phase 4 (4.3e)
+**Problem:** The spec's cycle estimates came from port traffic alone (the busier port bounds each sub-op), and 4.3g needs to know which of them hold.
+**Cause:** Estimates that count reads and writes miss serialization inside a sub-op: ROPE issues a rotation pair every 3 cycles so a pair's even word cannot overwrite x0 before y1 has used it, and waits for each q group's 64-word drain.
+**Fix:** The numbers below are measured on the RTL, busy cycles from `run_op`.
+Spec estimate against measured: ADD 260 and 260, EMBED 130 and 153, RMSNORM 270 and 271, SILU_MUL 450 and 453, KVWRITE 330 and 332, ROPE 290 and 416, SAMPLE 3.1K and 3091, TRANSPOSE 8 per block and 8 per block plus 12.
+SOFTMAX costs 2n + 10 cycles per nest, 835 at T = 0 and 16707 at T = 255.
+**Takeaway:** At an average position of 127 (n = 128) SOFTMAX is about 8.5K cycles per layer and 42.6K per step over 5 layers, twice the 20.5K write-bound floor of 32 words per position, so it is the VPU cost to watch in 4.3g's breakdown; the port-shaped estimates are good to a few cycles except ROPE.
+
+### 2026-10-14 -- A golden comparison that touches nothing passes forever
+
+**Phase:** Phase 4 (4.3e)
+**Problem:** The first ADD saturation test passed while testing nothing: it built two images, ran the command, and compared the RTL's memories with the golden's, and neither had changed.
+**Cause:** The comparison asked only whether RTL equals golden, so an input that misses the operation (a wrong address, a count of 0) agrees with itself.
+**Fix:** `vpulib.check` asserts that the golden changed a memory, and a command that legitimately changes none (a zero-count TRANSPOSE, a prompt-copy SAMPLE) must say `expect_change=False`.
+**Takeaway:** Any test that compares two outputs of the same input needs a check that the input did something, or it passes when both sides do nothing.
+
 ### 2026-10-12 -- The spec's matmul mapping had never met the DMA's channel counter
 
 **Phase:** Phase 4 (4.3d)
