@@ -4,7 +4,7 @@
 # rtl/router.v, rtl/requant.v, the two-node NoC via rtl/noc_pair.v, the WxH mesh via
 # rtl/noc_mesh.v at 2x2 and 4x3, the command processor's front end, rtl/cmd_seq.v,
 # rtl/writeback.v, the vector unit rtl/vpu.v and its arithmetic units (tb/vpu/), the accelerator end
-# to end via rtl/accel.v at 2x2, 4x3, and 1x1,
+# to end via rtl/accel.v at 2x2, 4x3, and 1x1 (conv stacks, CIFAR-10, and the story model),
 # MNIST, the perf harness), from any directory, in any fresh shell (no need to
 # `source .venv` or `cd` yourself first).
 #
@@ -76,9 +76,14 @@ make "$@"
 # CIFAR-10 on the chip: 8 frozen test images (make cifar runs all 128).
 make ACCEL_CASES=cifar8 "$@"
 make MESH_W=4 MESH_H=3 MESH_AW=3 "$@"
-make MESH_W=1 MESH_H=1 ACCEL_CASES=small "$@"
+make MESH_W=1 MESH_H=1 ACCEL_CASES="small lm_t0" "$@"
+# The story model on the chip: the real model for 8 steps at both temperatures, and 66 steps of a random
+# one across T = 7 to 8 and 63 to 64 (the AV's second round: partial sums held, only the last round returns).
+make ACCEL_CASES="lm_real8 lm_real8_t256 lm_rounds" "$@"
 make error-check "$@"
 make stray-check
+make vpu-check
+make reset-check "$@"
 make lint-configs
 
 cd "$REPO_ROOT/tb/mnist"

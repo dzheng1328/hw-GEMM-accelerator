@@ -114,7 +114,7 @@ Every new layout is produced by a VPU command writing its output in the shape th
    Write-back decodes RESULT16 rows into two words each.
 3. `cmd_seq`: the register file grows to 32 (section 2, Registers); LOOP can take its count from a register; the loop stack is 4 deep; BLOCK gains a register form (bit 16) that takes ROUND, ROWS (row limit minus 1), and RMODE (raw, RESULT8, RESULT16) from registers; it accumulates when acc_keep is set or ROUND is above 0 and returns only on the last round of KS slots.
 4. VPU commands (section 3) drain like WAIT before they start (every outstanding block written back), then own the DMA's read ports and write-back's write ports through a mux in `accel.v`; the next command starts when the VPU finishes.
-   The VPU never overlaps the mesh; the counters show that serialization.
+   The VPU never overlaps the mesh; the counters show that serialization (`cmd_perf` counts a VOP's drain and run as `wait_cyc` until 4.3g splits them out).
 
 ### Registers
 
@@ -297,7 +297,7 @@ The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 | 4.3c | RESULT16, GO row limit | - | `tb/requant` (QW 16), `tb/mesh`, and `tb/writeback` pass with the new modes |
 | 4.3d (done 2026-10-13) | ISA additions, `lower_lm.py`, golden executor, `check_lm.py`, A-memory depth 512 KB | b | Golden equals `lm_reference.py` for several meshes |
 | 4.3e (done) | `rtl/vpu*.v`, `tb/vpu/` | b | Every sub-op bit-exact on random and edge inputs |
-| 4.3f | `cmd_seq` extensions, `accel` integration, A-memory VPU write port | c, d, e | Random small transformers pass end to end on 1x1, 2x2, 4x3 |
+| 4.3f (done) | `cmd_seq` extensions, `accel` integration, A-memory VPU write port | c, d, e | Random small transformers pass end to end on 1x1, 2x2, 4x3 |
 | 4.3g | Stories on the chip: `make lm`, `docs/perf/lm.md`, the trace, the scaling table | f | Exit criteria above |
 
 4.3a, 4.3b, and 4.3c can proceed in parallel.
