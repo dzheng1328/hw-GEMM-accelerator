@@ -256,12 +256,12 @@ def test_a_loopr_count_that_does_not_fit_16_bits_faults():
         run_prog([isa.alu(isa.ALU_ADD, 25, 0, imm=1 << 16), isa.loopr(25), isa.endloop()])
 
 
-def test_the_golden_register_file_is_32_wide_but_a_tracer_reports_the_hardware_16():
+def test_the_golden_register_file_and_a_tracer_report_are_32_wide():
     prog = [isa.alu(isa.ALU_ADD, 25, 0, imm=3)] + qk_style_setup(0, 0, 100) + [
         isa.block(isa.Block(0, 0, 0, 0, 0, no_ret=True)), isa.end()]
     g = Tracer(1, 1, prog, [], [])
     g.run()
-    assert len(g.regs) == isa.N_REGS_LM and g.regs[25] == 3
+    assert len(g.regs) == isa.N_REGS and g.regs[25] == 3
     assert len(g.blocks[0][2]) == isa.N_REGS
 
 
@@ -285,6 +285,23 @@ def test_register_form_result16_lands_two_words_per_row_with_the_row_limit():
     got = g.actw[3000:3004].view("<i2").reshape(2, 8)
     assert np.array_equal(got, want[:2]) and want[:2].any()
     assert np.array_equal(g.actw[3004:3008], act[3004:3008]), "rows past the limit must not be written"
+
+
+def test_a_tracer_records_the_resolved_register_form_block():
+    """What the RTL's BLOCK ports carry for a register form: the round, flags
+    and result mode from the registers, and the rows it returns."""
+    wmem, act = random_mems(2)
+    prog = qk_style_setup(700, 1000, 3000, ks=128) + setregs({isa.BIAS: 64, isa.ROUND: 1, isa.ROWS: 1, isa.RMODE: isa.RMODE_Q16}) \
+        + [isa.block(isa.Block(0, 0, 0, 0, 0, sh=3, m=9, reg_form=True)),
+           isa.wait(), isa.block(isa.Block(0, 0, 0, 0, 0, requant=True, sh=3, m=9))]
+    g = Tracer(1, 1, prog + [isa.end()], wmem, act)
+    g.run()
+    assert [b for _, b, *_ in g.blocks] == [isa.Block(0, 0, 0, 0, 0, sh=3, m=9, reg_form=True),
+                                            isa.Block(0, 0, 0, 0, 0, requant=True, sh=3, m=9)]
+    (rb0, rows0, q160), (rb1, rows1, q161) = g.resolved
+    # ROUND 1 of KS 128 is the last round (64 * 2 >= 128): it returns, and accumulates.
+    assert rb0 == isa.Block(0, 0, 0, 0, 1, acc_keep=True, requant=True, sh=3, m=9) and (rows0, q160) == (2, True)
+    assert rb1 == g.blocks[1][1] and (rows1, q161) == (8, False)
 
 
 def test_result16_saturates_at_both_int16_rails():
