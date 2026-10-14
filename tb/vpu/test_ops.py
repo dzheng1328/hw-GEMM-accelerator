@@ -6,7 +6,7 @@ stray write anywhere, or a read of the wrong address, fails."""
 import cocotb
 import numpy as np
 
-from vpulib import SUBS, Images, check, put_i16, put_param, scale, start_clock
+from vpulib import SUBS, Images, check, put_i16, put_param, scale, start_clock, run_op
 
 SEED = 0x70F0
 
@@ -241,3 +241,132 @@ async def test_sample_prompt_boundary(dut):
         await check(dut, img, SUBS["SAMPLE"], expect_change=draws, ra=6000, rb=300, rc=400, t=t, plen=plen, inv_temp=256)
     img = sample_images(rng, "random")  # a prompt-copy step takes no fault from an INV_TEMP a drawn step would reject
     await check(dut, img, SUBS["SAMPLE"], expect_change=False, ra=6000, rb=300, rc=400, t=1, plen=9, inv_temp=1 << 16)
+
+
+ACT_END, A_END = 131072, 65536
+
+
+def rmsnorm_params(rng, img, addr):
+    m, sh = scale(rng, 5, 30)
+    put_param(img, addr, m, sh, int(rng.integers(1, 1 << 12)))
+
+
+@cocotb.test()
+async def test_operands_at_the_top_of_each_memory(dut):
+    """Every address register at its largest legal value: no address arithmetic may wrap or truncate."""
+    await start_clock(dut)
+    rng = rng_for("top")
+
+    def fresh():
+        return Images(rng)
+
+    await check(dut, fresh(), SUBS["ADD"], ra=ACT_END - 256, rb=ACT_END - 128)
+    await check(dut, fresh(), SUBS["TRANSPOSE"], ra=ACT_END - 32, rb=ACT_END - 64, rc=4)
+    img = fresh()
+    put_i16(img.act, 2 * 255, [0, 511, 5, 6, 7, 8, 9, 10])
+    put_param(img, A_END - 4097, *scale(rng, 4, 12))
+    await check(dut, img, SUBS["EMBED"], ra=A_END - 4096, rb=ACT_END - 128, rc=A_END - 4097, t=255)
+    img = fresh()
+    rmsnorm_params(rng, img, A_END - 1)
+    await check(dut, img, SUBS["RMSNORM"], ra=ACT_END - 128, rb=ACT_END - 192, rc=A_END - 1)
+    img = fresh()
+    put_param(img, A_END - 65, *scale(rng, 10, 24))
+    await check(dut, img, SUBS["SILU_MUL"], ra=ACT_END - 384, rb=ACT_END - 576, rc=A_END - 65)
+    await check(dut, fresh(), SUBS["ROPE"], ra=ACT_END - 64, rb=ACT_END - 96, rc=A_END - 256, t=255)
+    await check(dut, fresh(), SUBS["KVWRITE"], ra=ACT_END - 16384 - 64, rb=ACT_END - 16384 - 32, rc=ACT_END - 16384, t=255)
+    img = softmax_images(rng, "narrow")
+    put_param(img, A_END - 1, *scale(rng, 5, 12))
+    for n in range(32):  # the scores of every nest at the top of activation memory
+        for r in range(2):
+            put_i16(img.act, ACT_END - 4096 + 128 * n + 64 * r, rng.integers(-300, 300, 256))
+    await check(dut, img, SUBS["SOFTMAX"], ra=ACT_END - 4096, rb=A_END - 8192, rc=A_END - 1, t=255)
+    img = sample_images(rng, "random")
+    put_param(img, A_END - 5, *scale(rng, 8, 16))
+    img.amem[A_END - 4 : A_END] = rng.integers(1, 2**64, 4, dtype=np.uint64)
+    logits = rng.integers(-3000, 3000, 1024 * 4)
+    put_i16(img.act, ACT_END - 1024, logits)
+    await check(dut, img, SUBS["SAMPLE"], ra=ACT_END - 1024, rb=A_END - 5, rc=A_END - 4, t=255, plen=3, inv_temp=256)
+
+
+@cocotb.test()
+async def test_in_place_operands(dut):
+    """Where a sub-op's destination is its source, the streaming RTL must still equal the golden's
+    read-everything-then-write result (RMSNORM and SILU_MUL write behind their reads)."""
+    await start_clock(dut)
+    rng = rng_for("inplace")
+    img = Images(rng)
+    rmsnorm_params(rng, img, 40)
+    await check(dut, img, SUBS["RMSNORM"], ra=3000, rb=3000, rc=40)
+    img = Images(rng)
+    put_param(img, 200, *scale(rng, 10, 24))
+    await check(dut, img, SUBS["SILU_MUL"], ra=3000, rb=3000, rc=200)
+
+
+CHAIN = [("EMBED", dict(ra=1000, rb=5000, rc=999, t=12)),
+         ("RMSNORM", dict(ra=5000, rb=5300, rc=40)),
+         ("ROPE", dict(ra=5300, rb=5400, rc=4000, t=12)),
+         ("KVWRITE", dict(ra=5400, rb=5450, rc=20000, t=12)),
+         ("SOFTMAX", dict(ra=6000, rb=8000, rc=30, t=12)),
+         ("SILU_MUL", dict(ra=9000, rb=9500, rc=200)),
+         ("ADD", dict(ra=5000, rb=5300)),
+         ("TRANSPOSE", dict(ra=5300, rb=5600, rc=8)),
+         ("SAMPLE", dict(ra=6000, rb=300, rc=400, t=12, plen=3, inv_temp=256))]
+
+
+def chain_image(rng):
+    """Memories with every sub-op's parameter words in place, for the chain and reset tests."""
+    img = Images(rng)
+    put_i16(img.act, 2 * 12, rng.integers(0, 512, 8))
+    put_param(img, 999, *scale(rng, 4, 12))      # EMBED
+    rmsnorm_params(rng, img, 40)                  # RMSNORM
+    put_param(img, 30, *scale(rng, 5, 12))        # SOFTMAX
+    put_param(img, 200, *scale(rng, 10, 24))      # SILU_MUL
+    put_param(img, 300, *scale(rng, 8, 16))       # SAMPLE
+    img.amem[400:404] = rng.integers(1, 2**64, 4, dtype=np.uint64)
+    return img
+
+
+@cocotb.test()
+async def test_every_sub_op_back_to_back_without_reset(dut):
+    """One run of all nine sub-ops, each started in the cycle `done` is high for the one before, on
+    memories that carry each one's output into the next: no state may leak from one command to the next."""
+    await start_clock(dut)
+    img = chain_image(rng_for("chain"))
+    for round_ in range(2):
+        for name, regs in CHAIN:
+            await check(dut, img, SUBS[name], expect_change=True if round_ == 0 else None, **regs)
+
+
+@cocotb.test()
+async def test_perf_counters_count_busy_cycles_per_sub_op(dut):
+    await start_clock(dut)
+    rng = rng_for("perf")
+
+    def snapshot():
+        return [int(dut.g_perf.perf.cnt[i].value) for i in range(10)]
+
+    base = snapshot()
+    total = 0
+    for name, regs in [("ADD", dict(ra=1000, rb=2000)), ("TRANSPOSE", dict(ra=3000, rb=9000, rc=4)),
+                       ("ADD", dict(ra=1000, rb=2000))]:
+        cycles = await check(dut, Images(rng), SUBS[name], **regs)
+        total += cycles
+        after = snapshot()
+        delta = [a - b for a, b in zip(after, base)]
+        base = after
+        assert delta[SUBS[name]] == cycles, f"{name}: counter {delta[SUBS[name]]} vs {cycles} busy cycles"
+        assert delta[0] == cycles and sum(delta[1:]) == cycles, f"{name}: the total counter is the sum of the others"
+    assert snapshot()[0] == total
+
+
+@cocotb.test()
+async def test_reset_in_the_middle_of_a_command_leaves_no_state_behind(dut):
+    """A reset that lands while a command runs, one or two clocks long, must drop it: the VPU goes idle with every
+    memory port low, and the next command, the same sub-op, is exact. The aborted run's partial writes stay in the
+    images, so the golden starts from them."""
+    await start_clock(dut)
+    img = chain_image(rng_for("reset"))
+    for name, regs in CHAIN:
+        for abort_after, reset_cycles in [(1, 1), (6, 2), (40, 1), (150, 2)]:
+            await run_op(dut, img, SUBS[name], reset_after=abort_after, reset_cycles=reset_cycles, **regs)
+            await check(dut, img, SUBS[name], expect_change=None, **regs)

@@ -70,11 +70,13 @@ async def start_clock(dut):
     await RisingEdge(dut.clk)
 
 
-async def run_op(dut, img, sub, ra=0, rb=0, rc=0, t=0, plen=0, inv_temp=0, max_cycles=40_000, expect_fault=False):
+async def run_op(dut, img, sub, ra=0, rb=0, rc=0, t=0, plen=0, inv_temp=0, max_cycles=40_000, expect_fault=False,
+                 reset_after=None, reset_cycles=2):
     """Run one command to `done` against the images in `img` (modified in
     place); returns the cycles busy was high. With expect_fault the command
     must instead raise `fault` and never `done`, and all four memory
-    enables must stay low for the 8 cycles after it."""
+    enables must stay low for the 8 cycles after it. With reset_after the command is instead aborted by a reset of
+    reset_cycles clocks once it has been busy that many cycles (a shorter command just finishes)."""
     dut.sub.value, dut.ra.value, dut.rb.value, dut.rc.value = sub, ra, rb, rc
     dut.t.value, dut.plen.value, dut.inv_temp.value = t, plen, inv_temp
     dut.start.value = 1
@@ -106,6 +108,9 @@ async def run_op(dut, img, sub, ra=0, rb=0, rc=0, t=0, plen=0, inv_temp=0, max_c
         else:
             assert not int(dut.fault.value), "the VPU faulted"
         busy_cycles += busy
+        if reset_after is not None and busy_cycles >= reset_after:
+            await reset_mid_command(dut, reset_cycles)
+            return busy_cycles
         await RisingEdge(dut.clk)
         if act_re:
             dut.act_rdata.value = int(img.act[act_ra])
@@ -116,6 +121,18 @@ async def run_op(dut, img, sub, ra=0, rb=0, rc=0, t=0, plen=0, inv_temp=0, max_c
         if a_we:
             img.amem[a_wa] = np.uint64(a_wd)
     raise AssertionError(f"no done within {max_cycles} cycles")
+
+
+async def reset_mid_command(dut, cycles):
+    """Assert reset for `cycles` clocks while a command runs; afterwards the VPU must be idle with every memory port low."""
+    dut.rst.value = 1
+    for _ in range(cycles):
+        await RisingEdge(dut.clk)
+    dut.rst.value = 0
+    await FallingEdge(dut.clk)
+    assert not (int(dut.busy.value) or int(dut.done.value) or int(dut.fault.value)), "the reset did not return the VPU to idle"
+    assert not (int(dut.act_re.value) or int(dut.a_re.value) or int(dut.act_we.value) or int(dut.a_we.value)), \
+        "a memory port is active after the reset"
 
 
 def run_golden(img, sub, ra=0, rb=0, rc=0, t=0, plen=0, inv_temp=0):
