@@ -5,8 +5,9 @@
 #   make                                  every case in cases.py on a 2x2 mesh
 #   make MESH_W=4 MESH_H=3 MESH_AW=3      the same on 4x3
 #   make ACCEL_CASES="small wide"         a subset
-#   make error-check                      a program for a wider mesh must stop the run
+#   make error-check                      each fault probe (cases.py probes) must stop the run on its own message
 #   make stray-check                      a RESULT away from (0,0) must stop the run (Icarus)
+#   make vpu-check                        the VPU's memory-port guards must stop the run (Icarus)
 #   make lint-configs                     lint sizes no run covers
 #   make cifar                            all 128 CIFAR-10 images; writes docs/perf/cifar.{json,md}
 #   make scaling                          the same on 1x1 .. 4x4; writes docs/perf/scaling.{json,md}
@@ -53,7 +54,7 @@ COCOTB_RESULTS_FILE = $(SIM_BUILD)/results_$(or $(ACCEL_CASE),$(ACCEL_PROBE),non
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 .DEFAULT_GOAL := cases
-.PHONY: cases error-check stray-check lint-configs cifar scaling
+.PHONY: cases error-check stray-check vpu-check lint-configs cifar scaling
 
 cases:
 	@for c in $(or $(ACCEL_CASES),$$(python $(PWD)/cases.py list)); do \
@@ -61,18 +62,24 @@ cases:
 	  $(MAKE) --no-print-directory sim ACCEL_CASE=$$c || exit 1; \
 	done
 
-# Negative test: the shipping FATAL = 1 build stops a program that addresses
-# a tile outside the mesh. Passes only if the run fails on cmd_seq's check.
+# Negative tests: the shipping FATAL = 1 build stops on every cmd_seq fault a program can
+# raise (a tile outside the mesh, a fifth nested loop, a bad LOOP or LOOPR count, a bad
+# register-form ROUND, ROWS or RMODE, an invalid VOP sub-op, a VPU fault). Each probe passes only
+# if its run fails on cmd_seq's own message, with the pc golden gives.
 error-check:
-	@mkdir -p $(SIM_BUILD); log=$(SIM_BUILD)/error_check.log; \
-	python $(PWD)/cases.py emit wrong_mesh $(MESH_W) $(MESH_H) $(CASE_DIR)/wrong_mesh || exit 1; \
-	if $(MAKE) --no-print-directory sim ACCEL_CASE=wrong_mesh > $$log 2>&1; then \
-	  echo "FAIL: a program for a wider mesh did not stop the $(SIM) run (see $$log)"; exit 1; \
-	elif ! grep -q "is outside the $(MESH_W)x$(MESH_H) mesh" $$log; then \
-	  echo "FAIL: $(SIM) run failed, but not on cmd_seq's tile check (see $$log)"; exit 1; \
-	else \
-	  echo "PASS: a BLOCK for a tile outside the mesh is fatal under $(SIM)"; \
-	fi
+	@mkdir -p $(SIM_BUILD); \
+	for p in $$(python $(PWD)/cases.py probes); do \
+	  log=$(SIM_BUILD)/error_check_$$p.log; \
+	  want=$$(python $(PWD)/cases.py message $$p $(MESH_W) $(MESH_H)); \
+	  python $(PWD)/cases.py emit $$p $(MESH_W) $(MESH_H) $(CASE_DIR)/$$p || exit 1; \
+	  if $(MAKE) --no-print-directory sim ACCEL_CASE=$$p > $$log 2>&1; then \
+	    echo "FAIL: probe $$p did not stop the $(SIM) run (see $$log)"; exit 1; \
+	  elif ! grep -qF "$$want" $$log; then \
+	    echo "FAIL: probe $$p failed the $(SIM) run, but not on \"$$want\" (see $$log)"; exit 1; \
+	  else \
+	    echo "PASS: probe $$p is fatal under $(SIM): $$want"; \
+	  fi; \
+	done
 
 # Negative test for accel's stray-RESULT check. Icarus only: cocotb's Force
 # on an internal net silently does nothing under Verilator unless the net is
@@ -86,6 +93,24 @@ stray-check:
 	else \
 	  echo "PASS: a RESULT delivered away from (0,0) is fatal (Icarus)"; \
 	fi
+
+# Negative tests for accel's two VPU memory-port guards. Icarus only, for the same reason as
+# stray-check; the probes run cases.VOP_NOP, whose images go to Icarus's own case directory.
+ICARUS_CASES = $(REPO_ROOT)/sim/icarus/sim_build_accel_$(MESH_W)x$(MESH_H)_aw$(MESH_AW)/cases
+vpu-check:
+	@mkdir -p $(SIM_BUILD); \
+	python $(PWD)/cases.py emit vop_nop $(MESH_W) $(MESH_H) $(ICARUS_CASES)/vop_nop || exit 1; \
+	for p in "vpu_overlap|the VPU is running while the DMA or write-back is busy" \
+	         "vpu_stray|the VPU requested a memory port while it is not running"; do \
+	  probe=$${p%%|*}; want=$${p#*|}; log=$(SIM_BUILD)/vpu_check_$$probe.log; \
+	  if $(MAKE) --no-print-directory sim SIM=icarus CASE_DIR=$(ICARUS_CASES) ACCEL_CASE=vop_nop ACCEL_PROBE=$$probe > $$log 2>&1; then \
+	    echo "FAIL: $$probe did not stop the Icarus run (see $$log)"; exit 1; \
+	  elif ! grep -qF "$$want" $$log; then \
+	    echo "FAIL: Icarus run failed for $$probe, but not on \"$$want\" (see $$log)"; exit 1; \
+	  else \
+	    echo "PASS: $$probe is fatal (Icarus)"; \
+	  fi; \
+	done
 
 # Sizes no run covers: perf counters compiled out, one row, and 8x8 at AW=3.
 LINT_CONFIGS = -GPERF=0 -GW=3_-GH=1 -GW=8_-GH=8_-GAW=3

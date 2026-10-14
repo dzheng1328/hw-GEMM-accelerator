@@ -189,6 +189,39 @@ async def test_case_matches_golden(dut):
                   CASE, *MESH, cycles, len(g.blocks), g.slots, 100 * g.slots / cycles, counts)
 
 
+async def start_vop_nop(dut):
+    """Run cases.VOP_NOP (loaded by the Makefile) until the VPU is busy."""
+    await reset(dut)
+    dut.start.value = 1
+    await RisingEdge(dut.clk)
+    dut.start.value = 0
+    for _ in range(2000):
+        await RisingEdge(dut.clk)
+        if int(dut.accel.vpu_busy.value):
+            return
+    raise AssertionError("the VOP never started")
+
+
+@cocotb.test(skip=PROBE != "vpu_overlap")
+async def test_vpu_running_with_the_dma_busy_is_fatal(dut):
+    """Run only by `make vpu-check` (Icarus): the DMA reporting busy while the VPU runs must stop the run."""
+    await start_vop_nop(dut)
+    dut.accel.dma_busy.value = Force(1)
+    for _ in range(5):
+        await RisingEdge(dut.clk)
+    raise AssertionError("a busy DMA during a VOP did not stop the run")
+
+
+@cocotb.test(skip=PROBE != "vpu_stray")
+async def test_a_vpu_request_while_idle_is_fatal(dut):
+    """Run only by `make vpu-check` (Icarus): a VPU memory request outside a VOP must stop the run."""
+    await reset(dut)
+    dut.accel.v_act_we.value = Force(1)
+    for _ in range(5):
+        await RisingEdge(dut.clk)
+    raise AssertionError("a VPU write request while idle did not stop the run")
+
+
 @cocotb.test(skip=PROBE != "stray")
 async def test_stray_result_is_fatal(dut):
     """Run only by `make stray-check` (Icarus): a RESULT forced onto node

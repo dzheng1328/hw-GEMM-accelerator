@@ -226,9 +226,15 @@ module accel #(
     wire own = vpu_busy;
 
 `ifndef SYNTHESIS
-    always @(posedge clk)
+    // cmd_seq drains the DMA and write-back before a VOP and holds every later command until it is
+    // done, so the VPU never shares a memory port with them; these prove it (tb/accel's `make
+    // vpu-check` forces each one under Icarus).
+    always @(posedge clk) begin
         if (!rst && !own && (v_act_re || v_act_we || v_a_re || v_a_we))
             $fatal(1, "accel: the VPU requested a memory port while it is not running");
+        if (!rst && own && (dma_busy || !wb_idle))
+            $fatal(1, "accel: the VPU is running while the DMA or write-back is busy");
+    end
 `endif
 
     // ---- Memories ----

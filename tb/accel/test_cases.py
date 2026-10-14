@@ -1,6 +1,9 @@
 """pytest for tb/accel/cases.py."""
 
-from cases import cycle_budget, lm_extra_cycles
+import pytest
+
+from cases import PROBES, cycle_budget, lm_extra_cycles, probe_message, probe_programs
+from golden import Golden, GoldenError
 
 # Measured (docs/decisions.md, docs/perf/cifar.md): tiles, slots, words
 # written back, cycles (cmd_perf run_cyc).
@@ -43,3 +46,17 @@ def test_lm_budget_leaves_margin_over_every_measured_run():
 def test_lm_budget_ends_a_hung_run_within_a_few_times_its_real_length():
     for name, (tiles, slots, words, steps, vops, cycles) in LM_MEASURED.items():
         assert lm_budget(tiles, slots, words, steps, vops) <= 3 * cycles + 10_000, name
+
+
+@pytest.mark.parametrize("name", sorted(probe_programs()))
+def test_every_fault_probe_is_a_golden_fault_at_the_pc_its_message_names(name):
+    program, message, pc = probe_programs()[name]
+    with pytest.raises(GoldenError) as e:
+        Golden(1, 1, program, [], []).run()
+    assert e.value.pc == pc and message.endswith(f"at pc {pc}")
+    assert probe_message(name, 2, 2) == message
+
+
+def test_the_probe_list_has_the_mesh_probe_and_every_program_probe():
+    assert PROBES[0] == "wrong_mesh" and set(PROBES[1:]) == set(probe_programs())
+    assert probe_message("wrong_mesh", 4, 3) == "is outside the 4x3 mesh"
