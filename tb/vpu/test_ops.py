@@ -136,3 +136,27 @@ async def test_kvwrite(dut):
         img = Images(rng)
         cycles = await check(dut, img, SUBS["KVWRITE"], ra=1000, rb=1100, rc=20000, t=t)
     dut._log.info(f"KVWRITE: {cycles} cycles")
+
+
+def softmax_images(rng, kind):
+    img = Images(rng)
+    scores = rng.integers(-32768, 32768, (32, 2, 256)) if kind == "wide" else rng.integers(-300, 300, (32, 2, 256))
+    if kind == "equal":
+        scores[:] = 1234
+    for n in range(32):
+        for r in range(2):
+            put_i16(img.act, 6000 + 128 * n + 64 * r, scores[n, r])
+    m, sh = scale(rng, 5, 12)
+    put_param(img, 30, m, sh)
+    return img
+
+
+@cocotb.test()
+async def test_softmax(dut):
+    await start_clock(dut)
+    rng = rng_for("softmax")
+    for kind, t in [("narrow", 0), ("narrow", 7), ("narrow", 8), ("wide", 100), ("equal", 31), ("narrow", 255),
+                    ("wide", 255)]:
+        img = softmax_images(rng, kind)
+        cycles = await check(dut, img, SUBS["SOFTMAX"], ra=6000, rb=8000, rc=30, t=t)
+        dut._log.info(f"SOFTMAX {kind} t={t}: {cycles} cycles")
