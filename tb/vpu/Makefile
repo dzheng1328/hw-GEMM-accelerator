@@ -24,6 +24,17 @@ else ifeq ($(SUITE),rng)
 TOPLEVEL = vpu_rng
 MODULE = test_rng
 VERILOG_SOURCES = $(PWD)/../../rtl/vpu_rng.v
+else ifeq ($(SUITE),lanes)
+TOPLEVEL = vpu_lanes
+MODULE = test_lanes
+VERILOG_SOURCES = $(PWD)/../../rtl/vpu_lanes.v $(PWD)/../../rtl/requant.v
+# Output width 8 (requant) or 16 (requant16, EMBED's lanes); `make lanes16` runs the latter.
+export LANES_QW ?= 8
+ifeq ($(SIM),icarus)
+COMPILE_ARGS += -P$(TOPLEVEL).QW=$(LANES_QW)
+else
+COMPILE_ARGS += -GQW=$(LANES_QW)
+endif
 else
 $(error unknown SUITE $(SUITE))
 endif
@@ -32,3 +43,7 @@ SIM_BUILD = $(SIM_ROOT)/sim_build_vpu_$(SUITE)$(if $(filter 16,$(LANES_QW)),_q16
 COCOTB_RESULTS_FILE = $(SIM_BUILD)/results.xml
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+.PHONY: lanes16
+lanes16:
+	$(MAKE) SUITE=lanes LANES_QW=16
