@@ -264,15 +264,19 @@ class Tracer(Golden):
     vops holds every executed VOP as (pc, sub, ra, rb, rc, t, plen,
     inv_temp), the operand registers' values when it started;
     slots and wb_words are the total OPERAND slots streamed and words
-    written back."""
+    written back; tagged_slots and tagged_blocks() are the share issued while
+    PERF_TAG's bit 0 is set."""
 
     def __init__(self, mesh_w, mesh_h, program, weights, act):
         super().__init__(mesh_w, mesh_h, program, weights, act)
         self.blocks, self.resolved, self.vops, self.epoch, self.slots, self.wb_words = [], [], [], 0, 0, 0
+        self.tagged_slots = 0  # OPERAND slots of BLOCKs issued while PERF_TAG's bit 0 is set (4.3g)
 
     def operands(self, b, pc=0):
         a, bmat = super().operands(b, pc)
         self.slots += len(a)
+        if self.regs[isa.PERF_TAG] & 1:
+            self.tagged_slots += len(a)
         return a, bmat
 
     def _block(self, pc, b):
@@ -287,6 +291,10 @@ class Tracer(Golden):
         R = self.regs
         self.vops.append((pc, v.sub, R[v.ra], R[v.rb], R[v.rc], R[isa.T], R[isa.PLEN], R[isa.INV_TEMP]))
         super()._vop(pc, v)
+
+    def tagged_blocks(self):
+        """BLOCKs issued while PERF_TAG's bit 0 was set (rtl/cmd_perf.v's attn_blocks)."""
+        return sum(regs[isa.PERF_TAG] & 1 for _, _, regs, _, _ in self.blocks)
 
     def _retire(self):
         super()._retire()
