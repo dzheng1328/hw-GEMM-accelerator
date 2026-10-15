@@ -20,6 +20,7 @@ import isa
 from cifar_report import check_split
 from emit import images
 from golden import Tracer
+from lm_perf import ATTN, SPLIT
 from lower import read_buffer, read_output
 
 MESH = (int(os.environ.get("MESH_W", "2")), int(os.environ.get("MESH_H", "2")))
@@ -71,6 +72,17 @@ def mesh_perf(dut):
     return {"corner": {n: int(getattr(nodes[0], n).value) for n in CORNER},
             "feed_cyc": [int(p.feed_cyc.value) for p in nodes],
             "busy_cyc": [int(p.busy_cyc.value) for p in nodes]}
+
+
+async def watch_tag(dut, high):
+    """Append, for each interval PERF_TAG was high, its length in clock cycles: an independent oracle for cmd_perf's
+    tagged counters that wakes on the tag's edges only (the tag moves on clock edges, 10 ns apart)."""
+    tag = dut.accel.perf_tag
+    while True:
+        await RisingEdge(tag)
+        t0 = get_sim_time("ns")
+        await FallingEdge(tag)
+        high.append(round((get_sim_time("ns") - t0) / 10))
 
 
 def read_act(dut, n_words):
@@ -140,7 +152,10 @@ async def test_case_matches_golden(dut):
     # Conv stacks compare the words the compiler allocated; a story model compares every word of both memories.
     want = g.actw if lm else g.actw[: b.lowered.mem.total_words]
     budget = cases.cycle_budget(g.slots, g.wb_words, MESH[0] * MESH[1])
+    tag_high = []
+    tag_task = cocotb.start_soon(watch_tag(dut, tag_high))
     cycles = await run(dut, budget + (cases.lm_extra_cycles(lm[3], len(g.vops), g.slots) if lm else 0))
+    tag_task.kill()
     got = read_act(dut, len(want))
     bad = np.flatnonzero(got != want)
     assert not bad.size, (f"{bad.size} of {len(want)} activation words differ; first word {bad[0]}: "
@@ -161,6 +176,17 @@ async def test_case_matches_golden(dut):
     assert counts["go_cyc"] == len(g.blocks), counts
     assert counts["wb_words"] == g.wb_words, counts
     assert counts["run_cyc"] == cycles, (counts, cycles)
+    attn = {n: int(getattr(perf, n).value) for n in ATTN}
+    # The tagged counters against the golden's own count of tagged BLOCKs and slots: a flit injected after the tag
+    # fell, or a tagged BLOCK counted untagged, breaks the slot equality.
+    assert attn["attn_blocks"] == g.tagged_blocks(), (attn, g.tagged_blocks())
+    assert attn["attn_go_cyc"] == attn["attn_blocks"], attn
+    assert attn["attn_slot_cyc"] == g.tagged_slots, (attn, g.tagged_slots)
+    assert all(attn["attn_" + k] <= counts[k] for k in SPLIT), (attn, counts)
+    assert sum(attn["attn_" + k] for k in SPLIT) == sum(tag_high), (attn, tag_high)
+    if CASE == cases.SMALL_TAG:
+        assert 0 < attn["attn_blocks"] < counts["blocks"], (attn, counts)
+        assert attn["attn_wait_cyc"] > 0, attn  # the WAIT that drains the tagged BLOCKs is inside the window
     check_split(counts)
     other = counts["other_cyc"] / len(g.blocks)
     dut._log.info("other_cyc %d over %d BLOCKs: %.3f per BLOCK", counts["other_cyc"], len(g.blocks), other)
@@ -185,8 +211,8 @@ async def test_case_matches_golden(dut):
         if os.environ.get("CIFAR_RESULTS"):
             with open(os.environ["CIFAR_RESULTS"], "w") as f:
                 json.dump(record, f, indent=2)
-    dut._log.info("%s on %dx%d: %d cycles, %d BLOCKs, %d slots (%.1f%% of cycles), %s",
-                  CASE, *MESH, cycles, len(g.blocks), g.slots, 100 * g.slots / cycles, counts)
+    dut._log.info("%s on %dx%d: %d cycles, %d BLOCKs, %d slots (%.1f%% of cycles), %s, tagged %s over %d windows",
+                  CASE, *MESH, cycles, len(g.blocks), g.slots, 100 * g.slots / cycles, counts, attn, len(tag_high))
 
 
 def seq_regs(dut):

@@ -14,7 +14,7 @@ CIFAR-10 network on the first N test images of model/cifar_quantized.npz."""
 
 import sys
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +27,10 @@ LM_CASES = {"lm_t0": ("random0", 10, 0), "lm_t256": ("random1", 12, 256)}
 LM_EXTRA = {"lm_real8": ("real", 8, 0), "lm_real8_t256": ("real", 8, 256),
             "lm_rounds": ("random2", 66, 256),  # T = 7 to 8 and 63 to 64: AV's second round
             "lm_full": ("random3", 256, 256)}   # every position up to T = 255 (about 8 minutes)
-CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)] + list(LM_CASES)
+# A conv-stack case for rtl/cmd_perf.v's tagged counters (4.3g): the "small" net with PERF_TAG set from the first
+# command to the first WAIT, so some BLOCKs are tagged and some are not (tag_first_segment).
+SMALL_TAG = "small_tag"
+CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)] + list(LM_CASES) + [SMALL_TAG]
 # Fault probes: tiny programs that must stop the run on a cmd_seq $fatal (`make error-check`).
 # name -> (program builder, the message fragment the log must hold, golden's fault pc). wrong_mesh is
 # the small net for a mesh one column wider than the build's (its message names the build's mesh).
@@ -54,6 +57,17 @@ def probe_programs():
 PROBES = ("wrong_mesh",) + tuple(probe_programs())
 # A program that runs a VOP and stops, for the Icarus probes of `make vpu-check` (they Force a signal while it runs).
 VOP_NOP = "vop_nop"
+
+
+def tag_first_segment(program):
+    """program with r31 set to 1 first and cleared right after the first WAIT (which drains every tagged BLOCK)."""
+    import isa
+
+    first_wait = next(n for n, w in enumerate(program) if w >> 60 == isa.WAIT)
+    setr = lambda v: isa.alu(isa.ALU_ADD, isa.PERF_TAG, 0, imm=v)  # noqa: E731
+    return [setr(1)] + list(program[: first_wait + 1]) + [setr(0)] + list(program[first_wait + 1 :])
+
+
 N_CIFAR_IMAGES = 128  # test images frozen in model/cifar_quantized.npz
 
 # (ksize, stride, pad) of the random stacks' conv layers.
@@ -184,6 +198,9 @@ def case_build(name, w, h):
 
         setr = lambda r, v: isa.alu(isa.ALU_ADD, r, 0, imm=v)  # noqa: E731
         return ProbeBuild([setr(22, 0), setr(23, 128), isa.vop(isa.VADD, 22, 23), isa.end()], (w, h))
+    if name == SMALL_TAG:
+        b = build(*case_net("small"), w, h)
+        return replace(b, program=tag_first_segment(b.program))
     if name not in CASES:
         raise ValueError(f"unknown case {name}")
     return build(*case_net(name), w, h)
