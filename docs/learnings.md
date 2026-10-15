@@ -23,6 +23,23 @@ actually resolved.
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-14 -- A restored mutant can leave a build that still tests the mutant
+
+**Phase:** Phase 4 (4.3f)
+**Problem:** After a mutation check (delete a guard, build, see the probe fail as intended, restore the file), `make vpu-check` kept failing: the probe ran but the guard was not in the build, and the whole `./test.sh` stopped at that step.
+**Cause:** The mutated Icarus build finished in the same second the file was restored; `sim.vvp` and `rtl/accel.v` showed the same modification time to the second, so `make` judged the mutated build current and never rebuilt it.
+**Fix:** Delete the simulator's build directory (or touch the file and wait out the second) after every restore; the 4.3f plan's mutation protocol says so.
+**Takeaway:** A test that passes after a mutation run proves nothing until the build is known to come from the restored source; this one failed loudly, which is the lucky direction.
+
+### 2026-10-14 -- 4.3f first end-to-end numbers: a story step is 28% VPU wait on 2x2, at short context
+
+**Phase:** Phase 4 (4.3f)
+**Problem:** 4.3g needs a first picture of where a decode step goes before it adds the per-category counters, and the spec's estimates had never run on the full chip.
+**Cause:** Nothing broke; this is the first run of the integrated pipeline (random weights, the real 5-layer shape, T = 0 to 11 only, so SOFTMAX is at its cheapest).
+**Fix:** Measured from `cmd_perf` on `lm_t0` (10 steps, 8,960 BLOCKs): 2x2 699,392 cycles (70K a step: 54% OPERAND slots, 29% `wait_cyc`, 11% injection stalls, 5% other), 1x1 1,175,582, 4x3 682,782.
+`wait_cyc` is where a VOP's drain and run land, and `vpu_perf` says the VPU's own busy cycles are most of it; the rest is the drain in front of every VOP (48 per step), where the mesh sits idle.
+**Takeaway:** 4x3 is only 2% faster than 2x2, the same corner-injection limit as CIFAR-10 (4.2f), and the serialization the spec predicted is already a third of the step at short context; SOFTMAX grows with T (2n + 10 cycles per nest), so 4.3g's breakdown at T = 127 to 255 is the number that matters, not these.
+
 ### 2026-10-14 -- 4.3e measured cycles against the spec's estimates
 
 **Phase:** Phase 4 (4.3e)

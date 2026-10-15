@@ -22,10 +22,8 @@ IMG_IN, IMG_OUT = 14, 15
 # BLOCK's round, row limit minus 1, and result mode. 22-31 are free.
 T, PLEN, INV_TEMP, ROUND, ROWS, RMODE = range(16, 22)
 RMODE_RAW, RMODE_Q8, RMODE_Q16 = 0, 1, 2
-# The registers of the 4.2 command processor's RTL, until 4.3f widens it to
-# N_REGS_LM; the golden executor always has N_REGS_LM.
-N_REGS = 16
-N_REGS_LM = 32
+# The register file of the command processor's RTL and of the golden executor.
+N_REGS = 32
 MAX_LOOP_DEPTH = 4
 REG_MASK = 0xFFFF_FFFF
 

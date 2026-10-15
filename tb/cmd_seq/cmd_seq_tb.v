@@ -3,7 +3,8 @@
 // tb/cmd_seq/cmd_seq_tb.v -- test harness for rtl/cmd_seq.v on a 4x3 mesh:
 // the sequencer reading a sim_mem program memory that the testbench loads
 // through its write port. The testbench stands in for rtl/dma_gather.v
-// (dma_start/busy/done) and rtl/writeback.v (wb_full/wb_idle). FATAL = 0 so
+// (dma_start/busy/done), rtl/writeback.v (wb_full/wb_idle) and rtl/vpu.v
+// (vop_*: start pulse, operands, done and fault). FATAL = 0 so
 // every fault can be inspected on error/error_pc; tb/accel's error-check
 // proves the shipping FATAL = 1 stops a run.
 module cmd_seq_tb #(
@@ -52,13 +53,26 @@ module cmd_seq_tb #(
     output wire          relu,
     output wire [5:0]    sh,
     output wire [15:0]   m,
+    output wire          reg_form,
+    output wire          q16,
+    output wire [2:0]    rows_m1,
     output wire          wb_push,
     output wire [3:0]    wb_tile,
     output wire          wb_raw,
     output wire [16:0]   wb_base,
     output wire [11:0]   wb_step,
     input  wire [15:0]   wb_full,
-    input  wire          wb_idle
+    input  wire          wb_idle,
+    output wire          vop_start,
+    output wire [3:0]    vop_sub,
+    output wire [31:0]   vop_ra,
+    output wire [31:0]   vop_rb,
+    output wire [31:0]   vop_rc,
+    output wire [31:0]   vop_t,
+    output wire [31:0]   vop_plen,
+    output wire [31:0]   vop_inv_temp,
+    input  wire          vop_done,
+    input  wire          vop_fault
 );
 
     wire        prog_re;
@@ -80,7 +94,11 @@ module cmd_seq_tb #(
         .bias_start(bias_start), .bias_val(bias_val),
         .tile_x(tile_x), .tile_y(tile_y), .acc_keep(acc_keep), .no_ret(no_ret), .requant(requant),
         .relu(relu), .sh(sh), .m(m),
+        .reg_form(reg_form), .q16(q16), .rows_m1(rows_m1),
         .wb_push(wb_push), .wb_tile(wb_tile), .wb_raw(wb_raw), .wb_base(wb_base), .wb_step(wb_step),
-        .wb_full(wb_full), .wb_idle(wb_idle));
+        .wb_full(wb_full), .wb_idle(wb_idle),
+        .vop_start(vop_start), .vop_sub(vop_sub), .vop_ra(vop_ra), .vop_rb(vop_rb), .vop_rc(vop_rc),
+        .vop_t(vop_t), .vop_plen(vop_plen), .vop_inv_temp(vop_inv_temp),
+        .vop_done(vop_done), .vop_fault(vop_fault));
 
 endmodule

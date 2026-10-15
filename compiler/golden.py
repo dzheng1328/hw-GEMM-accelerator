@@ -42,7 +42,7 @@ class Golden:
         self.wmem = _load(weights, isa.WEIGHT_WORDS, "weight")
         self.act = _load(act, isa.ACT_WORDS, "activation").view(np.uint8)
         self.actw = self.act.view("<u8")  # the same memory, a word at a time
-        self.regs = [0] * isa.N_REGS_LM
+        self.regs = [0] * isa.N_REGS
         self.acc = {}
         # pc of the outstanding BLOCK that writes each activation word, or -1.
         self.pending = np.full(isa.ACT_WORDS, -1, dtype=np.int64)
@@ -66,7 +66,7 @@ class Golden:
                 self._block(pc, arg)
             elif op == isa.VOP:
                 self._retire()  # a VOP drains every outstanding BLOCK, like WAIT, before it starts
-                golden_vop.execute(self, pc, arg)
+                self._vop(pc, arg)
             elif op == isa.WAIT:
                 self._retire()
             elif op in (isa.LOOP, isa.LOOPR):
@@ -93,6 +93,9 @@ class Golden:
                 raise GoldenError(pc, f"invalid opcode {op}")
             pc = nxt
         raise GoldenError(pc, f"no END within {max_commands} commands")
+
+    def _vop(self, pc, v):
+        golden_vop.execute(self, pc, v)
 
     def _alu(self, a):
         if not a.dst:
@@ -252,14 +255,20 @@ class Golden:
 class Tracer(Golden):
     """A Golden that also records what the command processor's RTL must do,
     for the testbenches. After run(): blocks holds every executed BLOCK as
-    (pc, block, registers, epoch, words) -- the 16 registers when it ran,
-    the number of WAITs and ENDs executed before it, and the activation
-    words it writes back (None for no_ret); slots and wb_words are the total
-    OPERAND slots streamed and words written back."""
+    (pc, block, registers, epoch, words) -- the block as encoded, all 32
+    registers when it ran, the number of WAITs, VOPs and ENDs executed
+    before it, and the activation words it writes back (None for no_ret);
+    resolved holds, in the same order, (block, rows, q16): the block with a
+    register form's round, flags and result mode filled in (what the RTL's
+    ports carry), the rows it returns and whether they are RESULT16;
+    vops holds every executed VOP as (pc, sub, ra, rb, rc, t, plen,
+    inv_temp), the operand registers' values when it started;
+    slots and wb_words are the total OPERAND slots streamed and words
+    written back."""
 
     def __init__(self, mesh_w, mesh_h, program, weights, act):
         super().__init__(mesh_w, mesh_h, program, weights, act)
-        self.blocks, self.epoch, self.slots, self.wb_words = [], 0, 0, 0
+        self.blocks, self.resolved, self.vops, self.epoch, self.slots, self.wb_words = [], [], [], 0, 0, 0
 
     def operands(self, b, pc=0):
         a, bmat = super().operands(b, pc)
@@ -270,8 +279,14 @@ class Tracer(Golden):
         rb, rows, q16 = self._resolve(pc, b)
         super()._block(pc, b)
         words = None if rb.no_ret else self.result_words(rb, rows, q16)
-        self.blocks.append((pc, b, tuple(self.regs[: isa.N_REGS]), self.epoch, words))
+        self.blocks.append((pc, b, tuple(self.regs), self.epoch, words))
+        self.resolved.append((rb, rows, q16))
         self.wb_words += 0 if words is None else len(words)
+
+    def _vop(self, pc, v):
+        R = self.regs
+        self.vops.append((pc, v.sub, R[v.ra], R[v.rb], R[v.rc], R[isa.T], R[isa.PLEN], R[isa.INV_TEMP]))
+        super()._vop(pc, v)
 
     def _retire(self):
         super()._retire()

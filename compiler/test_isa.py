@@ -118,4 +118,4 @@ def test_loopr_and_vop_round_trip():
 def test_the_new_opcodes_and_registers_do_not_collide_with_the_old_ones():
     assert len({isa.ADD, isa.BLOCK, isa.WAIT, isa.LOOP, isa.ENDLOOP, isa.END, isa.ALU, isa.LOOPR, isa.VOP}) == 9
     assert (isa.T, isa.PLEN, isa.INV_TEMP, isa.ROUND, isa.ROWS, isa.RMODE) == (16, 17, 18, 19, 20, 21)
-    assert isa.N_REGS == 16 and isa.N_REGS_LM == 32 and isa.WEIGHT_WORDS == 65536
+    assert isa.N_REGS == 32 and isa.WEIGHT_WORDS == 65536

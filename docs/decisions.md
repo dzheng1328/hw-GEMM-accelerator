@@ -18,6 +18,27 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-14 -- 4.3f: the command processor runs the vector unit
+
+**Context:** 4.3d gave the ISA (ALU, LOOPR, VOP, the register-form BLOCK, a four-deep loop stack, 32 registers) and the golden executor; 4.3e gave a vector unit with generic memory ports.
+4.3f had to make `cmd_seq` and `accel` execute all of it, bit-exact to the golden, without changing a CIFAR-10 cycle.
+**Options considered:** The VPU's memory mux selected by its own request enables, or by an ownership signal (`own`, its `busy`).
+The register form resolved inside `cmd_seq` (its round, `acc_keep`, `no_ret`, `requant`, `q16` and `rows_m1` outputs carry the resolved values), or raw fields resolved downstream.
+A VOP's drain and run counted as their own perf category, or folded into `wait_cyc`.
+The VPU's fault reported by the VPU's own `$fatal`, or through `cmd_seq`'s `error` and `error_pc`.
+**Decision:** The mux selects on `own = vpu.busy`: `dma_gather` keeps `act_re` and `wt_re` high every cycle even when idle (its port contract), so an OR of enables would let an idle DMA's reads collide with the VPU's.
+`cmd_seq` resolves the register form (the DMA and the write-back entry see only resolved fields) and drives `reg_form` as a port for the testbench.
+A VOP drains like WAIT (write-back and the DMA idle), pulses `vop_start` once with its three operand registers and T, PLEN and INV_TEMP, and holds in a new state until `vop_done`; `wait_stall` covers the whole of it, so `cmd_perf` counts VPU time as `wait_cyc` until 4.3g splits it out.
+`accel` instantiates the VPU with `FATAL = 0`: the VPU's fault is the VOP's fault, so `cmd_seq` sets `error` and `error_pc` and ends the simulation with the pc of the VOP.
+The A memory is 64K words (`WT_AW = 16`) with the VPU as its only writer.
+Two `$fatal` guards in `accel` (a VPU request while it is not running; the VPU running while the DMA or write-back is busy) are proven by Icarus `Force` probes, and every `cmd_seq` fault by a tiny program run under `FATAL = 1` (`make error-check`, `make vpu-check`).
+**Why:** Ownership is the one signal the sequencer already guarantees (everything is drained before a VOP and nothing issues during it), so the mux is correct by construction and the guards check the guarantee instead of relying on it.
+Resolving the register form in one place keeps the DMA, `flit_pack` and `writeback` unchanged, which is also why CIFAR-10 is cycle-identical (1,119,365 cycles on 2x2 for `cifar8`, before and after).
+**Result:** Story-model programs (the real 5-layer shape, random weights and the frozen model) run end to end on 1x1, 2x2 and 4x3 with both memories word-for-word equal to the golden's and the token log and K and V caches equal to `lm_reference.py`'s, at temperature 0 and 1.0.
+66 steps cross the AV's second round (T = 63 to 64): that is where the register form accumulates and only the last round returns.
+The spec's "random small transformers (1-2 layers)" are the real five-layer shape with random weights: the layer count is `lm_spec.N_LAYERS`, a constant that the layout, the lowering, the reference and the quantizer all read, and the cases already run in seconds, so a layer parameter would touch those four for no new RTL coverage (the layers are unrolled in the program, each with its own BLOCKs and VOPs).
+`cmd_seq`'s fault list is the golden's: the depth-5 loop, the `reg_form` port and the faults of opcodes 7-9 are restored in `tb/cmd_seq`.
+
 ### 2026-10-14 -- 4.3e: the vector unit's RTL contract, and where it departs from the spec
 **Context:** The 4.3 spec fixed what each VOP sub-op computes but left the VPU's memory interface, lane width, pipelining and fault policy open, and its section 3 assumed eight lanes.
 **Options considered:** Memory ports: narrow generic ports (one 64-bit read and one 64-bit write port per memory) or ports shaped to the DMA's banks.

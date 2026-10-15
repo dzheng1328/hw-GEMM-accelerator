@@ -6,6 +6,7 @@ write-back FIFO; ADD, LOOP, and restart match golden; every fault stops at
 golden's pc and stays stopped."""
 
 import random
+from dataclasses import replace
 
 import cocotb
 import numpy as np
@@ -19,8 +20,13 @@ from hwview import dma_ports, entry_words
 from nets import NETS, random_net
 
 MESH = (4, 3)
-# The register-form bit is 4.3d's; the RTL gains it in 4.3f.
-BLOCK_PORTS = tuple(f for f in isa.BLOCK_FIELDS if f != "reg_form")
+# The BLOCK ports carry the resolved round, flags and result mode of a register form (golden's
+# Tracer.resolved); q16 and rows_m1 are also the write-back entry's mode and row limit.
+BLOCK_PORTS = tuple(isa.BLOCK_FIELDS)
+ROW_PORTS = ("q16", "rows_m1")
+VOP_PORTS = ("vop_sub", "vop_ra", "vop_rb", "vop_rc", "vop_t", "vop_plen", "vop_inv_temp")
+# The sub-ops rtl/vpu.v rejects at T >= 256: EMBED, ROPE, KVWRITE, SOFTMAX, SAMPLE.
+USES_T = (isa.EMBED, isa.ROPE, isa.KVWRITE, isa.SOFTMAX, isa.SAMPLE)
 REG_PORTS = ("in_base", "w_base", "cin_log2", "h_log2", "w_log2", "wout_log2", "stride2", "pad",
              "ksize", "ks", "bias_start", "bias_val")
 PUSH_PORTS = ("wb_push", "wb_tile", "wb_raw", "wb_base", "wb_step")
@@ -39,6 +45,14 @@ def blk(x, y, pb=0, **flags):
     return isa.block(isa.Block(x, y, 0, pb, 0, **flags))
 
 
+def rf_blk(x, y, pb=0, **flags):
+    return isa.block(isa.Block(x, y, 0, pb, 0, reg_form=True, **flags))
+
+
+def setr(reg, value):
+    return isa.alu(isa.ALU_ADD, reg, 0, imm=value)
+
+
 def net_build(name, n_images=2, seed=0):
     rng = np.random.default_rng(seed)
     shape, specs = NETS[name]
@@ -52,7 +66,7 @@ async def setup_dut(dut):
 
 
 async def reset(dut):
-    for sig in ("start", "prog_we", "dma_busy", "dma_handoff", "wb_full"):
+    for sig in ("start", "prog_we", "dma_busy", "dma_handoff", "wb_full", "vop_done", "vop_fault"):
         getattr(dut, sig).value = 0
     dut.wb_idle.value = 1
     dut.dma_ready.value = 1
@@ -93,17 +107,27 @@ class Env:
     cycle), rtl/dma_gather.v's !active && (!go_pend || adv); busy covers S0,
     a pending GO, and every drain. Write-back retires entries at random,
     oldest first per tile, at most `budget` more of them (None: no limit).
-    `cycles` records (dma_start, dma_ready, dma_handoff) for every cycle."""
+    `cycles` records (dma_start, dma_ready, dma_handoff) for every cycle.
+    The VPU model follows rtl/vpu.v's contract: one vop_start pulse, only
+    once write-back and the DMA have drained and no VOP is running; vop_done
+    for one cycle after 1 to vop_cycles[1] cycles, or, for a sub-op that uses
+    T with T >= 256, a sticky vop_fault instead. Nothing may issue to the
+    DMA while a VOP runs, and wait_stall must hold for its whole run."""
 
-    def __init__(self, dut, rng, dma_cycles=(1, 12), drain_cycles=(1, 4), retire_prob=0.3, go_accept=0.7):
+    def __init__(self, dut, rng, dma_cycles=(1, 12), drain_cycles=(1, 4), retire_prob=0.3, go_accept=0.7,
+                 vop_cycles=(1, 8)):
         self.dut, self.rng = dut, rng
         self.dma_cycles, self.drain_cycles, self.retire_prob = dma_cycles, drain_cycles, retire_prob
         self.go_accept = go_accept
+        self.vop_cycles = vop_cycles
         self.issues = []   # {"block", "regs", "push", "pending"} per BLOCK issued
+        self.vops = []     # the VOP_PORTS of every vop_start
+        self.vop_inflight = False
         self.pending = []  # (tile, issue index) of entries not yet written back, oldest first
         self.budget = None
         self.cycles = []
-        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback())]
+        self.tasks = [cocotb.start_soon(self.dma()), cocotb.start_soon(self.writeback()),
+                      cocotb.start_soon(self.vpu())]
 
     def stop(self):
         for t in self.tasks:
@@ -126,19 +150,20 @@ class Env:
             start = bool(dut.dma_start.value)
             self.cycles.append((start, ready, s0_left == 1))
             if s0_left:
-                assert ports(dut, BLOCK_PORTS + REG_PORTS) == held, f"BLOCK {n}: DMA inputs changed before handoff"
+                assert ports(dut, BLOCK_PORTS + REG_PORTS + ROW_PORTS) == held, f"BLOCK {n}: DMA inputs changed before handoff"
                 assert not start, f"BLOCK {n}: dma_start while the DMA is not ready"
             if start:
                 assert ready, "dma_start while the DMA is not ready"
+                assert not self.vop_inflight, "dma_start while a VOP runs"
                 push = ports(dut, PUSH_PORTS)
                 self.issues.append({"block": block_of(dut), "regs": ports(dut, REG_PORTS), "push": push,
-                                    "pending": [i for _, i in self.pending]})
+                                    "rows": ports(dut, ROW_PORTS), "pending": [i for _, i in self.pending]})
                 n = len(self.issues) - 1
                 if push["wb_push"]:
                     tile = push["wb_tile"]
                     assert sum(t == tile for t, _ in self.pending) < 2, f"BLOCK {n} pushed to tile {tile}'s full FIFO"
                     self.pending.append((tile, n))
-                held = ports(dut, BLOCK_PORTS + REG_PORTS)
+                held = ports(dut, BLOCK_PORTS + REG_PORTS + ROW_PORTS)
             await RisingEdge(dut.clk)
             drains = [d - 1 for d in drains if d > 1]
             if start:
@@ -151,6 +176,35 @@ class Env:
                     drains.append(rng.randint(*self.drain_cycles))
             elif accept:
                 go_pending = False
+
+    async def vpu(self):
+        dut, rng = self.dut, self.rng
+        left, bad, pulse = None, False, False
+        while True:
+            await FallingEdge(dut.clk)
+            if dut.vop_start.value:
+                assert not self.vop_inflight, "vop_start while a VOP runs"
+                assert not self.pending and not dut.dma_busy.value and dut.wb_idle.value, \
+                    "vop_start before write-back and the DMA drained"
+                op = ports(dut, VOP_PORTS)
+                self.vops.append(op)
+                self.vop_inflight = True
+                left, bad = rng.randint(*self.vop_cycles), op["vop_sub"] in USES_T and op["vop_t"] >= 256
+            elif self.vop_inflight:
+                assert dut.wait_stall.value and dut.busy.value, "wait_stall dropped while a VOP runs"
+            await RisingEdge(dut.clk)
+            dut.vop_done.value = 0
+            if pulse:
+                pulse, self.vop_inflight = False, False
+            if left is not None:
+                left -= 1
+                if left == 0:
+                    left = None
+                    pulse = True   # the sequencer leaves the VOP at the next edge, to EXEC or to HALT
+                    if bad:
+                        dut.vop_fault.value = 1
+                    else:
+                        dut.vop_done.value = 1
 
     async def writeback(self):
         dut = self.dut
@@ -184,10 +238,15 @@ async def run(dut, env, max_cycles=200_000):
 
 
 def check_trace(env, tracer):
+    assert len(env.vops) == len(tracer.vops), f"{len(env.vops)} VOPs started, golden ran {len(tracer.vops)}"
+    for n, (got, (pc, *want)) in enumerate(zip(env.vops, tracer.vops)):
+        assert [got[p] for p in VOP_PORTS] == want, f"VOP {n} (pc {pc}): started with {got}, golden has {want}"
     assert len(env.issues) == len(tracer.blocks), f"{len(env.issues)} BLOCKs issued, golden ran {len(tracer.blocks)}"
-    for n, (issue, (pc, b, regs, epoch, words)) in enumerate(zip(env.issues, tracer.blocks)):
+    for n, (issue, (pc, b, regs, epoch, words), (rb, rows, q16)) in enumerate(zip(env.issues, tracer.blocks, tracer.resolved)):
         where = f"BLOCK {n} (pc {pc})"
-        assert issue["block"] == b, f"{where}: issued {issue['block']}, expected {b}"
+        want = replace(rb, reg_form=b.reg_form)
+        assert issue["block"] == want, f"{where}: issued {issue['block']}, expected {want}"
+        assert issue["rows"] == {"q16": int(q16), "rows_m1": rows - 1}, f"{where}: rows {issue['rows']}, expected {rows} q16={q16}"
         assert issue["regs"] == dma_ports(regs), f"{where}: DMA registers {issue['regs']}, expected {dma_ports(regs)}"
         push = issue["push"]
         if words is None:
@@ -195,8 +254,8 @@ def check_trace(env, tracer):
         else:
             assert push["wb_push"], f"{where} returns results but pushed no entry"
             assert push["wb_tile"] == b.tile_y * MESH[0] + b.tile_x, f"{where}: entry for tile {push['wb_tile']}"
-            assert push["wb_raw"] == int(not b.requant), f"{where}: entry raw={push['wb_raw']}"
-            got = entry_words(push["wb_base"], push["wb_step"], push["wb_raw"])
+            assert push["wb_raw"] == int(not rb.requant), f"{where}: entry raw={push['wb_raw']}"
+            got = entry_words(push["wb_base"], push["wb_step"], push["wb_raw"], q16, rows)
             assert np.array_equal(got, words), f"{where}: entry covers {got[:4]}..., golden writes {words[:4]}..."
         stale = [i for i in issue["pending"] if tracer.blocks[i][3] != epoch]
         assert not stale, f"{where} issued before BLOCK {stale[0]}'s write-back drained (a WAIT lies between them)"
@@ -205,7 +264,7 @@ def check_trace(env, tracer):
 def golden_regs(program):
     g = Golden(*MESH, program, [], [])
     g.run()
-    return g.regs[: isa.N_REGS]  # the golden executor has isa.N_REGS_LM; the RTL has isa.N_REGS
+    return g.regs
 
 
 def dut_regs(dut):
@@ -248,6 +307,170 @@ async def test_random_adds_match_golden_one_per_cycle(dut):
 
 
 @cocotb.test()
+async def test_random_alu_programs_match_golden_one_per_cycle(dut):
+    """ALU over all 32 registers: every operation, a register or an immediate
+    second operand, shift counts above 31, r0 as a destination, 32-bit wrap."""
+    await setup_dut(dut)
+    rng = random.Random(11)
+    imms = lambda: rng.choice((rng.randrange(1 << 32), rng.randrange(-(1 << 31), 0), 1, 31, 32, 33, 0xFFFF_FFFF))
+    prog = [isa.alu(isa.ALU_ADD, r, 0, imm=rng.randrange(1 << 32)) for r in range(1, 32)]  # seed every register
+    for _ in range(400):
+        op, dst, src = rng.randrange(4), rng.randrange(32), rng.randrange(32)
+        if rng.random() < 0.5:
+            prog.append(isa.alu(op, dst, src, src2=rng.randrange(32)))
+        else:
+            prog.append(isa.alu(op, dst, src, imm=imms()))
+    prog.append(isa.end())
+    await load(dut, prog)
+    env = Env(dut, rng)
+    cycles = await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    assert dut_regs(dut) == golden_regs(prog)
+    assert dut_regs(dut)[0] == 0
+    assert cycles == len(prog) + 1, f"{cycles} cycles for {len(prog)} commands: not one command per cycle"
+
+
+@cocotb.test()
+async def test_nested_loops_and_loopr_match_golden(dut):
+    """Four loops deep with LOOPR counts from registers (3, 1, and 2 around a
+    LOOP 2), ALUs and BLOCKs in every body, and ENDLOOPs back to back."""
+    await setup_dut(dut)
+    prog = SETUP + [
+        isa.alu(isa.ALU_ADD, 22, 0, imm=3), isa.alu(isa.ALU_ADD, 23, 0, imm=1), isa.alu(isa.ALU_ADD, 24, 0, imm=2),
+        isa.loopr(22), isa.alu(isa.ALU_ADD, 25, 25, imm=1),
+        isa.loopr(23), isa.alu(isa.ALU_ADD, 26, 26, imm=1),
+        isa.loop(2), blk(1, 0, no_ret=True), isa.alu(isa.ALU_ADD, 27, 27, imm=1),
+        isa.loopr(24), isa.alu(isa.ALU_ADD, 28, 28, imm=1), blk(2, 0, no_ret=True), isa.endloop(),
+        isa.endloop(), isa.endloop(), isa.endloop(),
+        isa.alu(isa.ALU_ADD, 29, 25, src2=28),
+        isa.end(),
+    ]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    assert tracer.regs[25:29] == [3, 3, 6, 12], tracer.regs[25:29]
+    await load(dut, prog)
+    env = Env(dut, random.Random(12))
+    await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    check_trace(env, tracer)
+    assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
+async def test_register_form_blocks_resolve_like_golden(dut):
+    """ROUND, ROWS and RMODE decide a register form's round, accumulation,
+    return and result mode: a K = 200 sum in four rounds (0-2 accumulate and
+    do not return, 3 returns RESULT8), a K = 128 sum whose last round ends
+    exactly on a round boundary, RESULT16 with a row limit, RESULT8 with relu,
+    raw cells with a row limit, and an immediate-form BLOCK that must ignore
+    all three registers even when they are out of range."""
+    await setup_dut(dut)
+    R, W, Q = isa.ROUND, isa.ROWS, isa.RMODE
+    prog = SETUP + [setr(isa.KS, 200), setr(W, 7), setr(Q, isa.RMODE_Q8)]
+    for rnd in range(4):
+        prog += [setr(R, rnd), rf_blk(1, 1, sh=3, m=9)]
+    # K = 128 is exactly two rounds: round 1 is the last (64 * 2 >= 128) and returns.
+    prog += [isa.wait(), setr(isa.KS, 128), setr(R, 0), rf_blk(1, 1, 6, sh=3, m=9), setr(R, 1), rf_blk(1, 1, 6, sh=3, m=9)]
+    prog += [isa.wait(), setr(isa.KS, 8), setr(R, 0), setr(W, 1), setr(Q, isa.RMODE_Q16), rf_blk(0, 0, 2, sh=5, m=77),
+             isa.wait(), setr(W, 7), setr(Q, isa.RMODE_Q8), rf_blk(2, 0, 3, relu=True, sh=2, m=5),
+             isa.wait(), setr(W, 2), setr(Q, isa.RMODE_RAW), rf_blk(3, 0, 4), isa.wait(),
+             setr(R, 999), setr(W, 9), setr(Q, 9), blk(3, 0, 5), isa.end()]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    assert [(rows, q16) for _, rows, q16 in tracer.resolved][-4:] == [(2, True), (8, False), (3, False), (8, False)]
+    await load(dut, prog)
+    env = Env(dut, random.Random(13))
+    await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
+    check_trace(env, tracer)
+    assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
+async def test_vops_drain_first_hold_the_sequencer_and_pass_their_operands(dut):
+    """A VOP starts only once the BLOCKs before it (returning or not) have
+    drained, carries its three registers and T, PLEN and INV_TEMP, holds back
+    every later command until done, and does not disturb the loop around it."""
+    await setup_dut(dut)
+    prog = SETUP + [
+        setr(22, 1000), setr(23, 2000), setr(24, 3), setr(isa.T, 2), setr(isa.PLEN, 9), setr(isa.INV_TEMP, 300),
+        blk(0, 0), blk(1, 0, 1), blk(2, 0, 2),
+        isa.vop(isa.VADD, 22, 23, 24),
+        blk(3, 0, 3), isa.vop(isa.TRANSPOSE, 22, 23, 24), isa.vop(isa.SAMPLE, 22, 23, 24),
+        isa.loop(3), blk(0, 1, 4, no_ret=True), isa.vop(isa.VADD, 23, 22), isa.add(14, 14, 1), isa.endloop(),
+        isa.vop(isa.VADD, 0, 0, 0),
+        isa.end(),
+    ]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    assert len(tracer.vops) == 7
+    await load(dut, prog)
+    for seed, (lo, hi) in enumerate(((1, 1), (1, 8), (20, 30))):
+        env = Env(dut, random.Random(20 + seed), vop_cycles=(lo, hi))
+        await run(dut, env)
+        env.stop()
+        assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
+        check_trace(env, tracer)
+        assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
+async def test_a_vop_can_be_first_back_to_back_and_last(dut):
+    """A VOP as the first command (pc 0 is fetched into it), several in a row,
+    and one right before END; the second program restarts the first's finished run."""
+    await setup_dut(dut)
+    for prog in ([isa.vop(isa.VADD, 0, 0), isa.end()],
+                 [isa.vop(isa.VADD, 0, 0), isa.vop(isa.TRANSPOSE, 0, 0, 0), isa.vop(isa.VADD, 0, 0), isa.end()]):
+        tracer = Tracer(*MESH, prog, [], [])
+        tracer.run()
+        await load(dut, prog)
+        env = Env(dut, random.Random(40))
+        await run(dut, env)
+        env.stop()
+        assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
+        check_trace(env, tracer)
+        assert len(env.vops) == len(prog) - 1
+
+
+@cocotb.test()
+async def test_loopr_runs_its_largest_count(dut):
+    """65535 iterations: the 16-bit counter neither wraps early nor stops late (65536 is a probe in tb/accel)."""
+    await setup_dut(dut)
+    prog = [setr(25, 65535), isa.loopr(25), isa.alu(isa.ALU_ADD, 26, 26, imm=1), isa.endloop(), isa.end()]
+    await load(dut, prog)
+    env = Env(dut, random.Random(41))
+    await run(dut, env, max_cycles=300_000)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    assert dut_regs(dut)[26] == 65535 and dut_regs(dut) == golden_regs(prog)
+
+
+@cocotb.test()
+async def test_a_vpu_fault_is_the_vops_fault(dut):
+    """The VPU's sticky fault stops the sequencer at the VOP's pc, even
+    though the VOP started; a start afterwards changes nothing."""
+    await setup_dut(dut)
+    prog = [setr(isa.T, 255), setr(isa.PLEN, 999), isa.vop(isa.SAMPLE), setr(isa.T, 256), isa.vop(isa.SAMPLE), isa.end()]
+    want = golden_fault_pc(prog)
+    assert want == 4
+    await load(dut, prog)
+    env = Env(dut, random.Random(30))
+    await run(dut, env)
+    assert dut.error.value and not dut.done.value and int(dut.error_pc.value) == want
+    assert len(env.vops) == 2
+    dut.start.value = 1
+    await RisingEdge(dut.clk)
+    dut.start.value = 0
+    for _ in range(10):
+        await FallingEdge(dut.clk)
+        assert dut.error.value and not dut.busy.value and int(dut.error_pc.value) == want
+    env.stop()
+
+
+@cocotb.test()
 async def test_loops_match_golden(dut):
     """A loop whose body starts with a BLOCK, a LOOP of 1 around a no_ret
     BLOCK, and an ENDLOOP that falls straight into END."""
@@ -266,7 +489,7 @@ async def test_loops_match_golden(dut):
     env.stop()
     assert dut.done.value and not dut.error.value
     check_trace(env, tracer)
-    assert dut_regs(dut) == tracer.regs[: isa.N_REGS]
+    assert dut_regs(dut) == tracer.regs
 
 
 @cocotb.test()
@@ -400,12 +623,24 @@ async def test_start_clears_registers(dut):
 # Fault programs; golden supplies each expected pc.
 FAULTS = [
     [0],                                           # opcode 0: zeroed memory
-    [isa.add(1, 0, 1), 10 << 60],                  # first opcode past VOP (7 to 9 are 4.3d's ALU, LOOPR, VOP)
+    [isa.add(1, 0, 1), 10 << 60],                  # first opcode past VOP (7 to 9 are ALU, LOOPR, VOP)
     [15 << 60],
     [isa.add(1, 0, 1)],                            # runs off the program into zeroed memory
-    # No nested-LOOP case: the golden executor nests 4 deep from 4.3d, the RTL only from 4.3f.
     [isa.endloop()],
     [isa.LOOP << 60],                              # LOOP 0
+    [isa.loop(1)] * 4 + [isa.loop(1)],             # a fifth nested loop (four are legal)
+    [isa.loopr(25)],                               # LOOPR of a zero register
+    [isa.alu(isa.ALU_ADD, 25, 0, imm=1 << 16), isa.loopr(25)],  # a count above 65535
+    [isa.alu(isa.ALU_ADD, 25, 0, imm=0xFFFF_FFFF), isa.loopr(25)],
+    [isa.loopr(0)],                                # r0 reads zero
+    [setr(isa.ROUND, 128), rf_blk(0, 0)],          # register form: ROUND beyond 7 bits
+    [setr(isa.ROWS, 8), rf_blk(0, 0)],             # ROWS is rows minus one: 0..7
+    [setr(isa.RMODE, 3), rf_blk(0, 0)],
+    [setr(isa.RMODE, 0xFFFF_FFFF), rf_blk(0, 0)],
+    [setr(isa.ROUND, 128), rf_blk(4, 0)],          # ROUND first, then the tile (both fault at this pc)
+    [isa.VOP << 60],                               # VOP sub-op 0
+    [isa.add(1, 0, 1), (isa.VOP << 60) | (10 << 56)],
+    [(isa.VOP << 60) | (15 << 56)],
     [blk(4, 0)],                                   # tile_x = W
     [isa.add(1, 0, 1), blk(0, 3)],                 # tile_y = H
 ]
@@ -432,6 +667,7 @@ async def test_every_fault_stops_at_its_pc(dut):
         assert dut.error.value and not dut.done.value, f"{prog}: no fault"
         assert int(dut.error_pc.value) == want, f"{prog}: error_pc {int(dut.error_pc.value)}, golden {want}"
         assert not env.issues, f"{prog}: a BLOCK issued"
+        assert not env.vops, f"{prog}: a VOP started"
         # Sticky: another start changes nothing.
         dut.start.value = 1
         await RisingEdge(dut.clk)
