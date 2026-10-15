@@ -185,7 +185,7 @@ async def test_case_matches_golden(dut):
     cycles = await run(dut, budget + (cases.lm_extra_cycles(lm[3], len(g.vops), g.slots) if lm else 0))
     final = snapshot(dut)
     tag_task.kill()
-    if step_task:
+    if step_task is not None:
         step_task.kill()
     got = read_act(dut, len(want))
     bad = np.flatnonzero(got != want)
