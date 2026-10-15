@@ -463,6 +463,22 @@ async def test_a_vop_can_start_and_end_a_loop_body(dut):
 
 
 @cocotb.test()
+async def test_w_base_carries_the_a_memory_address_width(dut):
+    """accel's A memory is 64K words (WT_AW = 16): w_base keeps bit 15, which the 15-bit testbench port dropped."""
+    await setup_dut(dut)
+    prog = SETUP + [setr(isa.W_BASE, 0xC005), blk(0, 0), isa.end()]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    await load(dut, prog)
+    env = Env(dut, random.Random(60))
+    await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    check_trace(env, tracer)
+    assert env.issues[0]["regs"]["w_base"] == 0xC005
+
+
+@cocotb.test()
 async def test_loopr_runs_its_largest_count(dut):
     """65535 iterations: the 16-bit counter neither wraps early nor stops late (65536 is a probe in tb/accel)."""
     await setup_dut(dut)

@@ -10,7 +10,8 @@
 module cmd_seq_tb #(
     parameter W  = 4,
     parameter H  = 3,
-    parameter AW = 3
+    parameter AW = 3,
+    parameter WT_AW = 16
 ) (
     input  wire          clk,
     input  wire          rst,
@@ -34,7 +35,7 @@ module cmd_seq_tb #(
     output wire [2:0]    ky0,
     output wire [2:0]    kx0,
     output wire [19:0]   in_base,
-    output wire [14:0]   w_base,
+    output wire [WT_AW-1:0] w_base,
     output wire [3:0]    cin_log2,
     output wire [3:0]    h_log2,
     output wire [3:0]    w_log2,
@@ -83,7 +84,7 @@ module cmd_seq_tb #(
         .clk(clk), .re(prog_re), .raddr(prog_raddr), .rdata(prog_rdata),
         .we(prog_we), .waddr(prog_waddr), .wdata(prog_wdata));
 
-    cmd_seq #(.W(W), .H(H), .AW(AW), .FATAL(0)) seq (
+    cmd_seq #(.W(W), .H(H), .AW(AW), .WT_AW(WT_AW), .FATAL(0)) seq (
         .clk(clk), .rst(rst), .start(start), .done(done), .error(error), .error_pc(error_pc),
         .busy(busy), .wait_stall(wait_stall), .credit_stall(credit_stall),
         .prog_re(prog_re), .prog_raddr(prog_raddr), .prog_rdata(prog_rdata),
