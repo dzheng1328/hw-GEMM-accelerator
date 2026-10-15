@@ -52,7 +52,7 @@ module accel #(
     wire                prog_re;
     wire [PC_W-1:0]     prog_raddr;
     wire [63:0]         prog_rdata;
-    wire                seq_busy, seq_wait, seq_credit;
+    wire                seq_busy, seq_wait, seq_credit, perf_tag;
     wire                dma_start, dma_busy, dma_ready, dma_handoff;
     wire [5:0]          group;
     wire [7:0]          pixel_block;
@@ -81,7 +81,7 @@ module accel #(
 
     cmd_seq #(.W(W), .H(H), .AW(AW), .ACT_BW(ACT_BW), .WT_AW(WT_AW), .PC_W(PC_W), .FATAL(FATAL)) seq (
         .clk(clk), .rst(rst), .start(start), .done(done), .error(error), .error_pc(error_pc),
-        .busy(seq_busy), .wait_stall(seq_wait), .credit_stall(seq_credit),
+        .busy(seq_busy), .wait_stall(seq_wait), .credit_stall(seq_credit), .perf_tag(perf_tag),
         .prog_re(prog_re), .prog_raddr(prog_raddr), .prog_rdata(prog_rdata),
         .dma_start(dma_start), .dma_busy(dma_busy), .dma_ready(dma_ready), .dma_handoff(dma_handoff),
         .group(group), .pixel_block(pixel_block), .round(round), .ky0(ky0), .kx0(kx0),
@@ -282,9 +282,9 @@ module accel #(
             cmd_perf perf (
                 .clk(clk), .rst(rst), .run(seq_busy), .block(dma_start),
                 .inj_valid(inj0_valid), .inj_ready(inj_ready[0]), .inj_go(inj0_go),
-                .wait_stall(seq_wait), .credit_stall(seq_credit), .wb_word(wb_we));
+                .wait_stall(seq_wait), .credit_stall(seq_credit), .wb_word(wb_we), .tag(perf_tag));
         end else begin : g_noperf
-            wire unused_perf = &{1'b0, seq_busy, seq_wait, seq_credit, inj0_go};
+            wire unused_perf = &{1'b0, seq_busy, seq_wait, seq_credit, inj0_go, perf_tag};
         end
     endgenerate
 

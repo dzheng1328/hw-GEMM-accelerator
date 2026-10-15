@@ -44,6 +44,7 @@
 // Registers change only on ADD and ALU, and a command executes only after
 // the previous BLOCK's handoff, so they hold while a BLOCK is in the DMA's
 // input stage: the DMA's stable-input contract.
+// r31 (PERF_TAG) is read by nothing here: bit 0 leaves as perf_tag for rtl/cmd_perf.v.
 //
 // Write-back entry: RESULT8 row i of group g, pixel block pb goes to word
 // OUT_BASE + (8g + i) * OSTRIDE + pb, raw cell (i, j) to
@@ -80,6 +81,7 @@ module cmd_seq #(
     output wire                busy,          // running (rtl/cmd_perf.v)
     output wire                wait_stall,    // WAIT, END or VOP waiting on write-back or the DMA to drain, or a VOP running
     output wire                credit_stall,  // returning BLOCK waiting on a full FIFO
+    output wire                perf_tag,      // bit 0 of r31: rtl/cmd_perf.v's tag (no datapath effect)
     // Program memory read port.
     output wire                prog_re,
     output wire [PC_W-1:0]     prog_raddr,
@@ -147,7 +149,8 @@ module cmd_seq #(
     localparam R_IN_BASE = 1, R_OUT_BASE = 2, R_W_BASE = 3, R_CIN_LOG2 = 4, R_H_LOG2 = 5,
                R_W_LOG2 = 6, R_WOUT_LOG2 = 7, R_STRIDE = 8, R_PAD = 9, R_KSIZE = 10,
                R_KS = 11, R_BIAS = 12, R_OSTRIDE = 13,
-               R_T = 16, R_PLEN = 17, R_INV_TEMP = 18, R_ROUND = 19, R_ROWS = 20, R_RMODE = 21;
+               R_T = 16, R_PLEN = 17, R_INV_TEMP = 18, R_ROUND = 19, R_ROWS = 20, R_RMODE = 21,
+               R_PERF_TAG = 31;
     localparam [31:0] SLOTS_PER_ROUND = 32'd64;
     // S_HALT: stopped by END (done) or a fault (error). S_VOP: a VOP is running in the VPU.
     localparam [2:0] S_IDLE = 3'd0, S_EXEC = 3'd1, S_BLOCK = 3'd2, S_HALT = 3'd3, S_VOP = 3'd4;
@@ -263,6 +266,7 @@ module cmd_seq #(
     assign busy         = (state == S_EXEC) || (state == S_BLOCK) || in_vop;
     assign wait_stall   = (exec && !fault && drain) || in_vop;
     assign credit_stall = exec && !fault && credit;
+    assign perf_tag     = regs[R_PERF_TAG][0];
     assign dma_start    = issue;
 
     // ---- VOP: the sub-op and its operand registers ----

@@ -719,3 +719,26 @@ async def test_every_fault_stops_at_its_pc(dut):
             await FallingEdge(dut.clk)
             assert dut.error.value and not dut.busy.value and int(dut.error_pc.value) == want
         env.stop()
+
+
+@cocotb.test()
+async def test_perf_tag_follows_bit_zero_of_register_31(dut):
+    """perf_tag is r31's bit 0 and nothing else: 1, then 2 (bit 0 clear), then 3, and a restart clears it."""
+    await setup_dut(dut)
+    prog = [setr(isa.PERF_TAG, 1), setr(14, 5), setr(isa.PERF_TAG, 2), setr(14, 6), setr(isa.PERF_TAG, 3), isa.end()]
+    await load(dut, prog)
+    env = Env(dut, random.Random(70))
+    dut.start.value = 1
+    await RisingEdge(dut.clk)
+    dut.start.value = 0
+    seen = []
+    for _ in range(40):
+        await FallingEdge(dut.clk)
+        if not seen or seen[-1] != int(dut.perf_tag.value):
+            seen.append(int(dut.perf_tag.value))
+        if dut.done.value:
+            break
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    assert seen == [0, 1, 0, 1], seen
+    assert dut_regs(dut)[isa.PERF_TAG] == golden_regs(prog)[isa.PERF_TAG] == 3

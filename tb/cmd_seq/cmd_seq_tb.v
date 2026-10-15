@@ -25,6 +25,7 @@ module cmd_seq_tb #(
     output wire          busy,
     output wire          wait_stall,
     output wire          credit_stall,
+    output wire          perf_tag,
     output wire          dma_start,
     input  wire          dma_busy,
     input  wire          dma_ready,
@@ -86,7 +87,7 @@ module cmd_seq_tb #(
 
     cmd_seq #(.W(W), .H(H), .AW(AW), .WT_AW(WT_AW), .FATAL(0)) seq (
         .clk(clk), .rst(rst), .start(start), .done(done), .error(error), .error_pc(error_pc),
-        .busy(busy), .wait_stall(wait_stall), .credit_stall(credit_stall),
+        .busy(busy), .wait_stall(wait_stall), .credit_stall(credit_stall), .perf_tag(perf_tag),
         .prog_re(prog_re), .prog_raddr(prog_raddr), .prog_rdata(prog_rdata),
         .dma_start(dma_start), .dma_busy(dma_busy), .dma_ready(dma_ready), .dma_handoff(dma_handoff),
         .group(group), .pixel_block(pixel_block), .round(round), .ky0(ky0), .kx0(kx0),
