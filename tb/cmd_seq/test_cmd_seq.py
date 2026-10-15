@@ -436,6 +436,33 @@ async def test_a_vop_can_be_first_back_to_back_and_last(dut):
 
 
 @cocotb.test()
+async def test_a_vop_can_start_and_end_a_loop_body(dut):
+    """A VOP as the first command of a loop body (ENDLOOP's jump target is fetched into it), as the last
+    (ENDLOOP is fetched as it finishes), as the whole body, and innermost in a nested loop."""
+    await setup_dut(dut)
+    prog = SETUP + [
+        setr(22, 1000), setr(23, 2000), setr(24, 3),
+        isa.loop(3), isa.vop(isa.VADD, 22, 23, 24), blk(0, 0), isa.wait(), isa.add(14, 14, 1), isa.endloop(),
+        isa.loop(3), blk(1, 0), isa.wait(), isa.vop(isa.TRANSPOSE, 22, 23, 24), isa.endloop(),
+        isa.loop(4), isa.vop(isa.VADD, 23, 22), isa.endloop(),
+        isa.loop(2), isa.loop(2), isa.vop(isa.VADD, 22, 23, 24), isa.endloop(),
+        isa.vop(isa.TRANSPOSE, 22, 23, 24), isa.endloop(),
+        isa.end(),
+    ]
+    tracer = Tracer(*MESH, prog, [], [])
+    tracer.run()
+    assert len(tracer.vops) == 3 + 3 + 4 + 2 * 3
+    await load(dut, prog)
+    for seed, (lo, hi) in enumerate(((1, 1), (1, 6))):
+        env = Env(dut, random.Random(50 + seed), vop_cycles=(lo, hi))
+        await run(dut, env)
+        env.stop()
+        assert dut.done.value and not dut.error.value, f"error at pc {int(dut.error_pc.value)}"
+        check_trace(env, tracer)
+        assert dut_regs(dut) == tracer.regs
+
+
+@cocotb.test()
 async def test_loopr_runs_its_largest_count(dut):
     """65535 iterations: the 16-bit counter neither wraps early nor stops late (65536 is a probe in tb/accel)."""
     await setup_dut(dut)
