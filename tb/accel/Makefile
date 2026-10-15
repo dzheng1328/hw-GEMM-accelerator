@@ -63,10 +63,11 @@ cases:
 	  $(MAKE) --no-print-directory sim ACCEL_CASE=$$c || exit 1; \
 	done
 
-# Negative tests: the shipping FATAL = 1 build stops on every cmd_seq fault a program can
-# raise (a tile outside the mesh, a fifth nested loop, a bad LOOP or LOOPR count, a bad
-# register-form ROUND, ROWS or RMODE, an invalid VOP sub-op, a VPU fault). Each probe passes only
-# if its run fails on cmd_seq's own message, with the pc golden gives.
+# Negative tests: the shipping FATAL = 1 build stops on these cmd_seq faults (a tile outside the
+# mesh, a fifth nested loop, a bad LOOP or LOOPR count, a bad register-form ROUND, ROWS or RMODE,
+# an invalid VOP sub-op, a VPU fault). An invalid opcode and an ENDLOOP with no loop are covered
+# under FATAL = 0 by tb/cmd_seq. Each probe passes only if its run fails on cmd_seq's own
+# message, with the pc golden gives.
 error-check:
 	@mkdir -p $(SIM_BUILD); \
 	for p in $$(python $(PWD)/cases.py probes); do \
