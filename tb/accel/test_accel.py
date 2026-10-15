@@ -189,6 +189,11 @@ async def test_case_matches_golden(dut):
                   CASE, *MESH, cycles, len(g.blocks), g.slots, 100 * g.slots / cycles, counts)
 
 
+def seq_regs(dut):
+    """cmd_seq's register file, r0 to r31."""
+    return [int(dut.accel.seq.regs[i].value) for i in range(isa.N_REGS)]
+
+
 async def start_vop_nop(dut):
     """Run cases.VOP_NOP (loaded by the Makefile) until the VPU is busy."""
     await reset(dut)
@@ -215,11 +220,16 @@ async def test_vpu_running_with_the_dma_busy_is_fatal(dut):
 @cocotb.test(skip=PROBE != "reset_vop")
 async def test_reset_during_a_vop_returns_everything_to_idle(dut):
     """Run only by `make reset-check`: a reset while the VPU runs leaves the sequencer, the VPU and every memory
-    request line idle, and the machine runs a program again from a fresh start."""
+    request line idle, the register file and loop depth as the golden's before it runs (all zero), and the machine
+    runs the program again from a fresh start to the golden's final registers."""
+    g = Tracer(*MESH, *images(cases.case_build(cases.VOP_NOP, *MESH)))
+    zeros = list(g.regs)
+    g.run()
     await start_vop_nop(dut)
     for _ in range(3):
         await RisingEdge(dut.clk)
     assert int(dut.accel.vpu_busy.value), "the reset is meant to hit a running VOP"
+    assert seq_regs(dut) != zeros, "the registers are meant to hold the program's values when the reset hits"
     dut.rst.value = 1
     for _ in range(2):
         await RisingEdge(dut.clk)
@@ -229,7 +239,9 @@ async def test_reset_during_a_vop_returns_everything_to_idle(dut):
     assert not (int(a.vpu_busy.value) or int(dut.done.value) or int(dut.error.value)), "not idle after the reset"
     for line in ("v_act_re", "v_act_we", "v_a_re", "v_a_we"):
         assert not int(getattr(a, line).value), f"{line} is active after the reset"
+    assert seq_regs(dut) == zeros and not int(a.seq.depth.value), "the register file or loop depth survived the reset"
     await run(dut, 5000)
+    assert seq_regs(dut) == g.regs, "the rerun's registers differ from the golden's"
 
 
 @cocotb.test(skip=PROBE != "vpu_stray")
