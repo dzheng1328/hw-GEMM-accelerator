@@ -49,9 +49,11 @@ def embed_q(q, tokens):
     return requant16(q["emb"][np.asarray(tokens)].astype(np.int64), *scalar(q, "emb"))
 
 
-def block_q(q, l, x, pos0, cache):
+def block_q(q, l, x, pos0, cache, probs=None):
     """One transformer layer on residual x (B, T, DIM) int16 at positions
-    pos0 .. pos0 + T - 1, writing their K and V into the cache."""
+    pos0 .. pos0 + T - 1, writing their K and V into the cache. If probs is a
+    list, story 0's attention probabilities of the last position are appended
+    (a hook for the trace; it changes nothing else)."""
     L = f"l{l}_"
     B, T, _ = x.shape
     pos = np.arange(pos0, pos0 + T)
@@ -67,6 +69,8 @@ def block_q(q, l, x, pos0, cache):
     scores = requant16(acc, *scalar(q, L + "score"))
     valid = pos[:, None] >= np.arange(P)[None, :]
     p = softmax_q(scores, valid[None, None], *scalar(q, L + "exp"))
+    if probs is not None:
+        probs.append(p[0, :, -1, :].copy())  # story 0, every head, the last position: (N_HEADS, P)
     att = requant(check_int32(np.einsum("bhtp,bphd->bthd", p, V), L + "att"), *scalar(q, L + "att"), relu=False)
     x = np.clip(x + matmul_q(q, L + "wo", att.reshape(B, T, DIM), out16=True), -32768, 32767)
     h = rmsnorm_q(x, int(q["eps_q"]), *scalar(q, L + "norm2"))
@@ -87,24 +91,31 @@ def forward_seq(q, tokens):
     return logits_q(q, x)
 
 
-def generate(q, prompt_ids, n_steps, inv_temp, seeds, return_cache=False):
+def generate(q, prompt_ids, n_steps, inv_temp, seeds, return_cache=False, return_probs=False):
     """Token log (n_steps + 1, B): row 0 is the prompt's first token; at step
     t the model reads row t and row t + 1 is the prompt's next token while
-    the prompt lasts, otherwise a sample (spec section 3, SAMPLE)."""
+    the prompt lasts, otherwise a sample (spec section 3, SAMPLE). Also
+    returned, in this order and as a tuple when more than the log is asked
+    for: the K and V cache (return_cache), and story 0's attention
+    probabilities (return_probs): probs[t][l] is (N_HEADS, t + 1) integers
+    0..127 in units of 1/127."""
     prompt_ids, state = np.asarray(prompt_ids), np.asarray(seeds, dtype=np.int64)
     B = len(state)
     log = np.zeros((n_steps + 1, B), dtype=np.int64)
     log[0] = prompt_ids[0]
     cache = new_cache(B)
+    probs = []
     for t in range(n_steps):
         x = embed_q(q, log[t][:, None])
+        probs.append([])
         for l in range(N_LAYERS):
-            x = block_q(q, l, x, t, cache)
+            x = block_q(q, l, x, t, cache, probs[t] if return_probs else None)
         if t + 1 < len(prompt_ids):
             log[t + 1] = prompt_ids[t + 1]
         else:
             log[t + 1], state = sample_q(logits_q(q, x)[:, 0], inv_temp, *scalar(q, "logit_exp"), state)
-    return (log, cache) if return_cache else log
+    out = (log,) + ((cache,) if return_cache else ()) + ((probs,) if return_probs else ())
+    return out if len(out) > 1 else log
 
 
 def val_loss_int(q, windows, chunk=8) -> float:

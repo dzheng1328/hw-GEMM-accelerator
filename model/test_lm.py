@@ -548,3 +548,25 @@ def test_float_generate_is_deterministic_and_greedy_at_temperature_zero():
     with torch.no_grad():
         assert a[3] == int(model(torch.tensor([prompt]))[0][0, -1].argmax())
     assert generate(model, prompt, 6, 1.0, seed=1) == generate(model, prompt, 6, 1.0, seed=1)
+
+
+def test_return_probs_leaves_tokens_and_caches_unchanged():
+    from lm_reference import generate, random_quantized
+    from lm_spec import N_HEADS, N_LAYERS
+
+    q = random_quantized(0)
+    prompt, seeds = np.array([1, 404, 409, 261, 380]), np.array([3, 5, 7, 11, 13, 17, 19, 23])
+    steps = 12
+    log, cache = generate(q, prompt, steps, 256, seeds, return_cache=True)
+    log2, cache2, probs = generate(q, prompt, steps, 256, seeds, return_cache=True, return_probs=True)
+    assert np.array_equal(log, log2)
+    assert np.array_equal(cache["k"], cache2["k"]) and np.array_equal(cache["v"], cache2["v"])
+    assert len(probs) == steps and all(len(layers) == N_LAYERS for layers in probs)
+    for t in range(steps):
+        for layer in probs[t]:
+            assert layer.shape == (N_HEADS, t + 1)
+            assert layer.min() >= 0 and layer.max() <= 127
+            assert (layer.sum(axis=1) > 0).all()
+    assert (probs[0][0] == 127).all()  # one valid position: all the mass is on it
+    only_probs = generate(q, prompt, steps, 256, seeds, return_probs=True)
+    assert isinstance(only_probs, tuple) and len(only_probs) == 2 and np.array_equal(only_probs[0], log)
