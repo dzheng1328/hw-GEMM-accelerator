@@ -27,7 +27,8 @@ LM_CASES = {"lm_t0": ("random0", 10, 0), "lm_t256": ("random1", 12, 256)}
 LM_EXTRA = {"lm_real8": ("real", 8, 0), "lm_real8_t256": ("real", 8, 256),
             "lm_rounds": ("random2", 66, 256),  # T = 7 to 8 and 63 to 64: AV's second round
             "lm_full": ("random3", 256, 256),   # every position up to T = 255 (about 8 minutes)
-            "lm_story_t0": ("real", 256, 0), "lm_story_t256": ("real", 256, 256)}  # the exit criteria's runs (make lm)
+            # the exit criteria's runs (make lm)
+            "lm_story_t0": ("real", 256, 0), "lm_story_t256": ("real", 256, 256)}
 # A conv-stack case for rtl/cmd_perf.v's tagged counters (4.3g): the "small" net with PERF_TAG set from the first
 # command to the first WAIT, so some BLOCKs are tagged and some are not (tag_first_segment).
 SMALL_TAG = "small_tag"
