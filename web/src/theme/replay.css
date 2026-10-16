@@ -295,7 +295,7 @@
 
 .otok-bos {
   margin-right: 0.35em;
-  color: var(--muted);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: 0.7rem;
 }

@@ -37,14 +37,16 @@ function sequenceLength(lead: number): number {
 /**
  * One chip per token, decoded like model/lm_tok.py: "▁" is a space, "<0xNN>" pieces are raw
  * bytes, BOS, EOS and unk show nothing, and the space the tokenizer puts before the first word
- * is dropped. A multi-byte character is shown on the chip of its last byte.
+ * is dropped. A multi-byte character is shown on the chip of its last byte, and nothing is shown
+ * for it before that, so a half character never appears.
  */
 export function chipsFor(vocab: VocabFile, ids: readonly number[], promptLength: number): Chip[] {
   const chips: Chip[] = [];
   let pending: number[] = [];
   let pendingChips: Chip[] = [];
 
-  const flush = () => {
+  // Another token interrupted a byte run: the sequence is invalid, so it shows the replacement character.
+  const interrupt = () => {
     if (pending.length > 0) {
       pendingChips[pendingChips.length - 1]!.text = decoder.decode(Uint8Array.from(pending));
     }
@@ -56,13 +58,13 @@ export function chipsFor(vocab: VocabFile, ids: readonly number[], promptLength:
     const chip: Chip = { index, id, text: "", kind: index < promptLength ? "prompt" : "generated" };
     chips.push(chip);
     if (id === vocab.bos || id === vocab.eos || id === UNK) {
-      flush();
+      interrupt();
       return;
     }
     const piece = vocab.pieces[id] ?? "";
     const byte = byteOf(piece);
     if (byte === null) {
-      flush();
+      interrupt();
       chip.text = piece.replaceAll("▁", " ");
       return;
     }
@@ -74,7 +76,7 @@ export function chipsFor(vocab: VocabFile, ids: readonly number[], promptLength:
       pendingChips = [];
     }
   });
-  flush();
+  // A byte run still open at the end of the tokens is unfinished, not invalid: it shows nothing until its last byte arrives.
 
   const first = chips.find((c) => c.text !== "");
   if (first && first.text.startsWith(" ")) first.text = first.text.slice(1);

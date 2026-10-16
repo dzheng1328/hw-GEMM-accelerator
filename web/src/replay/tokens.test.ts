@@ -47,11 +47,18 @@ describe("laneAt", () => {
     expect(chips.map((c) => c.text)).toEqual(["", "Hi", "", "", "€", " there"]);
   });
 
-  it("shows the replacement character for a byte run that is not finished, never a half character", () => {
+  it("shows nothing for a byte run that is not finished yet, never a half character", () => {
     const partial = laneAt({ tokens: [1, 6, 3, 4, 5] }, vocab, 3, 1).chips; // step 1 shows tokens 0..2
-    expect(text(partial)).toBe("Hi�");
+    expect(text(partial)).toBe("Hi");
+    const two = laneAt({ tokens: [1, 6, 3, 4, 5] }, vocab, 3, 2).chips; // step 2 shows tokens 0..3
+    expect(text(two)).toBe("Hi");
     const done = laneAt({ tokens: [1, 6, 3, 4, 5] }, vocab, 3, 3).chips; // step 3 shows tokens 0..4
     expect(text(done)).toBe("Hi€");
+  });
+
+  it("shows the replacement character only when a byte run is interrupted by another token", () => {
+    const interrupted = laneAt({ tokens: [1, 6, 3, 4, 7] }, vocab, 3, 3).chips; // 0xE2 0x82 then " there"
+    expect(text(interrupted)).toBe("Hi\uFFFD there");
   });
 
   it("stops at a second BOS and reports the step that sampled it", () => {
