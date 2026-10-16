@@ -69,6 +69,14 @@ describe("the architecture blocks", () => {
     }
   });
 
+  it("labels the numbers by what their source measures, not by a nearby idea", () => {
+    const label = (id: string) => BLOCKS.find((b) => b.id === id)!.number.label;
+    // decisions 2026-09-29: the "Other" category fell from 3.04 to 0.045 cycles per BLOCK; what remains is per layer, not a refill gap.
+    expect(label("dma_gather")).toContain("Other cycles per BLOCK");
+    // decisions 2026-09-08: the area is a synthesis estimate plus the macro's LEF area, not a place-and-route result.
+    expect(label("gemm_tile")).toContain("synthesis");
+  });
+
   it("links only to blocks that exist, and never to itself", () => {
     for (const b of BLOCKS) {
       for (const to of b.links) {

@@ -46,6 +46,14 @@ describe("the ladders", () => {
 });
 
 describe("the ladder evidence", () => {
+  it("does not claim every level is bit-exact where a rung is compared by validation loss", () => {
+    for (const l of LADDERS) {
+      const allExact = l.rungs.slice(1).every((r) => r.bitExact);
+      if (!allExact) expect(ladderEvidence(l.id), l.id).not.toContain("every level");
+    }
+    expect(ladderEvidence("lm")).toContain("from the integer reference down to the RTL");
+  });
+
   it("states the numbers of the generated data", () => {
     expect(ladderEvidence("cifar")).toContain(`${performance.cifar.images} test images`);
     expect(performance.cifar.images).toBe(128);
@@ -130,6 +138,11 @@ describe("the limits", () => {
         expect(read(l.source.file).includes(l.source.contains), `${l.id}: "${l.source.contains}" is not in ${l.source.file}`).toBe(true);
       }
     }
+  });
+
+  it("does not promise a restart date for the tapeout, which its source does not give", () => {
+    const tapeout = LIMITS.find((l) => l.id === "no-tapeout")!;
+    expect(tapeout.text).not.toMatch(/until/);
   });
 
   it("keeps the hedge about the story model's cause", () => {

@@ -267,7 +267,7 @@ export const LIMITS: Limit[] = [
   },
   {
     id: "no-tapeout",
-    text: "There is no tapeout: Tiny Tapeout is paused until after this work.",
+    text: "There is no tapeout: Tiny Tapeout is paused.",
     source: { decision: { date: "2026-09-24", title: "Phase 4 direction" }, contains: "Tiny Tapeout (#37) are paused" },
   },
   {

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DeepContext } from "../components/deepContext";
@@ -82,6 +84,25 @@ describe("SuiteTable", () => {
     const writeback = rows.find((r) => r.textContent!.includes("tb/writeback"))!;
     expect(writeback.textContent).toContain("rtl/writeback.v");
     for (const target of ["orphan-check", "mode-check", "rows-check"]) expect(writeback.textContent).toContain(`make ${target}`);
+  });
+
+  it("keeps its table semantics explicit, so stacking the rows on a phone does not remove them for a screen reader", () => {
+    const { container } = render(<SuiteTable suites={SUITES} layers={LAYERS} />);
+    for (const table of container.querySelectorAll("table")) {
+      expect(table.getAttribute("role")).toBe("table");
+      expect(table.querySelector("thead")!.getAttribute("role")).toBe("rowgroup");
+      expect(table.querySelector("tbody")!.getAttribute("role")).toBe("rowgroup");
+    }
+    expect([...container.querySelectorAll("th")].every((th) => th.getAttribute("role") === "columnheader")).toBe(true);
+    expect([...container.querySelectorAll("tbody tr")].every((tr) => tr.getAttribute("role") === "row")).toBe(true);
+    expect([...container.querySelectorAll("tbody td")].every((td) => td.getAttribute("role") === "cell")).toBe(true);
+    expect([...container.querySelectorAll("thead tr")].every((tr) => tr.getAttribute("role") === "row")).toBe(true);
+  });
+
+  it("hides the header row on a phone visually, not with display: none, so the column headers stay in the accessibility tree", () => {
+    const css = readFileSync(join(import.meta.dirname, "..", "theme", "architecture.css"), "utf8");
+    expect(css).not.toMatch(/suite-table thead\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/suite-table thead\s*\{[^}]*clip/);
   });
 
   it("lists the negative checks as 'must fail, and does', one per must-fail check, and not the positive probes", () => {

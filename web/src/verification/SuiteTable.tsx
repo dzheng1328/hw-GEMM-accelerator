@@ -8,31 +8,31 @@ export function SuiteTable({ suites, layers }: { suites: Suite[]; layers: Layer[
     <div>
       {layers.map((layer) => (
         <div className="table-scroll" key={layer}>
-          <table className="data-table suite-table">
+          <table className="data-table suite-table" role="table">
             <caption>{layer}</caption>
-            <thead>
-              <tr>
-                <th>Suite</th>
-                <th>Under test</th>
-                <th>What it proves</th>
-                <th>Checks</th>
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader">Suite</th>
+                <th role="columnheader">Under test</th>
+                <th role="columnheader">What it proves</th>
+                <th role="columnheader">Checks</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {suites
                 .filter((suite) => suite.layer === layer)
                 .map((suite) => (
-                  <tr key={suite.dir}>
-                    <td data-label="Suite">
+                  <tr key={suite.dir} role="row">
+                    <td role="cell" data-label="Suite">
                       <code>{suite.dir}</code>
                     </td>
-                    <td data-label="Under test">
+                    <td role="cell" data-label="Under test">
                       {suite.dut.map((file) => (
                         <code key={file}>{file}</code>
                       ))}
                     </td>
-                    <td data-label="What it proves">{suite.proves}</td>
-                    <td data-label="Checks">
+                    <td role="cell" data-label="What it proves">{suite.proves}</td>
+                    <td role="cell" data-label="Checks">
                       {suite.checks.map((check) => (
                         <code key={check.target}>
                           make {check.target} ({check.kind === "must-fail" ? "must fail" : "must hold"})

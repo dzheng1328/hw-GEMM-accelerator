@@ -53,7 +53,7 @@ export const BLOCKS: Block[] = [
     rtl: ["rtl/dma_gather.v"],
     suites: [{ dir: "tb/dma_gather", targets: [] }],
     number: {
-      label: "Refill gap left per BLOCK after the hand-off fix",
+      label: "Other cycles per BLOCK after the hand-off fix",
       value: "0.045 cycles",
       source: { decision: { date: "2026-09-29", title: "The DMA hands off at its last slot" }, contains: "0.045" },
     },
@@ -160,7 +160,7 @@ export const BLOCKS: Block[] = [
       { dir: "tb/operand_mem", targets: ["collision-check"] },
     ],
     number: {
-      label: "sky130 area with the SRAM macro",
+      label: "sky130 area with the SRAM macro (synthesis estimate)",
       value: "501,749.68 um^2",
       source: { decision: { date: "2026-09-08", title: "Real area win from the SRAM macro" }, contains: "501,749.68" },
     },

@@ -184,6 +184,19 @@ describe("BlockTable", () => {
   });
 });
 
+describe("BlockTable semantics", () => {
+  it("keeps its table semantics explicit, so stacking the rows on a phone does not remove them for a screen reader", () => {
+    const { container } = render(<BlockTable blocks={BLOCKS} />);
+    const table = container.querySelector("table")!;
+    expect(table.getAttribute("role")).toBe("table");
+    expect(table.querySelector("thead")!.getAttribute("role")).toBe("rowgroup");
+    expect(table.querySelector("tbody")!.getAttribute("role")).toBe("rowgroup");
+    expect([...table.querySelectorAll("tr")].every((tr) => tr.getAttribute("role") === "row")).toBe(true);
+    expect([...table.querySelectorAll("th")].every((th) => th.getAttribute("role") === "columnheader")).toBe(true);
+    expect([...table.querySelectorAll("td")].every((td) => td.getAttribute("role") === "cell")).toBe(true);
+  });
+});
+
 describe("ArchitectureSection", () => {
   it("starts on the injection port, with its number in the panel", () => {
     const { container } = render(<ArchitectureSection />);
