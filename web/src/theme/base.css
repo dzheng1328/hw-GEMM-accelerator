@@ -32,6 +32,11 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.site-header > div {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
 .site-header h1 {
   margin: 0;
   font-size: 1.25rem;
@@ -39,11 +44,13 @@ body {
 
 .tagline {
   margin: 0;
+  text-wrap: balance;
   color: var(--muted);
   font-size: 0.9rem;
 }
 
 .deep-toggle {
+  flex: none;
   font: inherit;
   color: var(--text);
   background: var(--surface);
@@ -72,6 +79,12 @@ body {
 }
 
 .tile {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+  align-content: start;
+  container-type: inline-size;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -83,9 +96,9 @@ body {
   margin: 0;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: clamp(1.5rem, 6vw, 2.25rem);
+  font-size: min(2.25rem, 15cqi);
   font-weight: 600;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .tile-label {
