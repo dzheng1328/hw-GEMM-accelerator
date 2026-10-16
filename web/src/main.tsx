@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./theme/tokens.css";
 import "./theme/base.css";
 import "./theme/replay.css";
+import "./theme/performance.css";
 import App from "./App";
 
 const root = document.getElementById("root");

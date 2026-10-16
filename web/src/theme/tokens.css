@@ -10,6 +10,11 @@
   --cat-attention: #ff9f43;
   --cat-vpu: #b78cff;
   --cat-other: #9aa7b4;
+  --port-operand: #4cc3ff;
+  --port-go: #3ddc97;
+  --port-stall: #ff6b6b;
+  --port-wait: #b78cff;
+  --port-other: #9aa7b4;
 
   --font-text: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -36,5 +41,10 @@
     --cat-attention: #a84a00;
     --cat-vpu: #6d3fc4;
     --cat-other: #566371;
+    --port-operand: #0a6aa1;
+    --port-go: #0b7a4f;
+    --port-stall: #c0392b;
+    --port-wait: #6d3fc4;
+    --port-other: #566371;
   }
 }
