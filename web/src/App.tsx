@@ -3,6 +3,7 @@ import { DeepContext } from "./components/deepContext";
 import { DeepToggle } from "./components/DeepToggle";
 import { HeroStrip } from "./components/HeroStrip";
 import { useDeepMode } from "./components/useDeepMode";
+import { LiveSection } from "./live/LiveSection";
 import { PerformanceSection } from "./performance/PerformanceSection";
 import { ReplaySection } from "./replay/ReplaySection";
 import { BuiltSection } from "./timeline/BuiltSection";
@@ -27,6 +28,7 @@ export default function App() {
         <main>
           <HeroStrip />
           <ReplaySection />
+          <LiveSection />
           <PerformanceSection />
           <ArchitectureSection />
           <VerificationSection />

@@ -1,0 +1,373 @@
+.live-root {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.live-note,
+.live-limits {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.live-note code {
+  font-family: var(--font-mono);
+}
+
+.live-picker {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.live-examples {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: var(--space-2);
+}
+
+.live-examples button,
+.live-run,
+.live-controls button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.live-examples button {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  font-size: 0.8rem;
+}
+
+.live-examples canvas {
+  width: 3.5rem;
+  height: 3.5rem;
+  image-rendering: pixelated;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.live-examples button[aria-pressed="true"],
+.live-controls button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.live-examples button:disabled,
+.live-run:disabled,
+.live-controls button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.live-examples button:focus-visible,
+.live-run:focus-visible,
+.live-controls button:focus-visible,
+.live-scrub input:focus-visible,
+.live-upload input:focus-visible,
+.live-mesh input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.live-upload {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.9rem;
+}
+
+.live-upload-name {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.live-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.live-mesh {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.9rem;
+}
+
+.live-mesh legend {
+  float: left;
+  margin-right: var(--space-3);
+  padding: 0;
+  color: var(--muted);
+}
+
+.live-run {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.live-status {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+}
+
+.live-notice {
+  margin: 0;
+  color: var(--cat-attention);
+  font-size: 0.9rem;
+}
+
+.live-error {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--port-stall);
+  border-radius: 8px;
+  color: var(--port-stall);
+}
+
+.live-result {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.live-stage {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  .live-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.live-view,
+.live-side {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.live-scene {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  min-height: 16rem;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.live-scene canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y;
+}
+
+.live-fallback {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.live-legend {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.live-legend .swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: var(--space-2);
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.live-layers {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-layers li {
+  min-width: 0;
+  padding: var(--space-2) var(--space-1);
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.live-layers li.current {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.live-cycle {
+  margin: var(--space-2) 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-cycle-current {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.live-logits {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.live-logits li {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) 5rem;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.live-logits .logit-bar {
+  display: block;
+  height: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.live-logits .logit-bar span {
+  display: block;
+  height: 100%;
+  background: var(--cat-other);
+  border-radius: 2px;
+}
+
+.live-logits li.winner .logit-bar span {
+  background: var(--accent);
+}
+
+.live-logits li.winner {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.live-logits .logit-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-verdict {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--port-go);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.live-verdict[data-state="mismatch"] {
+  border-color: var(--port-stall);
+  color: var(--port-stall);
+}
+
+.live-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.live-scrub {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.live-scrub input {
+  width: 100%;
+}
+
+.live-scrub-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-speed {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.live-readout {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.live-details h3 {
+  margin: var(--space-4) 0 var(--space-1);
+  font-size: 1rem;
+}
+
+.live-details p,
+.live-details li {
+  font-size: 0.9rem;
+}
+
+.live-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-table caption {
+  padding-bottom: var(--space-2);
+  color: var(--muted);
+  text-align: left;
+}
+
+.live-table th,
+.live-table td {
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
