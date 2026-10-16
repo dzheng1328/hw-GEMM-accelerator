@@ -1,0 +1,58 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { expect, test, type Page } from "@playwright/test";
+import { TIMELINE } from "../src/content/timeline";
+
+const performance = JSON.parse(
+  readFileSync(join(import.meta.dirname, "..", "src", "data", "generated", "performance.json"), "utf8"),
+);
+const pct1 = (x: number) => `${(x * 100).toFixed(1)}%`;
+const grouped = (n: number) => Math.round(n).toLocaleString("en-US");
+
+const noHorizontalScroll = (page: Page) =>
+  page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+
+test("the page has five sections, with the performance section second and the timeline last", async ({ page }) => {
+  await page.goto("/");
+  const ids = await page.locator("main > section").evaluateAll((els) => els.map((e) => e.id));
+  expect(ids).toEqual(["replay", "performance", "architecture", "verification", "built"]);
+});
+
+test("the performance section starts on 4x4 and redraws when another mesh is chosen", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator("#performance");
+  await expect(section.getByRole("button", { name: "4x4" })).toHaveAttribute("aria-pressed", "true");
+  await expect(section.locator(".mesh-tile")).toHaveCount(16);
+  await expect(section.locator(".port-text")).toContainText(pct1(performance.cifar.meshes[4].cornerBusy));
+
+  await section.getByRole("button", { name: "1x1" }).click();
+  await expect(section.locator(".mesh-tile")).toHaveCount(1);
+  await expect(section.locator(".port-text")).toContainText(pct1(performance.cifar.meshes[0].cornerBusy));
+  await expect(section.locator(".mesh-stats")).toContainText(grouped(performance.cifar.meshes[0].cyclesPerUnit));
+});
+
+test("the two workloads and their findings are visible without any click", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator("#performance");
+  await expect(section.getByText("CIFAR-10 saturates at the injection port", { exact: false })).toBeVisible();
+  await expect(section.getByText("The story model is not port-bound", { exact: false })).toBeVisible();
+  await expect(section.locator(".port-row")).toHaveCount(2);
+});
+
+test("the timeline shows the headline nodes, and Deep mode shows all of them", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#built .timeline-skim li")).toHaveCount(TIMELINE.filter((n) => n.headline).length);
+  await page.goto("/?deep=1");
+  await expect(page.locator("#built .timeline-all li")).toHaveCount(TIMELINE.length);
+  await expect(page.locator("#built .phase-heading")).toHaveCount(4);
+});
+
+test("no horizontal scroll at 1280, 390 and 360 px with every drawer open", async ({ page }) => {
+  for (const width of [1280, 390, 360]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/?deep=1");
+    await expect(page.locator("#built .timeline-all li").first()).toBeVisible();
+    await expect(page.locator("#performance .data-table").first()).toBeVisible();
+    expect(await noHorizontalScroll(page), `${width}px`).toBe(true);
+  }
+});
