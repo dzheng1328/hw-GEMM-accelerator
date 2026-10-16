@@ -1,7 +1,7 @@
-import attentionUrl from "../data/generated/lm-attention.json?no-inline";
-import stepsUrl from "../data/generated/lm-steps.json?no-inline";
-import storiesUrl from "../data/generated/lm-stories.json?no-inline";
-import vocabUrl from "../data/generated/lm-vocab.json?no-inline";
+import attentionUrl from "../data/generated/lm-attention.json?url&no-inline";
+import stepsUrl from "../data/generated/lm-steps.json?url&no-inline";
+import storiesUrl from "../data/generated/lm-stories.json?url&no-inline";
+import vocabUrl from "../data/generated/lm-vocab.json?url&no-inline";
 import type { AttentionProbs, ReplayData, StepRecord, StoryRecord, VocabFile } from "./types";
 
 async function getJson<T>(url: string): Promise<T> {
