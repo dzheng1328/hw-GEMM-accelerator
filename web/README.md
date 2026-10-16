@@ -32,3 +32,11 @@ Vercel never runs the generator, so the generated files must be committed.
 `src/content/timeline.ts` is written by hand, so the freshness check does not cover it.
 `src/content/timeline.test.ts` ties it to the repository instead: each node cites a `docs/decisions.md` entry by date and the start of its title, every number in a node's metric must appear in that entry, and a node can name a field of `performance.json` that its metric must match.
 If a decisions heading is renamed, the test fails with the node id and the missing heading, and the fix is a one-line edit to the node.
+
+## The chip and the verification content are authored, not generated
+
+`src/content/architecture.ts` and `src/content/verification.ts` are written by hand, so the freshness check does not cover them.
+Their tests read `rtl/`, `tb/*/Makefile`, `test.sh`, `docs/decisions.md` and `docs/specs/` from the repository and fail with the block or row id and the missing path, make target or heading.
+Every negative check the page lists must be run by `test.sh`, and every `*-check` target `test.sh` runs must be listed on the page.
+A block's number must equal a field of `performance.json` or appear in the decisions entry it cites.
+The web workflow runs for changes under those directories as well as under `web/`, so a rename in the RTL or the testbenches fails the web job instead of silently breaking the page.
