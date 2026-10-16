@@ -229,6 +229,7 @@ describe("LiveSection", () => {
     expect(text).toContain("ten CIFAR-10 classes");
     expect(text).toContain("still gets one of the ten answers");
     expect(text).toContain("never leaves");
+    expect(text).toContain("measured on 128 test images");
   });
 
   it("opens its drawer in Deep mode and lists the cycles of each mesh", async () => {
@@ -238,6 +239,7 @@ describe("LiveSection", () => {
     expect(container.textContent).toContain("313,539");
     expect(container.textContent).toContain("139,981");
     expect(container.textContent).toContain("136,987");
+    expect(container.textContent).toContain("on 128 test images");
   });
 
   it("closes the worker client when it unmounts", async () => {

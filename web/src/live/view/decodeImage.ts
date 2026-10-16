@@ -4,11 +4,21 @@ export interface DecodedImage {
   height: number;
 }
 
+import { sniffImageSize } from "./imageSize";
+
+/** More pixels than this are refused before decoding: a small file can declare a huge image and exhaust the tab's memory. */
+export const MAX_PIXELS = 64_000_000;
+const HEADER_BYTES = 1 << 20;
+
 /** Longer sides are scaled down to this before the pixels are read, to bound memory for a large photograph. */
 const MAX_SIDE = 1024;
 
 /** Decodes an image file in the browser. Throws an Error whose message is fit to show the visitor. */
 export async function decodeImageFile(file: File): Promise<DecodedImage> {
+  const size = sniffImageSize(new Uint8Array(await file.slice(0, HEADER_BYTES).arrayBuffer()));
+  if (size && size.width * size.height > MAX_PIXELS) {
+    throw new Error(`That image is larger than ${MAX_PIXELS / 1e6} megapixels (${size.width} x ${size.height}).`);
+  }
   let bitmap: ImageBitmap;
   try {
     bitmap = await createImageBitmap(file);
