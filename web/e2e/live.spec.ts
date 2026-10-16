@@ -21,6 +21,12 @@ async function runChip(page: Page) {
 }
 const verdict = (page: Page) => live(page).locator(".live-verdict");
 
+/** Opens the page and scrolls the section into view: its examples and 3D chunk load when it nears the viewport, and where it sits depends on the viewport and fonts. */
+async function openLive(page: Page, path = "/") {
+  await page.goto(path);
+  await live(page).scrollIntoViewIfNeeded();
+}
+
 // A tiny PNG encoder so upload tests need no fixture files.
 function crc32(buf: Buffer): number {
   let c = ~0;
@@ -65,7 +71,7 @@ test("the entry chunk has no 3D library, and nothing heavy loads before Run", as
 
   const requested: string[] = [];
   page.on("request", (request) => requested.push(new URL(request.url()).pathname));
-  await page.goto("/");
+  await openLive(page);
   await expect(live(page).getByRole("button", { name: "Example: cat" })).toBeVisible();
   await page.waitForLoadState("networkidle");
   expect(requested.filter((p) => /\/assets\/(cifar-|program-|weights|worker-)/.test(p))).toEqual([]);
@@ -74,7 +80,7 @@ test("the entry chunk has no 3D library, and nothing heavy loads before Run", as
 test("Run on the cat checks out against the reference and the golden, and the scene appears", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(String(error)));
-  await page.goto("/");
+  await openLive(page);
   await runChip(page);
   await expect(verdict(page)).toHaveAttribute("data-state", "match", { timeout: 60_000 });
   await expect(verdict(page)).toContainText("Python golden");
@@ -85,7 +91,7 @@ test("Run on the cat checks out against the reference and the golden, and the sc
 });
 
 test("pausing at the end names the cat, and the readout and layer strip follow the slider", async ({ page }) => {
-  await page.goto("/");
+  await openLive(page);
   await runChip(page);
   await expect(verdict(page)).toBeVisible({ timeout: 60_000 });
   await live(page).getByRole("button", { name: /^(Pause|Replay)$/ }).click();
@@ -100,7 +106,7 @@ test("pausing at the end names the cat, and the readout and layer strip follow t
 });
 
 test("the 4x4 mesh runs the same image on 16 tiles in fewer cycles than 1x1", async ({ page }) => {
-  await page.goto("/");
+  await openLive(page);
   await live(page).getByRole("radio", { name: "4x4 (16 tiles)" }).check();
   await runChip(page);
   await expect(verdict(page)).toHaveAttribute("data-state", "match", { timeout: 90_000 });
@@ -112,7 +118,7 @@ test("the 4x4 mesh runs the same image on 16 tiles in fewer cycles than 1x1", as
 });
 
 test("an uploaded picture is checked against the reference only", async ({ page }) => {
-  await page.goto("/");
+  await openLive(page);
   await expect(live(page).getByRole("button", { name: "Example: cat" })).toBeVisible();
   await live(page).getByLabel("Upload your own image").setInputFiles({
     name: "stripes.png",
@@ -126,7 +132,7 @@ test("an uploaded picture is checked against the reference only", async ({ page 
 });
 
 test("a transparent portrait picture and a landscape picture both run", async ({ page }) => {
-  await page.goto("/");
+  await openLive(page);
   await expect(live(page).getByRole("button", { name: "Example: cat" })).toBeVisible();
   for (const [name, w, h] of [["portrait.png", 30, 90], ["landscape.png", 90, 30]] as const) {
     await live(page).getByLabel("Upload your own image").setInputFiles({
@@ -141,7 +147,7 @@ test("a transparent portrait picture and a landscape picture both run", async ({
 });
 
 test("a file that is not an image is explained, and the section still works", async ({ page }) => {
-  await page.goto("/");
+  await openLive(page);
   await expect(live(page).getByRole("button", { name: "Example: cat" })).toBeVisible();
   await live(page).getByLabel("Upload your own image").setInputFiles({ name: "notes.png", mimeType: "image/png", buffer: Buffer.from("not an image") });
   await expect(live(page).locator(".live-notice")).toContainText("could not be read as an image");
@@ -150,7 +156,7 @@ test("a file that is not an image is explained, and the section still works", as
 });
 
 test("pressing Run on one mesh and then switching mesh never shows the first mesh's result", async ({ page }) => {
-  await page.goto("/");
+  await openLive(page);
   await live(page).getByRole("radio", { name: "4x4 (16 tiles)" }).check();
   await runChip(page);
   await live(page).getByRole("radio", { name: "1x1 (1 tile)" }).check();
@@ -163,7 +169,7 @@ test("pressing Run on one mesh and then switching mesh never shows the first mes
 test("a chip fault is reported, and the next run on a fresh module succeeds", async ({ page }) => {
   const zeros = Buffer.alloc(statSync(join(ART, "program-2x2.bin")).size);
   await page.route("**/program-2x2*.bin", (route) => route.fulfill({ status: 200, contentType: "application/octet-stream", body: zeros }));
-  await page.goto("/");
+  await openLive(page);
   await runChip(page);
   await expect(live(page).locator(".live-error")).toBeVisible({ timeout: 60_000 });
   await expect(live(page).locator(".live-error")).toContainText("chip");
@@ -177,7 +183,7 @@ test.describe("without WebGL", () => {
     await page.addInitScript(() => {
       HTMLCanvasElement.prototype.getContext = () => null;
     });
-    await page.goto("/");
+    await openLive(page);
     await runChip(page);
     await expect(verdict(page)).toHaveAttribute("data-state", "match", { timeout: 60_000 });
     await expect(live(page).locator(".live-fallback")).toContainText("WebGL");
@@ -189,7 +195,7 @@ test.describe("without WebGL", () => {
 test.describe("with reduced motion", () => {
   test.use({ reducedMotion: "reduce" });
   test("the run starts paused at its end with the scores shown", async ({ page }) => {
-    await page.goto("/");
+    await openLive(page);
     await runChip(page);
     await expect(verdict(page)).toBeVisible({ timeout: 60_000 });
     await expect(live(page).getByRole("button", { name: "Replay" })).toBeVisible();
@@ -201,9 +207,7 @@ test.describe("with reduced motion", () => {
 test("no horizontal scroll at 1280, 390 and 360 px with a run on screen and every drawer open", async ({ page }) => {
   for (const width of [1280, 390, 360]) {
     await page.setViewportSize({ width, height: 800 });
-    await page.goto("/?deep=1");
-    // with every drawer open the section starts far below the fold, and its data loads when it nears the viewport
-    await live(page).scrollIntoViewIfNeeded();
+    await openLive(page, "/?deep=1");
     await runChip(page);
     await expect(verdict(page)).toBeVisible({ timeout: 60_000 });
     expect(await noHorizontalScroll(page), `${width}px`).toBe(true);
@@ -211,7 +215,7 @@ test("no horizontal scroll at 1280, 390 and 360 px with a run on screen and ever
 });
 
 test("keyboard users can run, pause and step", async ({ page }) => {
-  await page.goto("/");
+  await openLive(page);
   await expect(live(page).getByRole("button", { name: "Example: cat" })).toBeVisible();
   await runButton(page).focus();
   await page.keyboard.press("Enter");
