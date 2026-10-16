@@ -41,10 +41,13 @@ export function RunView({ run, golden, classNames, Scene, sceneStatus, webgl, re
     }
   }, [trace, entry]);
   const playback = usePlayback(run.cycles, scheduler, reduced ? run.cycles : 0);
-  const { play } = playback;
+  const { play, seek } = playback;
+  const total = run.cycles;
   useEffect(() => {
-    if (!reduced) play();
-  }, [reduced, play]);
+    // reduced motion shows the end of the run paused; it can also be switched on while a run is playing
+    if (reduced) seek(total);
+    else play();
+  }, [reduced, play, seek, total]);
 
   const layerName = spans ? entry.layers[layerAtCycle(spans, playback.cycle)]!.name : "the network";
   const finished = playback.atEnd;

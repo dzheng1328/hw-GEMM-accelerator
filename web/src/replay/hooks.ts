@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 
 /** True once the element has intersected the viewport (with `rootMargin`); never goes back to false. */
 export function useInView(ref: RefObject<Element | null>, rootMargin: string, threshold = 0): boolean {
@@ -24,11 +24,20 @@ export function useInView(ref: RefObject<Element | null>, rootMargin: string, th
   return seen;
 }
 
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+function subscribeReducedMotion(onChange: () => void): () => void {
+  if (typeof window.matchMedia !== "function") return () => {};
+  const query = window.matchMedia(REDUCED_MOTION);
+  query.addEventListener?.("change", onChange);
+  return () => query.removeEventListener?.("change", onChange);
+}
+
+const reducedMotionNow = () => typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION).matches;
+
+/** Follows the OS setting, including a change while the page is open. */
 export function usePrefersReducedMotion(): boolean {
-  const [reduced] = useState(
-    () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
-  return reduced;
+  return useSyncExternalStore(subscribeReducedMotion, reducedMotionNow, () => false);
 }
 
 export type LazyStatus = "idle" | "loading" | "ready" | "error";

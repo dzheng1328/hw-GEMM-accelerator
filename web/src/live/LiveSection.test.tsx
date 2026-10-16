@@ -333,3 +333,27 @@ describe("LiveSection robustness", () => {
     expect(run).toHaveBeenCalledOnce();
   });
 });
+
+describe("LiveSection and the reduced-motion setting", () => {
+  it("stops playing and shows the end of the run when the setting is switched on mid-visit", async () => {
+    let reduce = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return reduce;
+      },
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+    }));
+    const { container } = setup();
+    await ready();
+    await runAndWait(container);
+    expect(await screen.findByRole("button", { name: "Pause" })).toBeTruthy();
+    act(() => {
+      reduce = true;
+      listeners.forEach((fn) => fn());
+    });
+    expect(await screen.findByRole("button", { name: "Replay" })).toBeTruthy();
+    expect((screen.getByRole("slider", { name: "Cycle" }) as HTMLInputElement).value).toBe(String(makeRun().cycles));
+  });
+});

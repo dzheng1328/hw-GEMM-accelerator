@@ -42,10 +42,31 @@ describe("usePrefersReducedMotion", () => {
     expect(result.current).toBe(false);
   });
 
-  it("reads the media query once", () => {
+  it("reads the media query", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce") }));
     const { result } = renderHook(() => usePrefersReducedMotion());
     expect(result.current).toBe(true);
+  });
+
+  it("follows a change of the OS setting while the page is open, and stops listening on unmount", () => {
+    let reduce = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return reduce;
+      },
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+    }));
+    const { result, unmount } = renderHook(() => usePrefersReducedMotion());
+    expect(result.current).toBe(false);
+    act(() => {
+      reduce = true;
+      listeners.forEach((fn) => fn());
+    });
+    expect(result.current).toBe(true);
+    unmount();
+    expect(listeners.size).toBe(0);
   });
 });
 
