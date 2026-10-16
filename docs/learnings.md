@@ -24,6 +24,30 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-16 -- A decisions entry records the numbers of its day, not today's
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The timeline node for the mesh scaling study quoted 2.18x at 4x4, while the live scaling chart shows 2.29x for the same mesh.
+**Cause:** The 2026-09-28 entry was written before the DMA overlap fix, which later moved every mesh's cycles per image (146,430 to 139,913 on 2x2), and the perf files were regenerated after it.
+**Fix:** The node's label says "before the DMA overlap fix", the next node carries the fix's before and after, and the performance section shows only the current numbers.
+**Takeaway:** When a timeline quotes an old entry, label the number with the state it was measured in, or two honest numbers will look like a contradiction.
+
+### 2026-10-16 -- lm.md folds the run's tail into "other", and a hero number now appears twice
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** Two checks failed the first time they ran: the lm.md cross-check saw 669,700 "other" cycles where the generated data had 669,696, and every browser test that found the hero's 62,677,232 by text hit a strict-mode violation.
+**Cause:** lm.md's four-way table adds the 4 cycles after the last SAMPLE to "other" while `performance.json` keeps them as `tail`; and the new counter table repeats the story model's cycle count, so a bare `getByText` matched two elements.
+**Fix:** The cross-check compares `other + tail`, and the hero locators in the smoke and replay specs are scoped to `.tile-value`.
+**Takeaway:** A number that is a headline today becomes a table cell tomorrow; scope locators to the component that owns the number.
+
+### 2026-10-16 -- A BSD sed range turned a mutation check into a no-op
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The mutation check that deletes a port token from the dark theme left the token tests green.
+**Cause:** The plan's `sed '0,/re/{...}'` is GNU syntax; macOS sed accepted it and changed nothing.
+**Fix:** The mutation was redone with a Python replace, and `git diff --stat` confirmed one line was deleted before the tests ran; the tests then failed as intended.
+**Takeaway:** After any scripted mutation, check that the diff is non-empty before reading the test result (see also the 2026-09-24 entries on silent no-ops).
+
 ### 2026-10-16 -- Reduced motion must not wait for the autoplay trigger
 
 **Phase:** Phase 4 (portfolio app)

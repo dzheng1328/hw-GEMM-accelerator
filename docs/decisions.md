@@ -19,6 +19,20 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-16 -- Portfolio performance story: two sections, a curated timeline, and the port partition as the shared axis
+
+**Context:** The portfolio needs to show where the cycles go and how the project got here, from the committed perf files and the decisions log.
+The two workloads (CIFAR-10 and the story model) saturate for different reasons, and the story model's cause is hedged in this repo's own report.
+**Options considered:**
+(1) Put everything in one performance section, or add a fifth section for the timeline.
+(2) Generate the timeline from git history, or curate about 20 milestones by hand.
+(3) Compare the workloads by their four-way category split, or by the six-way injection-port partition.
+**Decision:** A fifth section "How it was built", a hand-written timeline whose dates, headings and numbers are tested against `docs/decisions.md`, and the port partition (which both workloads have for every mesh) as the comparable axis.
+**Why:** A generated timeline changes with every merge to main and fails the freshness check, and most merges carry no number, while a curated one with tests catches typos and stale numbers.
+The four-way split exists for the 2x2 story-model run only, so only the port partition compares both workloads on every mesh: CIFAR-10 keeps the corner about 97% busy and the story model about 34% busy.
+The app states the story model's cause with the same hedge as the repo.
+Full design: `docs/superpowers/specs/2026-10-16-portfolio-performance-design.md`.
+
 ### 2026-10-16 -- Portfolio replay: cycle-proportional pacing, a vocabulary export, and data fetched as assets
 
 **Context:** The "Watch it think" section replays the recorded 4.3g run: eight stories, a cycle counter and an attention view.
