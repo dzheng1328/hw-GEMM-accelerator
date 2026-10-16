@@ -114,7 +114,7 @@ Every new layout is produced by a VPU command writing its output in the shape th
    Write-back decodes RESULT16 rows into two words each.
 3. `cmd_seq`: the register file grows to 32 (section 2, Registers); LOOP can take its count from a register; the loop stack is 4 deep; BLOCK gains a register form (bit 16) that takes ROUND, ROWS (row limit minus 1), and RMODE (raw, RESULT8, RESULT16) from registers; it accumulates when acc_keep is set or ROUND is above 0 and returns only on the last round of KS slots.
 4. VPU commands (section 3) drain like WAIT before they start (every outstanding block written back), then own the DMA's read ports and write-back's write ports through a mux in `accel.v`; the next command starts when the VPU finishes.
-   The VPU never overlaps the mesh; the counters show that serialization (`cmd_perf` counts a VOP's drain and run as `wait_cyc` until 4.3g splits them out).
+   The VPU never overlaps the mesh; the counters show that serialization (`cmd_perf` counts a VOP's drain and run as `wait_cyc`; 4.3g's report reads the VPU's busy cycles from `vpu_perf` and subtracts them from `wait_cyc`, so its VPU category is the VPU's busy line and the drains fall under other).
 
 ### Registers
 
