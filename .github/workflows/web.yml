@@ -6,12 +6,26 @@ on:
       - "web/**"
       - "docs/perf/**"
       - ".github/workflows/web.yml"
+      - "rtl/**"
+      - "tb/**"
+      - "compiler/**"
+      - "model/**"
+      - "docs/decisions.md"
+      - "docs/specs/**"
+      - "test.sh"
   push:
     branches: [main]
     paths:
       - "web/**"
       - "docs/perf/**"
       - ".github/workflows/web.yml"
+      - "rtl/**"
+      - "tb/**"
+      - "compiler/**"
+      - "model/**"
+      - "docs/decisions.md"
+      - "docs/specs/**"
+      - "test.sh"
 
 jobs:
   web:
