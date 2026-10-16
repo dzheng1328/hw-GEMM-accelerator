@@ -170,6 +170,7 @@ $(SCALING_DIR)/%.json: FORCE
 LM_DIR  = $(SIM_ROOT)/lm
 LM_RUNS = $(LM_DIR)/2x2_t0.json $(LM_DIR)/2x2_t256.json $(LM_DIR)/1x1_t256.json $(LM_DIR)/4x4_t256.json
 lm: $(LM_RUNS)
+	rm -f $(PERF_DOCS)/lm.json.tmp $(PERF_DOCS)/lm.md.tmp $(PERF_DOCS)/lm_trace.json.tmp
 	python $(PWD)/lm_report.py combine $(PERF_DOCS)/lm.json.tmp $(LM_RUNS)
 	python $(PWD)/lm_report.py render $(PERF_DOCS)/lm.json.tmp > $(PERF_DOCS)/lm.md.tmp
 	python $(PWD)/lm_report.py trace $(PERF_DOCS)/lm.json.tmp > $(PERF_DOCS)/lm_trace.json.tmp
