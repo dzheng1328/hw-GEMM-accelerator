@@ -62,8 +62,13 @@ def pct(x):
     return f"{100 * x:.1f}%"
 
 
+# Mermaid's default xychart palette starts with a lavender that nearly vanishes on a white page: the first series
+# (a bar, or a lone line) is blue and the second orange, which read on GitHub's light and dark themes alike.
+MERMAID_INIT = '%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%'
+
+
 def mermaid_bar_line(title, xs, y_label, bars, line, y_max):
-    return ["```mermaid", "xychart-beta", f'    title "{title}"',
+    return ["```mermaid", MERMAID_INIT, "xychart-beta", f'    title "{title}"',
             "    x-axis [" + ", ".join(f'"{x}"' for x in xs) + "]",
             f'    y-axis "{y_label}" 0 --> {y_max}',
             "    bar [" + ", ".join(f"{b:.4g}" if b < 100 else f"{b:.0f}" for b in bars) + "]",

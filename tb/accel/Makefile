@@ -12,6 +12,7 @@
 #   make lint-configs                     lint sizes no run covers
 #   make cifar                            all 128 CIFAR-10 images; writes docs/perf/cifar.{json,md}
 #   make scaling                          the same on 1x1 .. 4x4; writes docs/perf/scaling.{json,md}
+#   make lm                               the real story model, 256 steps: 2x2 at temperature 0 and 1.0, 1x1 and 4x4 at 1.0; writes docs/perf/lm.{json,md} and lm_trace.json
 
 include $(PWD)/../common.mk
 
@@ -45,7 +46,7 @@ SIM_BUILD = $(SIM_ROOT)/sim_build_accel_$(MESH_W)x$(MESH_H)_aw$(MESH_AW)
 CASE_DIR  = $(SIM_BUILD)/cases
 
 # One run is one case (ACCEL_CASE) or one probe (ACCEL_PROBE); test_accel.py reads both.
-export ACCEL_CASE ACCEL_PROBE CIFAR_RESULTS
+export ACCEL_CASE ACCEL_PROBE CIFAR_RESULTS LM_RESULTS
 ifneq ($(ACCEL_CASE),)
 PLUSARGS += +program=$(CASE_DIR)/$(ACCEL_CASE)/program.hex +weights=$(CASE_DIR)/$(ACCEL_CASE)/weights.hex \
             $(foreach b,0 1 2 3,+act_bank$(b)=$(CASE_DIR)/$(ACCEL_CASE)/act_bank$(b).hex)
@@ -55,7 +56,7 @@ COCOTB_RESULTS_FILE = $(SIM_BUILD)/results_$(or $(ACCEL_CASE),$(ACCEL_PROBE),non
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 .DEFAULT_GOAL := cases
-.PHONY: cases error-check stray-check vpu-check reset-check lint-configs cifar scaling
+.PHONY: cases error-check stray-check vpu-check reset-check lint-configs cifar scaling lm
 
 cases:
 	@for c in $(or $(ACCEL_CASES),$$(python $(PWD)/cases.py list)); do \
@@ -63,10 +64,11 @@ cases:
 	  $(MAKE) --no-print-directory sim ACCEL_CASE=$$c || exit 1; \
 	done
 
-# Negative tests: the shipping FATAL = 1 build stops on every cmd_seq fault a program can
-# raise (a tile outside the mesh, a fifth nested loop, a bad LOOP or LOOPR count, a bad
-# register-form ROUND, ROWS or RMODE, an invalid VOP sub-op, a VPU fault). Each probe passes only
-# if its run fails on cmd_seq's own message, with the pc golden gives.
+# Negative tests: the shipping FATAL = 1 build stops on these cmd_seq faults (a tile outside the
+# mesh, a fifth nested loop, a bad LOOP or LOOPR count, a bad register-form ROUND, ROWS or RMODE,
+# an invalid VOP sub-op, a VPU fault). An invalid opcode and an ENDLOOP with no loop are covered
+# under FATAL = 0 by tb/cmd_seq. Each probe passes only if its run fails on cmd_seq's own
+# message, with the pc golden gives.
 error-check:
 	@mkdir -p $(SIM_BUILD); \
 	for p in $$(python $(PWD)/cases.py probes); do \
@@ -159,5 +161,31 @@ $(SCALING_DIR)/%.json: FORCE
 	$(MAKE) --no-print-directory cases MESH_W=$(word 1,$(subst x, ,$*)) MESH_H=$(word 2,$(subst x, ,$*)) \
 	    MESH_AW=2 ACCEL_CASES=$(SCALING_CASE) CIFAR_RESULTS=$@ > $(SCALING_DIR)/$*.log 2>&1 \
 	    || { tail -20 $(SCALING_DIR)/$*.log; echo "FAIL: $(SCALING_CASE) on $*, see $(SCALING_DIR)/$*.log"; exit 1; }
+
+# The story model on the chip (4.3g): the real model for 256 steps from one start. Two 2x2 runs (temperature 0
+# and 1.0; they share one simulator build, so the order-only line runs them one after the other even under -j),
+# and 1x1 and 4x4 at 1.0 for the scaling table. Each run's bit-exact checks are inside the test, so a record
+# exists only for a run that passed. The generated files are written next to their .tmp and moved into place
+# only if every step succeeds, so a failure leaves the committed reports alone. `make -j4 lm` runs all four.
+LM_DIR  = $(SIM_ROOT)/lm
+LM_RUNS = $(LM_DIR)/2x2_t0.json $(LM_DIR)/2x2_t256.json $(LM_DIR)/1x1_t256.json $(LM_DIR)/4x4_t256.json
+lm: $(LM_RUNS)
+	rm -f $(PERF_DOCS)/lm.json.tmp $(PERF_DOCS)/lm.md.tmp $(PERF_DOCS)/lm_trace.json.tmp
+	python $(PWD)/lm_report.py combine $(PERF_DOCS)/lm.json.tmp $(LM_RUNS)
+	python $(PWD)/lm_report.py render $(PERF_DOCS)/lm.json.tmp > $(PERF_DOCS)/lm.md.tmp
+	python $(PWD)/lm_report.py trace $(PERF_DOCS)/lm.json.tmp > $(PERF_DOCS)/lm_trace.json.tmp
+	mv $(PERF_DOCS)/lm.json.tmp $(PERF_DOCS)/lm.json
+	mv $(PERF_DOCS)/lm.md.tmp $(PERF_DOCS)/lm.md
+	mv $(PERF_DOCS)/lm_trace.json.tmp $(PERF_DOCS)/lm_trace.json
+
+$(LM_DIR)/2x2_t0.json: | $(LM_DIR)/2x2_t256.json
+
+# The target name is MESH_tTEMP, e.g. 2x2_t256: temperature 256 is 1.0 in Q8.8.
+$(LM_DIR)/%.json: FORCE
+	@mkdir -p $(LM_DIR); rm -f $@
+	$(MAKE) --no-print-directory cases MESH_W=$(word 1,$(subst x, ,$(word 1,$(subst _, ,$*)))) \
+	    MESH_H=$(word 2,$(subst x, ,$(word 1,$(subst _, ,$*)))) MESH_AW=2 \
+	    ACCEL_CASES=lm_story_$(word 2,$(subst _, ,$*)) LM_RESULTS=$@ > $(LM_DIR)/$*.log 2>&1 \
+	    || { tail -20 $(LM_DIR)/$*.log; echo "FAIL: lm_story_$(word 2,$(subst _, ,$*)) on $(word 1,$(subst _, ,$*)), see $(LM_DIR)/$*.log"; exit 1; }
 
 FORCE:

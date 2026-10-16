@@ -53,11 +53,16 @@ def test_the_tests_would_notice_a_wrong_program(monkeypatch):
 
 
 @pytest.mark.parametrize("mesh", [(1, 1), (2, 2), (4, 3), (8, 8)])
-def test_the_program_fits_program_memory_and_uses_no_wait(mesh):
+def test_the_program_fits_program_memory_and_waits_only_before_a_tag_clear(mesh):
+    from lm_spec import N_LAYERS
+
     b = lm_build(q_random(), *mesh, 4, 0, RANDOM_PROMPT[:4], RANDOM_SEEDS)
     assert len(b.program) <= isa.PROGRAM_WORDS
     ops = [isa.decode(w)[0] for w in b.program]
-    assert isa.WAIT not in ops and ops[-1] == isa.END and ops.count(isa.END) == 1
+    waits = [n for n, op in enumerate(ops) if op == isa.WAIT]
+    assert len(waits) == 2 * N_LAYERS  # one per attention window
+    assert all(_alu_write(b.program[n + 1]) == (isa.PERF_TAG, 0) for n in waits)
+    assert ops[-1] == isa.END and ops.count(isa.END) == 1
 
 
 def test_attention_pins_each_story_to_tile_s_mod_mesh_size():
@@ -82,3 +87,54 @@ def test_lm_build_rejects_unsupported_configurations(kwargs, msg):
     args.update(kwargs)
     with pytest.raises(ValueError, match=msg):
         lm_build(q_random(), *args["mesh"], args["n_steps"], args["inv_temp"], RANDOM_PROMPT, RANDOM_SEEDS)
+
+
+def _alu_write(word):
+    """(register, immediate) of an ALU command with an immediate, else None."""
+    if word >> 60 == isa.ALU and (word >> 47) & 1:
+        return (word >> 55) & 0x1F, word & 0xFFFF_FFFF
+    return None
+
+
+def test_the_perf_tag_wraps_exactly_the_attention_block_loops():
+    """Set before each QK^T and AV loop nest, cleared after a WAIT (an ALU does not wait for the DMA, so a
+    bare clear would count the last tagged BLOCK's flits as untagged), no VOP inside a window."""
+    from lm_spec import N_LAYERS
+
+    b = lm_build(q_random(), 2, 2, 4, 256, RANDOM_PROMPT, RANDOM_SEEDS)
+    tag, tagged, untagged, windows = 0, 0, 0, 0
+    for n, word in enumerate(b.program):
+        write = _alu_write(word)
+        if write and write[0] == isa.PERF_TAG:
+            if write[1] == 0:
+                assert b.program[n - 1] >> 60 == isa.WAIT, f"tag cleared at pc {n} without a WAIT before it"
+            else:
+                windows += 1
+            tag = write[1]
+        elif word >> 60 == isa.VOP:
+            assert not tag, f"a VOP at pc {n} lies inside a tagged window"
+        elif word >> 60 == isa.BLOCK:
+            tagged, untagged = tagged + bool(tag), untagged + (not tag)
+    assert tag == 0, "the program ends with the tag set"
+    assert windows == 2 * N_LAYERS
+    assert tagged == 2 * 8 * N_LAYERS  # one BLOCK word per story in each of the QK^T and AV nests
+    assert untagged > 0
+
+
+def test_the_tracer_counts_the_tagged_blocks_and_slots():
+    """The golden's tagged BLOCK count equals the lowering's loop structure: per step, per layer, per story and KV
+    head, (T // 8 + 1) QK^T BLOCKs and ceil(K slots / 64) AV rounds."""
+    from emit import images
+    from golden import Tracer
+    from lm_spec import BATCH, N_KV_HEADS, N_LAYERS
+
+    steps = 10
+    b = lm_build(q_random(), 2, 2, steps, 256, RANDOM_PROMPT, RANDOM_SEEDS)
+    g = Tracer(*b.mesh, *images(b))
+    g.run(50_000_000)
+    want = 0
+    for t in range(steps):
+        k_slots = (t + 8) & ~7
+        want += N_LAYERS * BATCH * N_KV_HEADS * ((t >> 3) + 1 + (k_slots + 63) // 64)
+    assert g.tagged_blocks() == want
+    assert 0 < g.tagged_slots < g.slots

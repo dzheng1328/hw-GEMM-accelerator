@@ -18,7 +18,8 @@ each BLOCK carries its own (m, sh)):
       down matmul (3 K=64 chunks, RESULT16); VOP ADD
     VOP RMSNORM; classifier matmul (RESULT16); VOP SAMPLE; ALU T += 1
 
-A VOP drains outstanding BLOCKs like WAIT, so no WAIT is emitted."""
+The attention BLOCK loops are bracketed by writes to PERF_TAG (set before each loop nest, WAIT then clear after), which only rtl/cmd_perf.v reads.
+A VOP drains outstanding BLOCKs like WAIT, so no WAIT is emitted except before a tag clear."""
 
 from dataclasses import dataclass
 
@@ -97,6 +98,15 @@ def _wave(tiles, groups):
         yield list(zip(tiles, range(start, min(start + len(tiles), groups))))
 
 
+def _tag(p, on):
+    """Set or clear isa.PERF_TAG, which rtl/cmd_perf.v reads as "this cycle is attention" (4.3g). An ALU command
+    does not wait for the DMA, so a clear is preceded by a WAIT: every tagged BLOCK has then written back, and
+    none of its flits is injected after the tag falls."""
+    if not on:
+        p.emit(isa.wait())
+    p.alu(ALU_ADD, isa.PERF_TAG, 0, imm=int(on))
+
+
 def _matmul(p, tiles, q, name, in_word, out_word, w_word, groups, out16):
     """One 1x1-conv matmul of 8 stories: Cin = 64 features in, `groups` * 8 out.
     RESULT8 uses the immediate BLOCK form; RESULT16 the register form."""
@@ -144,6 +154,7 @@ def _attention(p, tiles, q, l, lay, addr):
     sm, ssh = int(q[f"l{l}_score_m"]), int(q[f"l{l}_score_sh"])
     am, ash = int(q[f"l{l}_att_m"]), int(q[f"l{l}_att_sh"])
 
+    _tag(p, True)
     # QK^T: nest n = 4 * story + KV head; its 8 query-head-pair words, its K^T
     # words, and its 2 x 256 int16 scores sit at n * (8, 512, 128) words.
     for reg, v in {isa.CIN_LOG2: 3, isa.H_LOG2: 0, isa.W_LOG2: 8, isa.WOUT_LOG2: 8, isa.STRIDE: 1, isa.PAD: 0,
@@ -165,8 +176,10 @@ def _attention(p, tiles, q, l, lay, addr):
         p.bump(R_OUT, SCORE_NEST_WORDS)
         p.bump(isa.W_BASE, HEAD_DIM)
         p.endloop()
+    _tag(p, False)
     p.vop(isa.SOFTMAX, lay.sc, lay.prob, addr.exp)
 
+    _tag(p, True)
     # AV: K slots = 8 * ceil((T + 1) / 8) in rounds of 64; the probabilities
     # word of position j is the A word of slot j, the V word the B row.
     for reg, v in {isa.CIN_LOG2: 8, isa.H_LOG2: 0, isa.W_LOG2: 3, isa.WOUT_LOG2: 3, isa.STRIDE: 1, isa.PAD: 0,
@@ -187,6 +200,7 @@ def _attention(p, tiles, q, l, lay, addr):
         p.bump(isa.W_BASE, PROB_NEST_WORDS)
         p.bump(isa.OUT_BASE, 2 * (DIM // 8))
         p.endloop()
+    _tag(p, False)
     p.vop(isa.TRANSPOSE, lay.avout, lay.att, DIM // 8)
 
 

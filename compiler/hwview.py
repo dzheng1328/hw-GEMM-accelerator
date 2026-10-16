@@ -9,8 +9,9 @@ import isa
 
 
 def dma_ports(regs):
-    """rtl/dma_gather.v's register inputs, by port name, from the 16
-    registers (a sequence or a dict keyed by register index)."""
+    """rtl/dma_gather.v's register inputs, by port name, from the register
+    file (a sequence or a dict keyed by register index); only the layer
+    registers r1 and r3 to r12 are read."""
     return {
         "in_base": regs[isa.IN_BASE], "w_base": regs[isa.W_BASE],
         "cin_log2": regs[isa.CIN_LOG2], "h_log2": regs[isa.H_LOG2], "w_log2": regs[isa.W_LOG2],

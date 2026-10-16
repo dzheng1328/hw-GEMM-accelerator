@@ -28,7 +28,8 @@
 //            The VPU owns the memories meanwhile (rtl/accel.v's mux), so
 //            nothing else issues. A VPU fault is the command's fault. The
 //            wait_stall output covers both the drain and the VPU's run, so
-//            cmd_perf counts a VOP as wait_cyc (4.3g splits it out).
+//            cmd_perf counts a VOP as wait_cyc; rtl/vpu_perf.v's counters
+//            split it out (4.3g's report).
 //
 // Fetch reads ahead. Program memory reads are registered, so the executing
 // command is prog_rdata itself, and a command that completes reads its
@@ -40,19 +41,22 @@
 // BLOCK issues as soon as the DMA is ready, while this one drains, so the
 // injection port sees no gap between BLOCKs. WAIT and END also wait for the
 // DMA to drain: a no_ret BLOCK has no write-back entry to wait on.
-// Registers change only on ADD, so they too hold while a BLOCK runs: the
-// DMA's stable-input contract.
+// Registers change only on ADD and ALU, and a command executes only after
+// the previous BLOCK's handoff, so they hold while a BLOCK is in the DMA's
+// input stage: the DMA's stable-input contract.
+// r31 (PERF_TAG) is read by nothing here: bit 0 leaves as perf_tag for rtl/cmd_perf.v.
 //
 // Write-back entry: RESULT8 row i of group g, pixel block pb goes to word
 // OUT_BASE + (8g + i) * OSTRIDE + pb, raw cell (i, j) to
 // OUT_BASE + ((8g + i) * OSTRIDE + pb) * 8 + j. The entry is the i = j = 0
 // word (base) and the per-row step (OSTRIDE, times 8 for raw), fixed at
-// issue so a later ADD cannot move results still in flight.
+// issue so a later ADD or ALU cannot move results still in flight.
 //
 // Faults -- an invalid opcode, an invalid VOP sub-op, a tile outside the W x H
 // mesh, a register-form ROUND, ROWS or RMODE out of range, a fifth nested
 // LOOP, LOOP 0, a LOOPR count of 0 or above 65535, ENDLOOP with no loop, and
-// whatever rtl/vpu.v faults on -- set the sticky error and error_pc and stop fetch; with FATAL (the default) the simulation ends with $fatal.
+// whatever rtl/vpu.v faults on -- set the sticky error and error_pc and stop
+// fetch; with FATAL (the default) the simulation ends with $fatal.
 // start restarts a finished program (registers and loop cleared) but not a
 // faulted one: that takes rst.
 module cmd_seq #(
@@ -75,8 +79,9 @@ module cmd_seq #(
     output reg                 error,
     output reg  [PC_W-1:0]     error_pc,
     output wire                busy,          // running (rtl/cmd_perf.v)
-    output wire                wait_stall,    // WAIT or END waiting on write-back or the DMA to drain
+    output wire                wait_stall,    // WAIT, END or VOP waiting on write-back or the DMA to drain, or a VOP running
     output wire                credit_stall,  // returning BLOCK waiting on a full FIFO
+    output wire                perf_tag,      // bit 0 of r31: rtl/cmd_perf.v's tag (no datapath effect)
     // Program memory read port.
     output wire                prog_re,
     output wire [PC_W-1:0]     prog_raddr,
@@ -144,7 +149,8 @@ module cmd_seq #(
     localparam R_IN_BASE = 1, R_OUT_BASE = 2, R_W_BASE = 3, R_CIN_LOG2 = 4, R_H_LOG2 = 5,
                R_W_LOG2 = 6, R_WOUT_LOG2 = 7, R_STRIDE = 8, R_PAD = 9, R_KSIZE = 10,
                R_KS = 11, R_BIAS = 12, R_OSTRIDE = 13,
-               R_T = 16, R_PLEN = 17, R_INV_TEMP = 18, R_ROUND = 19, R_ROWS = 20, R_RMODE = 21;
+               R_T = 16, R_PLEN = 17, R_INV_TEMP = 18, R_ROUND = 19, R_ROWS = 20, R_RMODE = 21,
+               R_PERF_TAG = 31;
     localparam [31:0] SLOTS_PER_ROUND = 32'd64;
     // S_HALT: stopped by END (done) or a fault (error). S_VOP: a VOP is running in the VPU.
     localparam [2:0] S_IDLE = 3'd0, S_EXEC = 3'd1, S_BLOCK = 3'd2, S_HALT = 3'd3, S_VOP = 3'd4;
@@ -260,6 +266,7 @@ module cmd_seq #(
     assign busy         = (state == S_EXEC) || (state == S_BLOCK) || in_vop;
     assign wait_stall   = (exec && !fault && drain) || in_vop;
     assign credit_stall = exec && !fault && credit;
+    assign perf_tag     = regs[R_PERF_TAG][0];
     assign dma_start    = issue;
 
     // ---- VOP: the sub-op and its operand registers ----

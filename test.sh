@@ -76,7 +76,7 @@ make "$@"
 # CIFAR-10 on the chip: 8 frozen test images (make cifar runs all 128).
 make ACCEL_CASES=cifar8 "$@"
 make MESH_W=4 MESH_H=3 MESH_AW=3 "$@"
-make MESH_W=1 MESH_H=1 ACCEL_CASES="small lm_t0" "$@"
+make MESH_W=1 MESH_H=1 ACCEL_CASES="small small_tag lm_t0" "$@"
 # The story model on the chip: the real model for 8 steps at both temperatures, and 66 steps of a random
 # one across T = 7 to 8 and 63 to 64 (the AV's second round: partial sums held, only the last round returns).
 make ACCEL_CASES="lm_real8 lm_real8_t256 lm_rounds" "$@"
@@ -92,5 +92,5 @@ make "$@"
 cd "$REPO_ROOT/tb/perf"
 make "$@"
 
-python -m pytest -q "$REPO_ROOT/tb/test_check_results.py" "$REPO_ROOT/tb/perf/test_perflib.py" "$REPO_ROOT/tb/accel/test_cifar_report.py" "$REPO_ROOT/tb/accel/test_scaling_report.py" "$REPO_ROOT/tb/accel/test_cases.py" \
+python -m pytest -q "$REPO_ROOT/tb/test_check_results.py" "$REPO_ROOT/tb/perf/test_perflib.py" "$REPO_ROOT/tb/accel/test_cifar_report.py" "$REPO_ROOT/tb/accel/test_scaling_report.py" "$REPO_ROOT/tb/accel/test_cases.py" "$REPO_ROOT/tb/accel/test_lm_perf.py" "$REPO_ROOT/tb/accel/test_lm_report.py" \
     "$REPO_ROOT/model/test_fixedpoint.py" "$REPO_ROOT/model/test_cifar.py" "$REPO_ROOT/model/test_lm.py" "$REPO_ROOT/compiler"

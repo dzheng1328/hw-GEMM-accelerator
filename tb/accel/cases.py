@@ -14,7 +14,7 @@ CIFAR-10 network on the first N test images of model/cifar_quantized.npz."""
 
 import sys
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -26,8 +26,13 @@ N_RANDOM = 4
 LM_CASES = {"lm_t0": ("random0", 10, 0), "lm_t256": ("random1", 12, 256)}
 LM_EXTRA = {"lm_real8": ("real", 8, 0), "lm_real8_t256": ("real", 8, 256),
             "lm_rounds": ("random2", 66, 256),  # T = 7 to 8 and 63 to 64: AV's second round
-            "lm_full": ("random3", 256, 256)}   # every position up to T = 255 (about 8 minutes)
-CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)] + list(LM_CASES)
+            "lm_full": ("random3", 256, 256),   # every position up to T = 255 (about 8 minutes)
+            # the exit criteria's runs (make lm)
+            "lm_story_t0": ("real", 256, 0), "lm_story_t256": ("real", 256, 256)}
+# A conv-stack case for rtl/cmd_perf.v's tagged counters (4.3g): the "small" net with PERF_TAG set from the first
+# command to the first WAIT, so some BLOCKs are tagged and some are not (tag_first_segment).
+SMALL_TAG = "small_tag"
+CASES = ["small", "wide"] + [f"rand{i}" for i in range(N_RANDOM)] + list(LM_CASES) + [SMALL_TAG]
 # Fault probes: tiny programs that must stop the run on a cmd_seq $fatal (`make error-check`).
 # name -> (program builder, the message fragment the log must hold, golden's fault pc). wrong_mesh is
 # the small net for a mesh one column wider than the build's (its message names the build's mesh).
@@ -54,6 +59,17 @@ def probe_programs():
 PROBES = ("wrong_mesh",) + tuple(probe_programs())
 # A program that runs a VOP and stops, for the Icarus probes of `make vpu-check` (they Force a signal while it runs).
 VOP_NOP = "vop_nop"
+
+
+def tag_first_segment(program):
+    """program with r31 set to 1 first and cleared right after the first WAIT (which drains every tagged BLOCK)."""
+    import isa
+
+    first_wait = next(n for n, w in enumerate(program) if w >> 60 == isa.WAIT)
+    setr = lambda v: isa.alu(isa.ALU_ADD, isa.PERF_TAG, 0, imm=v)  # noqa: E731
+    return [setr(1)] + list(program[: first_wait + 1]) + [setr(0)] + list(program[first_wait + 1 :])
+
+
 N_CIFAR_IMAGES = 128  # test images frozen in model/cifar_quantized.npz
 
 # (ksize, stride, pad) of the random stacks' conv layers.
@@ -146,9 +162,15 @@ def lm_extra_cycles(steps, vops, slots):
     idles; SAMPLE alone reads the vocabulary three times, about 3K cycles a step, and SOFTMAX
     grows with the position), the drains in front of every VOP, and each step's ALUs and loop
     bookkeeping. The VPU's share grows with the context just as the attention slots do, so
-    2 cycles per slot stands for it at any length. Measured against 1x1, 2x2 and 4x3 runs of
-    8 to 66 steps and a 256-step one: 1.5 to 2.8 times the real cycles."""
-    return 9_000 * steps + 40 * vops + 2 * slots + 20_000
+    2 cycles per slot stands for it at any length. The attention loops' stalls and drains grow
+    with the context too (each step costs about 1,400 cycles more than the one before on 2x2),
+    so a long run's total grows as steps squared; and as the story runs look bound by node
+    (0,0)'s injection rather than by the tiles (consistent with the measurements, not proven),
+    cycle_budget's per-tile share does not shrink them on a wide mesh. Without the squared term
+    the 256-step story on 4x4 (61.9M cycles) got only 1.49 times its length. Measured against
+    1x1, 2x2, 4x3 and 4x4 runs of 8 to 256 steps (test_cases.LM_MEASURED): 1.65 to 2.83 times
+    the real cycles."""
+    return 9_000 * steps + 150 * steps * steps + 40 * vops + 2 * slots + 20_000
 
 
 def is_cifar(name):
@@ -184,6 +206,9 @@ def case_build(name, w, h):
 
         setr = lambda r, v: isa.alu(isa.ALU_ADD, r, 0, imm=v)  # noqa: E731
         return ProbeBuild([setr(22, 0), setr(23, 128), isa.vop(isa.VADD, 22, 23), isa.end()], (w, h))
+    if name == SMALL_TAG:
+        b = build(*case_net("small"), w, h)
+        return replace(b, program=tag_first_segment(b.program))
     if name not in CASES:
         raise ValueError(f"unknown case {name}")
     return build(*case_net(name), w, h)

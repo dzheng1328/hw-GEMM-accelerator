@@ -18,6 +18,17 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-15 -- 4.3g: a perf tag register, and temperature 1.0 as the headline
+
+**Context:** The 4.3 spec wants each decode step's cycles split into weight matmuls, attention, VPU and other, measured, not estimated. Attention and weight BLOCKs are both register-form BLOCKs, so nothing in the hardware told them apart; the VPU's busy cycles were already counted (as `wait_cyc`, which also includes WAIT-command drains) by `cmd_perf`.
+The 8 stories share a prompt, and at temperature 0 the argmax ignores the per-lane seeds, so the 8 stories are identical.
+**Options considered:** A program-counter window in `cmd_perf` (one comparator per attention loop); a tag register the program sets (r31, no datapath effect); estimating attention from the golden's static slot counts.
+The headline stories at temperature 0 or at 1.0.
+**Decision:** r31 (`isa.PERF_TAG`), set before each QK^T and AV loop nest and cleared after a WAIT; `cmd_perf` gets a tagged copy of all six partition counters plus `attn_blocks` (the whole partition, not a subset, so the tagged cycles partition too).
+`lm.md` shows the temperature 1.0 stories as its headline and states that temperature 0 gives 8 identical stories by construction.
+**Why:** A pc window breaks silently whenever the lowering moves code; static estimates are not measurements, and the spec asked for measured categories. The WAIT before the clear is needed because `cmd_seq` executes ALU commands without waiting for the DMA, so a bare clear would count the last attention BLOCK's flits as weight-matmul time (the dynamic guard is `attn_go_cyc == attn_blocks`, which detects the missing WAIT on 2x2 and 4x3; the static WAIT-before-clear test in `compiler/test_lower_lm.py` guards 1x1; see the learnings entry of the same date).
+**Result:** 2x2 62,677,232 cycles at temperature 1.0 (244,833 per step), 1x1 76,958,144, 4x4 61,943,056; the categories on 2x2: weight matmuls 15.3%, attention 59.5%, VPU 24.1%, other 1.1%; the attention share rises from 26.8% in steps 0-31 to 66.5% in steps 224-255 (weight matmuls fall from 43.6% to 9.3%). Scaling saturates at 1.23x (2x2 vs 1x1) and 1.24x (4x4 vs 1x1), consistent with the serial VPU (15.1M cycles on every mesh, 24% of the 2x2 run) setting a floor that more tiles do not shrink, and back-pressure at node (0,0)'s injection port (injection stalls 34-37% of cycles on 2x2 and 4x4, mostly inside attention) accounting for the rest; the 2026-09-28 mesh scaling study entry (the corner saturates at 2x2, so the next lever is corner bandwidth) points the same way, but lm.md alone does not prove the cause, as corner injection busy is 32-35% on all three meshes. Temperature 0 on 2x2 takes 62,157,860 cycles. CIFAR-10 is cycle-identical (1,119,365 on `cifar8`).
+
 ### 2026-10-14 -- 4.3f: the command processor runs the vector unit
 
 **Context:** 4.3d gave the ISA (ALU, LOOPR, VOP, the register-form BLOCK, a four-deep loop stack, 32 registers) and the golden executor; 4.3e gave a vector unit with generic memory ports.
@@ -31,7 +42,7 @@ The VPU's fault reported by the VPU's own `$fatal`, or through `cmd_seq`'s `erro
 A VOP drains like WAIT (write-back and the DMA idle), pulses `vop_start` once with its three operand registers and T, PLEN and INV_TEMP, and holds in a new state until `vop_done`; `wait_stall` covers the whole of it, so `cmd_perf` counts VPU time as `wait_cyc` until 4.3g splits it out.
 `accel` instantiates the VPU with `FATAL = 0`: the VPU's fault is the VOP's fault, so `cmd_seq` sets `error` and `error_pc` and ends the simulation with the pc of the VOP.
 The A memory is 64K words (`WT_AW = 16`) with the VPU as its only writer.
-Two `$fatal` guards in `accel` (a VPU request while it is not running; the VPU running while the DMA or write-back is busy) are proven by Icarus `Force` probes, and every `cmd_seq` fault by a tiny program run under `FATAL = 1` (`make error-check`, `make vpu-check`).
+Two `$fatal` guards in `accel` (a VPU request while it is not running; the VPU running while the DMA or write-back is busy) are proven by Icarus `Force` probes, and every `cmd_seq` fault except an invalid opcode and an ENDLOOP with no loop by a tiny program run under `FATAL = 1` (`make error-check`, `make vpu-check`); those two stop at the golden's pc under `FATAL = 0` in `tb/cmd_seq`'s `test_every_fault_stops_at_its_pc`.
 **Why:** Ownership is the one signal the sequencer already guarantees (everything is drained before a VOP and nothing issues during it), so the mux is correct by construction and the guards check the guarantee instead of relying on it.
 Resolving the register form in one place keeps the DMA, `flit_pack` and `writeback` unchanged, which is also why CIFAR-10 is cycle-identical (1,119,365 cycles on 2x2 for `cifar8`, before and after).
 **Result:** Story-model programs (the real 5-layer shape, random weights and the frozen model) run end to end on 1x1, 2x2 and 4x3 with both memories word-for-word equal to the golden's and the token log and K and V caches equal to `lm_reference.py`'s, at temperature 0 and 1.0.

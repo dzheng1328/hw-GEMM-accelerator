@@ -19,9 +19,12 @@ OP_NAMES = {ADD: "ADD", BLOCK: "BLOCK", WAIT: "WAIT", LOOP: "LOOP", ENDLOOP: "EN
 IMG_IN, IMG_OUT = 14, 15
 # The 4.3 registers (spec 4.3 section 2): the current position, the prompt
 # length, the inverse temperature (Q8.8, 0 = argmax), and the register-form
-# BLOCK's round, row limit minus 1, and result mode. 22-31 are free.
+# BLOCK's round, row limit minus 1, and result mode. 22-30 are free (31 is PERF_TAG).
 T, PLEN, INV_TEMP, ROUND, ROWS, RMODE = range(16, 22)
 RMODE_RAW, RMODE_Q8, RMODE_Q16 = 0, 1, 2
+# Register 31 has no datapath effect: bit 0 is rtl/cmd_perf.v's tag (4.3g), set by the story lowering around the
+# attention BLOCK loops so the perf counters can tell them from the weight matmuls.
+PERF_TAG = 31
 # The register file of the command processor's RTL and of the golden executor.
 N_REGS = 32
 MAX_LOOP_DEPTH = 4
