@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BLOCKS, VIEWBOX } from "../content/architecture";
+import { DeepContext } from "../components/deepContext";
+import { BLOCKS, DEFAULT_BLOCK, STAGES, VIEWBOX, VOP_NOTE } from "../content/architecture";
 import { REPO_URL } from "../content/timeline";
 import { BlockDetail } from "./BlockDetail";
+import { ArchitectureSection } from "./ArchitectureSection";
 import { BlockDiagram } from "./BlockDiagram";
+import { BlockTable } from "./BlockTable";
 import { edges, findBlock } from "./layout";
+import { Stepper } from "./Stepper";
 import { KIND_LABEL } from "./types";
 
 afterEach(cleanup);
@@ -108,5 +112,120 @@ describe("BlockDetail", () => {
   it("is a polite live region, so a screen reader hears the new selection", () => {
     const { container } = render(<BlockDetail block={findBlock(BLOCKS, "noc")} />);
     expect(container.querySelector(".arch-detail")!.getAttribute("aria-live")).toBe("polite");
+  });
+});
+
+describe("Stepper", () => {
+  const stepper = (selected: string, onSelect: (id: string) => void = () => {}) =>
+    render(<Stepper stages={STAGES} selected={selected} onSelect={onSelect} note={VOP_NOTE} />);
+
+  it("lists the eight stages in order and marks the selected block's stage as the current step", () => {
+    const { container } = stepper("noc");
+    const items = container.querySelectorAll("ol > li");
+    expect(items).toHaveLength(8);
+    expect(container.querySelector("ol")!.tagName).toBe("OL");
+    const current = [...container.querySelectorAll("[aria-current='step']")];
+    expect(current).toHaveLength(1);
+    expect(current[0]!.textContent).toContain(STAGES[4]!.title);
+  });
+
+  it("has no current step when the selected block is not on the walk", () => {
+    const { container } = stepper("vpu");
+    expect(container.querySelectorAll("[aria-current]")).toHaveLength(0);
+  });
+
+  it("selects the block of a stage when its button is clicked", () => {
+    const onSelect = vi.fn();
+    const { getByRole } = stepper("corner", onSelect);
+    fireEvent.click(getByRole("button", { name: new RegExp(STAGES[5]!.title) }));
+    expect(onSelect).toHaveBeenCalledWith(STAGES[5]!.block);
+  });
+
+  it("moves with Next and Previous, and disables them at the ends", () => {
+    const onSelect = vi.fn();
+    const mid = stepper("corner", onSelect);
+    fireEvent.click(mid.getByRole("button", { name: "Next" }));
+    expect(onSelect).toHaveBeenLastCalledWith("noc");
+    fireEvent.click(mid.getByRole("button", { name: "Previous" }));
+    expect(onSelect).toHaveBeenLastCalledWith("flit_pack");
+    cleanup();
+
+    const first = stepper("cmd_seq");
+    expect((first.getByRole("button", { name: "Previous" }) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+    const last = stepper("writeback");
+    expect((last.getByRole("button", { name: "Next" }) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+
+    const off = stepper("vpu", onSelect);
+    expect((off.getByRole("button", { name: "Previous" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(off.getByRole("button", { name: "Next" }));
+    expect(onSelect).toHaveBeenLastCalledWith("cmd_seq");
+  });
+
+  it("explains the vector-unit branch", () => {
+    const { container } = stepper("corner");
+    expect(container.textContent).toContain("A VOP takes a different path");
+  });
+});
+
+describe("BlockTable", () => {
+  it("has a row per block with its files, suites and number", () => {
+    const { container } = render(<BlockTable blocks={BLOCKS} />);
+    const rows = container.querySelectorAll("tbody tr");
+    expect(rows).toHaveLength(BLOCKS.length);
+    for (const [i, b] of BLOCKS.entries()) {
+      const text = rows[i]!.textContent!;
+      expect(text).toContain(b.name);
+      expect(text).toContain(b.rtl[0]!);
+      expect(text).toContain(b.suites[0]!.dir);
+      expect(text).toContain(b.number.value);
+    }
+  });
+});
+
+describe("ArchitectureSection", () => {
+  it("starts on the injection port, with its number in the panel", () => {
+    const { container } = render(<ArchitectureSection />);
+    const pressed = container.querySelector(".arch-block[aria-pressed='true']")!;
+    expect(pressed.getAttribute("data-block")).toBe(DEFAULT_BLOCK);
+    const corner = findBlock(BLOCKS, DEFAULT_BLOCK);
+    expect(container.querySelector(".arch-detail-title")!.textContent).toBe(corner.name);
+    expect(container.querySelector(".arch-number")!.textContent).toContain(corner.number.value);
+  });
+
+  it("updates the panel when another block is chosen", () => {
+    const { container, getByRole } = render(<ArchitectureSection />);
+    fireEvent.click(getByRole("button", { name: /^Vector unit/ }));
+    expect(container.querySelector(".arch-detail-title")!.textContent).toBe("Vector unit");
+    expect(container.querySelector(".arch-block[aria-pressed='true']")!.getAttribute("data-block")).toBe("vpu");
+  });
+
+  it("shares one selection between the stepper and the diagram", () => {
+    const { container, getByRole } = render(
+      <DeepContext.Provider value={true}>
+        <ArchitectureSection />
+      </DeepContext.Provider>,
+    );
+    fireEvent.click(getByRole("button", { name: "Next" }));
+    expect(container.querySelector(".arch-block[aria-pressed='true']")!.getAttribute("data-block")).toBe("noc");
+    expect(container.querySelector(".arch-detail-title")!.textContent).toBe("Network on chip");
+    fireEvent.click(within(container.querySelector(".arch-stepper")!).getByRole("button", { name: new RegExp(STAGES[7]!.title) }));
+    expect(container.querySelector(".arch-block[aria-pressed='true']")!.getAttribute("data-block")).toBe("writeback");
+  });
+
+  it("keeps the legend, the title and a closed drawer by default, and opens the drawer in Deep mode", () => {
+    const closed = render(<ArchitectureSection />);
+    expect(closed.container.querySelector("section#architecture h2")!.textContent).toBe("The chip");
+    expect(closed.container.querySelectorAll(".arch-legend li")).toHaveLength(4);
+    expect(closed.container.querySelector("details")!.hasAttribute("open")).toBe(false);
+    cleanup();
+    const deep = render(
+      <DeepContext.Provider value={true}>
+        <ArchitectureSection />
+      </DeepContext.Provider>,
+    );
+    expect(deep.container.querySelector("details")!.open).toBe(true);
+    expect(deep.container.querySelectorAll("details .data-table tbody tr")).toHaveLength(BLOCKS.length);
   });
 });
