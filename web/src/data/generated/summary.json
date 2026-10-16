@@ -1,0 +1,86 @@
+{
+  "_generated": {
+    "sources": [
+      "docs/perf/lm_trace.json",
+      "docs/perf/lm.json",
+      "docs/perf/cifar.json",
+      "docs/perf/scaling.json"
+    ],
+    "regenerate": "npm run build:data (in web/)",
+    "note": "generated, do not edit by hand"
+  },
+  "lm": {
+    "steps": 256,
+    "stories": 8,
+    "floatValLoss": 1.2404189705848694,
+    "intValLoss": 1.3032964216964118,
+    "meshes": {
+      "2x2_t0": {
+        "cycles": 62157860,
+        "cyclesPerStep": 242804.140625
+      },
+      "2x2_t256": {
+        "cycles": 62677232,
+        "cyclesPerStep": 244832.9375
+      },
+      "1x1_t256": {
+        "cycles": 76958144,
+        "cyclesPerStep": 300617.75
+      },
+      "4x4_t256": {
+        "cycles": 61943056,
+        "cyclesPerStep": 241965.0625
+      }
+    },
+    "scalingVsOneByOne": {
+      "2x2": 1.2278484793329738,
+      "4x4": 1.2424014727332795
+    },
+    "run": {
+      "slots": 19726336,
+      "blocks": 917504,
+      "slotUtilization": 0.31472889549430005
+    }
+  },
+  "cifar": {
+    "images": 128,
+    "int8Accuracy": 0.8828125,
+    "floatAccuracy": 0.875,
+    "mesh": "2x2",
+    "cycles": 17908805,
+    "cyclesPerImage": 139912.5390625,
+    "slotUtilization": 0.9442470337914786,
+    "scaling": [
+      {
+        "mesh": "1x1",
+        "cycles": 40130071,
+        "cyclesPerImage": 313516.1796875,
+        "speedup": 1
+      },
+      {
+        "mesh": "2x1",
+        "cycles": 20775621,
+        "cyclesPerImage": 162309.5390625,
+        "speedup": 1.9315942950634304
+      },
+      {
+        "mesh": "2x2",
+        "cycles": 17908805,
+        "cyclesPerImage": 139912.5390625,
+        "speedup": 2.2408011589829697
+      },
+      {
+        "mesh": "3x3",
+        "cycles": 17777733,
+        "cyclesPerImage": 138888.5390625,
+        "speedup": 2.2573221793802394
+      },
+      {
+        "mesh": "4x4",
+        "cycles": 17525573,
+        "cyclesPerImage": 136918.5390625,
+        "speedup": 2.2898007956715594
+      }
+    ]
+  }
+}
