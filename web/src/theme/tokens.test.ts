@@ -53,4 +53,26 @@ describe("theme tokens", () => {
   it("make the two themes actually different", () => {
     expect(themes.dark.bg).not.toBe(themes.light.bg);
   });
+
+  for (const theme of ["dark", "light"] as const) {
+    it(`${theme}: overlay text keeps AA on the strongest tint (45% of the attention color over the surface)`, () => {
+      const t = themes[theme];
+      const mix = (fg: string, bg: string, a: number) =>
+        "#" +
+        [0, 1, 2]
+          .map((i) => {
+            const c = parseInt(fg.slice(1 + i * 2, 3 + i * 2), 16) * a + parseInt(bg.slice(1 + i * 2, 3 + i * 2), 16) * (1 - a);
+            return Math.round(c).toString(16).padStart(2, "0");
+          })
+          .join("");
+      const tinted = mix(t["cat-attention"]!, t.surface!, 0.45);
+      expect(contrast(t.text!, tinted)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+
+  it("draws the BOS tag in the body text color, not the muted one, so it stays readable on a strong tint", () => {
+    const replay = readFileSync(join(import.meta.dirname, "replay.css"), "utf8");
+    const rule = /\.otok-bos\s*\{([^}]*)\}/.exec(replay)?.[1] ?? "";
+    expect(rule).toContain("color: var(--text)");
+  });
 });

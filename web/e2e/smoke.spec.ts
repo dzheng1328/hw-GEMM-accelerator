@@ -16,20 +16,17 @@ const HERO = [
 const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
-test("the hero numbers are visible with no click, with no errors and no trace download", async ({ page }) => {
+test("the hero numbers are visible with no click and no errors", async ({ page }) => {
   const errors: string[] = [];
-  const requested: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => errors.push(String(error)));
-  page.on("request", (request) => requested.push(request.url()));
 
   await page.goto("/");
   for (const value of HERO) await expect(page.getByText(value, { exact: true })).toBeVisible();
 
   expect(errors).toEqual([]);
-  expect(requested.filter((url) => /lm-(attention|steps|stories)/.test(url))).toEqual([]);
 });
 
 test("Deep mode opens every drawer, shares through the URL, and closes them again", async ({ page }) => {

@@ -3,6 +3,7 @@ import { DeepToggle } from "./components/DeepToggle";
 import { HeroStrip } from "./components/HeroStrip";
 import { Section } from "./components/Section";
 import { useDeepMode } from "./components/useDeepMode";
+import { ReplaySection } from "./replay/ReplaySection";
 
 const SOON = "Under construction.";
 
@@ -24,14 +25,7 @@ export default function App() {
         </header>
         <main>
           <HeroStrip />
-          <Section
-            id="replay"
-            title="Watch it think"
-            headline="Eight stories decoded in parallel, one per lane, replayed from the recorded RTL run."
-            drawer={{ summary: "Go deeper", body: <p className="placeholder">{SOON}</p> }}
-          >
-            <p className="placeholder">{SOON}</p>
-          </Section>
+          <ReplaySection />
           <Section
             id="performance"
             title="Where the cycles go"

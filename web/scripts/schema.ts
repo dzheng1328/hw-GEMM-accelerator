@@ -60,6 +60,12 @@ export const lmRunsSchema = z.object({
   ),
 });
 
+export const lmVocabSchema = z.object({
+  bos: int,
+  eos: int,
+  pieces: z.array(z.string()),
+});
+
 export const cifarSchema = z.object({
   images: int,
   int8_accuracy: z.number(),

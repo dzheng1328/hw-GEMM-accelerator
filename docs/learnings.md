@@ -24,6 +24,40 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-16 -- Reduced motion must not wait for the autoplay trigger
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The phone smoke test saw the replay at step 0 with reduced motion on, when the spec says it starts at the last step.
+**Cause:** The start-at-the-end jump was tied to the same "section entered the viewport" effect as autoplay, and on a phone the section starts below the fold.
+**Fix:** Reduced motion seeks to the end as soon as the data loads; only autoplay waits for the viewport.
+**Takeaway:** Test a spec rule on the smallest viewport, not only the one the author looks at.
+
+### 2026-10-16 -- A fractional visibility threshold never fires on a tall element
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The replay's autoplay was specified to start when a quarter of the section is visible, but the section is several screens tall on a phone.
+**Cause:** `IntersectionObserver` thresholds are fractions of the element's own area, so an element taller than four viewports can never be 25% visible.
+**Fix:** Autoplay fires when the stage's top enters the viewport, using a bottom `rootMargin` and `threshold: 0`.
+**Takeaway:** Observe the edge you care about, not a fraction of a box whose size you do not control.
+
+### 2026-10-16 -- Vite's `?no-inline` alone sends a JSON import through the JSON plugin
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** Importing `lm-attention.json?no-inline` in a test failed with a parse error on the file's first brace.
+**Cause:** Only the asset plugin honours `no-inline`, and a bare `?no-inline` on a `.json` file never reaches it, so the JSON plugin tried to treat the raw JSON as a module.
+**Fix:** Import with `?url&no-inline`.
+The `&no-inline` matters: `lm-vocab.json` is 4,030 bytes, just under Vite's 4 KB inline limit, and would otherwise become a data URI inside the bundle.
+**Takeaway:** For a non-image file, ask for a URL first and then tell Vite not to inline it.
+
+### 2026-10-16 -- Token chips need zero padding and a zero-weight state that draws nothing
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** In the first screenshots the attention overlay split words ("w rapped") and underlined every token in orange, even those with no weight.
+**Cause:** Each subword token was a span with 1 px of horizontal padding, and the underline had a 1 px floor.
+**Fix:** No padding on overlay chips, and the underline runs from 0 to 3 px so a zero weight draws nothing.
+**Takeaway:** When inline spans stand for pieces of one word, any box model on them shows up as spacing inside the word.
+
+
 ### 2026-10-16 -- The root `*.json` ignore rule silently hid every web JSON file from `git add`
 
 **Phase:** Phase 4 (portfolio app)
