@@ -23,6 +23,38 @@ actually resolved.
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-15 -- ALU commands do not wait for the DMA, so a perf tag needs a WAIT before it clears
+
+**Phase:** Phase 4.3 (4.3g)
+**Problem:** Planning the attention perf tag, the obvious program was "set r31, run the attention BLOCKs, clear r31". `cmd_seq` executes `step` commands (ADD, ALU, LOOP, ENDLOOP) as soon as the previous BLOCK's handoff is done, but a BLOCK's last flits are still being injected at node (0,0) after the handoff (the DMA carries them down its own pipeline), so a bare clear would count that tail as untagged.
+**Cause:** `drain` applies only to WAIT, END and VOP; the register-stability contract ends at the handoff, not at the last injected flit.
+**Fix:** The lowering emits a WAIT before every tag clear. The mutation without the WAIT was detected on 2x2 and 4x3 via the GO equality (`attn_go_cyc == attn_blocks`, 3430 vs 3520 with the WAIT removed), and NOT detected on 1x1; the static WAIT-before-clear test in `compiler/test_lower_lm.py` (Task 2) is the 1x1 guard. The testbench also checks `attn_slot_cyc == Tracer.tagged_slots`, which catches it only on some meshes, so the GO equality is the dynamic detector.
+**Takeaway:** Any counter or flag keyed on a register that a BLOCK's flits outlive needs a drain before it changes; a test that compares attributed counts with the golden's own attribution is what catches it, and a mesh where the mutation is invisible needs a static test.
+
+### 2026-10-15 -- The model ends a story with BOS and never samples EOS
+
+**Phase:** Phase 4.3 (4.3g)
+**Problem:** The spec and the first report code keyed a story's end on EOS, and no story in the 256-step runs ever sampled one, so the end marker never fired.
+**Cause:** The model learned to start the next story with BOS and to stop the previous one there; EOS (token 2) is never the sampled token.
+**Fix:** A story ends at the step that sampled the next BOS, and the trace field is `end_step` (the spec's "step it emitted EOS" is amended).
+**Takeaway:** Check what the trained model actually emits before wiring a report to a token the spec says exists.
+
+### 2026-10-15 -- The hang budget needed a squared term: decode cost grows with the position
+
+**Phase:** Phase 4.3 (4.3g)
+**Problem:** The 256-step 4x4 run came out at 1.49x of the old `lm_extra_cycles` budget, close enough to a false hang.
+**Cause:** Each step costs more than the one before (about 1,400 cycles more per step on 2x2, since attention and SOFTMAX grow with the context), so the total grows as steps squared, and the budget was linear in steps.
+**Fix:** `lm_extra_cycles` gained a `150*steps*steps` term; the measured runs are pinned in `test_cases.LM_MEASURED` (the budget is 1.65 to 2.8 times the real cycles).
+**Takeaway:** A budget for a decode loop must grow quadratically with its length; check it against the longest real run, not the short cases.
+
+### 2026-10-15 -- Wall-clock time of a long simulation is not simulation speed
+
+**Phase:** Phase 4.3 (4.3g)
+**Problem:** The four long runs' wall times were inflated and uneven because the laptop slept during them.
+**Cause:** Wall clock keeps running through sleep; the simulator does not.
+**Fix:** `lm.md` and the PR report cycles only, not wall time.
+**Takeaway:** Do not publish the wall time of a long run as a speed number.
+
 ### 2026-10-14 -- A restored mutant can leave a build that still tests the mutant
 
 **Phase:** Phase 4 (4.3f)

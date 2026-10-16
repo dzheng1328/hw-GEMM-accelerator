@@ -282,7 +282,7 @@ The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 `make lm` writes `docs/perf/lm_trace.json` next to `docs/perf/lm.md`; both are generated and marked "do not edit".
 
 - Configuration: model shape, mesh, prompt, temperature, seeds.
-- Per story: token IDs, decoded text, the step it emitted EOS (if any).
+- Per story: token IDs, decoded text, the trace's `end_step`, the step that sampled the next BOS (the model never samples EOS).
 - Per step: total cycles and the breakdown by category, from counter snapshots taken at each SAMPLE (`cmd_perf` gains attention-BLOCK and VPU-busy counters, so the categories are measured, not estimated), plus per-tile busy cycles from `node_perf`.
 - Attention probabilities for every head of story 0, per step and layer, taken from `lm_reference.py`; the trace names that source, which is bit-exact with the RTL by the ladder.
 
@@ -298,7 +298,7 @@ The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 | 4.3d (done 2026-10-13) | ISA additions, `lower_lm.py`, golden executor, `check_lm.py`, A-memory depth 512 KB | b | Golden equals `lm_reference.py` for several meshes |
 | 4.3e (done) | `rtl/vpu*.v`, `tb/vpu/` | b | Every sub-op bit-exact on random and edge inputs |
 | 4.3f (done) | `cmd_seq` extensions, `accel` integration, A-memory VPU write port | c, d, e | Random small transformers pass end to end on 1x1, 2x2, 4x3 |
-| 4.3g | Stories on the chip: `make lm`, `docs/perf/lm.md`, the trace, the scaling table | f | Exit criteria above |
+| 4.3g (done 2026-10-15) | Stories on the chip: `make lm`, `docs/perf/lm.md`, the trace, the scaling table | f | Exit criteria above |
 
 4.3a, 4.3b, and 4.3c can proceed in parallel.
 Each sub-issue is one PR with its `docs/decisions.md` and `docs/learnings.md` entries.

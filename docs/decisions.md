@@ -18,6 +18,17 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+### 2026-10-15 -- 4.3g: a perf tag register, and temperature 1.0 as the headline
+
+**Context:** The 4.3 spec wants each decode step's cycles split into weight matmuls, attention, VPU and other, measured, not estimated. Attention and weight BLOCKs are both register-form BLOCKs, so nothing in the hardware told them apart; the VPU's busy cycles were already counted (as `wait_cyc`) by `cmd_perf`.
+The 8 stories share a prompt, and at temperature 0 the argmax ignores the per-lane seeds, so the 8 stories are identical.
+**Options considered:** A program-counter window in `cmd_perf` (one comparator per attention loop); a tag register the program sets (r31, no datapath effect); estimating attention from the golden's static slot counts.
+The headline stories at temperature 0 or at 1.0.
+**Decision:** r31 (`isa.PERF_TAG`), set before each QK^T and AV loop nest and cleared after a WAIT; `cmd_perf` gets a tagged copy of all six partition counters plus `attn_blocks` (the whole partition, not a subset, so the tagged cycles partition too).
+`lm.md` shows the temperature 1.0 stories as its headline and states that temperature 0 gives 8 identical stories by construction.
+**Why:** A pc window breaks silently whenever the lowering moves code; static estimates are not measurements, and the spec asked for measured categories. The WAIT before the clear is needed because `cmd_seq` executes ALU commands without waiting for the DMA, so a bare clear would count the last attention BLOCK's flits as weight-matmul time (a counter equality against the golden's tagged slots guards it).
+**Result:** 2x2 62,677,232 cycles at temperature 1.0 (244,833 per step), 1x1 76,958,144, 4x4 61,943,056; the categories on 2x2: weight matmuls 15.3%, attention 59.5%, VPU 24.1%, other 1.1%; the attention share rises from 26.8% in steps 0-31 to 66.5% in steps 224-255 (weight matmuls fall from 43.6% to 9.3%). Scaling saturates at 1.23x (2x2 vs 1x1) and 1.24x (4x4 vs 1x1) because node (0,0)'s injection port and the serial VPU are the bottleneck. Temperature 0 on 2x2 takes 62,157,860 cycles. CIFAR-10 is cycle-identical (1,119,365 on `cifar8`).
+
 ### 2026-10-14 -- 4.3f: the command processor runs the vector unit
 
 **Context:** 4.3d gave the ISA (ALU, LOOPR, VOP, the register-form BLOCK, a four-deep loop stack, 32 registers) and the golden executor; 4.3e gave a vector unit with generic memory ports.

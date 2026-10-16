@@ -118,6 +118,8 @@ Every mesh node carries performance counters ([`rtl/node_perf.v`](rtl/node_perf.
 Every workload runs fully over the network (operands and GO descriptors in, RESULT flits out, host at node (0,0)) and is checked bit-exact against NumPy before a number is recorded.
 The committed baseline is [`docs/perf/baseline.md`](docs/perf/baseline.md); later changes report before/after tables against it (`cd tb/perf && make compare`).
 
+The tiny story model runs on the chip as well: `cd tb/accel && make lm` writes `docs/perf/lm.md`, `lm.json` and `lm_trace.json` (8 stories of 256 tokens, a cycle breakdown by category and position, and scaling on 1x1, 2x2 and 4x4).
+
 Measured baseline, before any Phase 4 efficiency work (numbers from the committed baseline):
 
 - One tile reaches 6.7% of its 64 MACs/cycle peak at K=8 and 19.4% at K=64.
