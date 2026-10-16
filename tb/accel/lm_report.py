@@ -16,6 +16,7 @@ import numpy as np
 
 from cifar_report import check_split
 from lm_perf import CATEGORIES, add, categories, check_categories
+from scaling_report import MERMAID_INIT
 
 REQUIRED = (("2x2", 0), ("2x2", 256), ("1x1", 256), ("4x4", 256))
 HEADLINE = "2x2_t256"
@@ -189,9 +190,7 @@ def render(combined, q):
         series.append(cyc / (hi - lo))
         lines.append(f"| {lo}-{hi - 1} | {cyc / (hi - lo):,.0f} | " + " | ".join(pct(total[c] / cyc) for c in CATEGORIES) + " |")
     labels = [f"{lo}" for lo in range(0, steps, BUCKET)]
-    # A lone line takes the palette's first color, near white in mermaid's default theme: set one that reads on both.
-    lines += ["", "Cycles per step by position (mean over each bucket):", "", "```mermaid",
-              '%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb"}}}}%%', "xychart-beta",
+    lines += ["", "Cycles per step by position (mean over each bucket):", "", "```mermaid", MERMAID_INIT, "xychart-beta",
               '    title "Cycles per decode step"',
               f'    x-axis "First step of the {BUCKET}-step bucket" [' + ", ".join(f'"{x}"' for x in labels) + "]",
               f'    y-axis "Cycles per step" 0 --> {int(-(-max(series) * 1.1 // 10_000) * 10_000)}',

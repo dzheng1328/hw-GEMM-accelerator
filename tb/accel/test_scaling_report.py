@@ -34,6 +34,8 @@ def test_render_reports_speedup_floor_and_saturation():
     assert "floor of 2,750 cycles per image" in md    # (5,400 slots + 100 GOs) / 2 images
     assert "saturates at **2x2**" in md               # 2x2 is within 5% of 4x4; 2x1 is not
     assert "xychart-beta" in md and "line [1, 2, 4, 16]" in md
+    # mermaid's default palette starts near white: the charts set colors that read on light and dark pages
+    assert md.count('%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%\nxychart-beta') == 2
     assert "bit-exact" in md and "—" not in md
 
 

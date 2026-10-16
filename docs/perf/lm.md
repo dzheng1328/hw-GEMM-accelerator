@@ -142,7 +142,7 @@ Cost by position (32-step buckets; attention grows with the context, the weight 
 Cycles per step by position (mean over each bucket):
 
 ```mermaid
-%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb"}}}}%%
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%
 xychart-beta
     title "Cycles per decode step"
     x-axis "First step of the 32-step bucket" ["0", "32", "64", "96", "128", "160", "192", "224"]

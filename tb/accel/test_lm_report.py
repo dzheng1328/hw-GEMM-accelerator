@@ -124,8 +124,8 @@ def test_render_holds_the_stories_the_breakdown_and_the_scaling_table():
     assert "1.297" in out and "1.24" in out and "1.30" in out and "0.06" in out
     assert "identical" in out  # the temperature 0 note
     assert "```mermaid" in out
-    # a lone line takes the palette's first color, near white in mermaid's default theme, so the chart sets its own
-    assert '"plotColorPalette": "#2563eb"' in out and 'x-axis "First step of the 32-step bucket" ["0"]' in out
+    # mermaid's default palette starts near white: the chart sets colors that read on light and dark pages
+    assert '"plotColorPalette": "#2563eb, #ea580c"}}}}%%\nxychart-beta' in out and 'x-axis "First step of the 32-step bucket" ["0"]' in out
     assert "\u2014" not in out  # the em dash is banned in docs
 
 

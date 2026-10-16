@@ -22,6 +22,7 @@ int8 accuracy is 88.3% on every mesh: the mesh changes the schedule, never the r
 Measured cycles per image (bars) against the injection-port floor of 134,482 cycles per image (line):
 
 ```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%
 xychart-beta
     title "Cycles per CIFAR-10 image"
     x-axis ["1x1", "2x1", "2x2", "3x3", "4x4"]
@@ -33,6 +34,7 @@ xychart-beta
 Measured speedup over 1x1 (bars) against linear scaling in the tile count (line):
 
 ```mermaid
+%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb, #ea580c"}}}}%%
 xychart-beta
     title "Speedup over 1x1"
     x-axis ["1x1", "2x1", "2x2", "3x3", "4x4"]
