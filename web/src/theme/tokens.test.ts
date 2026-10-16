@@ -35,6 +35,7 @@ const TEXT_ON_SURFACES: [string, string][] = [
   ["cat-vpu", "surface"], ["cat-other", "surface"],
   ["port-operand", "surface"], ["port-go", "surface"], ["port-stall", "surface"],
   ["port-wait", "surface"], ["port-other", "surface"],
+  ["kind-control", "surface"], ["kind-movement", "surface"], ["kind-compute", "surface"], ["kind-memory", "surface"],
 ];
 
 describe("theme tokens", () => {
@@ -89,5 +90,20 @@ describe("theme tokens", () => {
           .join("");
       expect(contrast(t.text!, tinted)).toBeGreaterThanOrEqual(4.5);
     });
+  }
+
+  for (const theme of ["dark", "light"] as const) {
+    for (const kind of ["kind-control", "kind-movement", "kind-compute", "kind-memory"]) {
+      it(`${theme}: block text keeps AA on the strongest ${kind} tint (45% over the surface)`, () => {
+        const t = themes[theme];
+        const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+        const tinted =
+          "#" +
+          [0, 1, 2]
+            .map((i) => Math.round(channel(t[kind]!, i) * 0.45 + channel(t.surface!, i) * 0.55).toString(16).padStart(2, "0"))
+            .join("");
+        expect(contrast(t.text!, tinted)).toBeGreaterThanOrEqual(4.5);
+      });
+    }
   }
 });

@@ -15,6 +15,10 @@
   --port-stall: #ff6b6b;
   --port-wait: #b78cff;
   --port-other: #9aa7b4;
+  --kind-control: #ff9f43;
+  --kind-movement: #4cc3ff;
+  --kind-compute: #b78cff;
+  --kind-memory: #3ddc97;
 
   --font-text: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -46,5 +50,9 @@
     --port-stall: #c0392b;
     --port-wait: #6d3fc4;
     --port-other: #566371;
+    --kind-control: #a84a00;
+    --kind-movement: #0a6aa1;
+    --kind-compute: #6d3fc4;
+    --kind-memory: #0b7a4f;
   }
 }

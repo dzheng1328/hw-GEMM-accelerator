@@ -24,6 +24,30 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-16 -- A test that reads files outside web/ needs a CI trigger on them
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The timeline test read `docs/decisions.md`, and the new content tests read `rtl/`, `tb/` and `test.sh`, but the web workflow only ran for `web/**` and `docs/perf/**`, so renaming a decisions heading or an RTL file could not fail any check on its pull request.
+**Cause:** The workflow's path filter was written for the data generator's inputs and never revisited when tests started reading other files.
+**Fix:** The filter now lists every directory a content test reads, and `web/scripts/workflow.test.ts` fails if a trigger drops one of them.
+**Takeaway:** When a test reads a file, add that file's path to the job that runs the test, and test the filter itself.
+
+### 2026-10-16 -- Playwright matches a role's name as a substring, and a shell script can run from the wrong directory
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The stepper's browser test failed with a strict-mode violation on `getByRole("button", { name: "Next" })`, and a plan step that began with `cd ..` ran from the repository root instead of `web/`.
+**Cause:** Playwright's `name` option matches a substring unless `exact: true` is set, so a stage button whose text says "next command" matched too; and the step assumed a working directory that an earlier step in the same shell had not left it in.
+**Fix:** The test uses `exact: true` for "Next" and "Previous", and the step was re-run from `web/`; its Python edits had failed on a missing file before writing anything, so nothing was damaged.
+**Takeaway:** Use `exact: true` for short button names, and start every scripted step with an explicit `cd` to the directory it needs.
+
+### 2026-10-16 -- A wide table inside a scroll box hides its important column on a phone
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** At 390 px the suites table showed the suite and file columns and clipped "What it proves", the column a reader wants.
+**Cause:** The table scrolled sideways inside its container, which keeps the page from scrolling but leaves the widest column off screen.
+**Fix:** Below 720 px the suite and block tables stack each row as a card with a label per cell, and empty cells and the layout caption are handled explicitly.
+**Takeaway:** For tables whose key column is prose, stack the rows on a phone instead of scrolling them.
+
 ### 2026-10-16 -- A decisions entry records the numbers of its day, not today's
 
 **Phase:** Phase 4 (portfolio app)

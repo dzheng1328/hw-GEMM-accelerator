@@ -19,6 +19,21 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-16 -- Portfolio architecture and trust: a clickable block diagram, tested content, the limits in the skim layer, and a wider CI filter
+
+**Context:** The last two placeholders on the portfolio page needed content: what the chip is made of, and why its numbers can be believed.
+**Options considered:**
+(1) A clickable block diagram, or a guided walkthrough only, or both at full depth.
+(2) Content generated from the RTL hierarchy, hand-written content with no tests, or hand-written content tested against the repository.
+(3) The "what this is not" list in the drawer, or in the skim layer.
+(4) Leave the web CI path filter alone, or widen it to the directories the content tests read.
+**Decision:** A block diagram where each of 12 blocks is a button, with a deep-drawer stepper that follows one BLOCK and drives the same diagram; hand-written content whose files, make targets, decisions headings and numbers are tested against the repository; the limits list in the skim layer; and a web workflow that also runs for `rtl/**`, `tb/**`, `compiler/**`, `model/**`, `docs/decisions.md`, `docs/specs/**` and `test.sh`.
+**Why:** The diagram lets a reader go to the block they care about, and the stepper tells the same machine as a story.
+Generating from the RTL would be fragile (the generate-based mesh, plusargs) and the prose would still be hand-written, while untested content breaks the app's rule that nothing on the page can silently go stale.
+A skeptic trusts a project that says where its evidence stops, so the limits belong where the claim is.
+A content test that reads a file the workflow does not watch is a test that cannot fail when the file changes, and the timeline already had that gap for `docs/decisions.md`.
+Full design: `docs/superpowers/specs/2026-10-16-portfolio-architecture-design.md`.
+
 ### 2026-10-16 -- Portfolio performance story: two sections, a curated timeline, and the port partition as the shared axis
 
 **Context:** The portfolio needs to show where the cycles go and how the project got here, from the committed perf files and the decisions log.
