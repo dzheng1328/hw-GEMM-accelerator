@@ -286,7 +286,7 @@ The map uses 48,219 of the 65,536 words (about 377 KB of the 512 KB).
 - Per step: total cycles and the breakdown by category, from counter snapshots taken at each SAMPLE (`cmd_perf` gains attention-BLOCK and VPU-busy counters, so the categories are measured, not estimated), plus per-tile busy cycles from `node_perf`.
 - Attention probabilities for every head of story 0, per step and layer, taken from `lm_reference.py`; the trace names that source, which is bit-exact with the RTL by the ladder.
 
-256 snapshots per run cost 256 Python callbacks, not the per-cycle callbacks that 4.2e removed.
+`watch_steps` is edge-driven: it wakes on every fall of the VPU busy line (one wake-up per VOP), not on every cycle, so the run pays one Python callback per VOP and none of the per-cycle callbacks that 4.2e removed.
 
 ## 7. Delivery (sub-issues of #60, in dependency order)
 
