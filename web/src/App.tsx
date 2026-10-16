@@ -3,7 +3,9 @@ import { DeepToggle } from "./components/DeepToggle";
 import { HeroStrip } from "./components/HeroStrip";
 import { Section } from "./components/Section";
 import { useDeepMode } from "./components/useDeepMode";
+import { PerformanceSection } from "./performance/PerformanceSection";
 import { ReplaySection } from "./replay/ReplaySection";
+import { BuiltSection } from "./timeline/BuiltSection";
 
 const SOON = "Under construction.";
 
@@ -26,14 +28,7 @@ export default function App() {
         <main>
           <HeroStrip />
           <ReplaySection />
-          <Section
-            id="performance"
-            title="Where the cycles go"
-            headline="Weight matmuls, attention and the vector unit, measured at the injection port."
-            drawer={{ summary: "Go deeper", body: <p className="placeholder">{SOON}</p> }}
-          >
-            <p className="placeholder">{SOON}</p>
-          </Section>
+          <PerformanceSection />
           <Section
             id="architecture"
             title="The chip"
@@ -50,6 +45,7 @@ export default function App() {
           >
             <p className="placeholder">{SOON}</p>
           </Section>
+          <BuiltSection />
         </main>
       </div>
     </DeepContext.Provider>

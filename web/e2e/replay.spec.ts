@@ -63,7 +63,7 @@ test("the page paints before the data arrives", async ({ page }) => {
     await route.continue();
   });
   await page.goto("/");
-  await expect(page.getByText(HERO_CYCLES, { exact: true })).toBeVisible();
+  await expect(page.locator(".tile-value").getByText(HERO_CYCLES, { exact: true })).toBeVisible();
   await expect(page.getByText("Loading the recorded run...")).toBeVisible();
   await expect(page.locator(".lane")).toHaveCount(8, { timeout: 15_000 });
 });
@@ -72,6 +72,6 @@ test("the page keeps working when the data fails to load", async ({ page }) => {
   await page.route(/lm-attention/, (route) => route.abort());
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("could not be loaded");
-  await expect(page.getByText(HERO_CYCLES, { exact: true })).toBeVisible();
+  await expect(page.locator(".tile-value").getByText(HERO_CYCLES, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Deep mode" })).toBeVisible();
 });
