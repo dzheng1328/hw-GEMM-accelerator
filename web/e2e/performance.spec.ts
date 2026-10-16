@@ -12,10 +12,10 @@ const grouped = (n: number) => Math.round(n).toLocaleString("en-US");
 const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
-test("the page has five sections, with the performance section second and the timeline last", async ({ page }) => {
+test("the page has six sections, with the live demo second, the performance section third and the timeline last", async ({ page }) => {
   await page.goto("/");
   const ids = await page.locator("main > section").evaluateAll((els) => els.map((e) => e.id));
-  expect(ids).toEqual(["replay", "performance", "architecture", "verification", "built"]);
+  expect(ids).toEqual(["replay", "live", "performance", "architecture", "verification", "built"]);
 });
 
 test("the performance section starts on 4x4 and redraws when another mesh is chosen", async ({ page }) => {

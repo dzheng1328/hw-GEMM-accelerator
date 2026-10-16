@@ -1,7 +1,7 @@
 # Portfolio app
 
-A static page that replays this project's recorded RTL-simulation results.
-It has no backend and does not run the simulator.
+A static page that replays this project's recorded RTL-simulation results, and runs the real RTL in the visitor's browser.
+It has no backend. The "Run it live" section runs the chip, compiled to WebAssembly, in a Web Worker.
 
 ## Commands
 
@@ -13,6 +13,7 @@ Run these in `web/`.
 - `npm run build` type-checks and builds `dist/`.
 - `npm run e2e` runs the Playwright smoke tests at phone and desktop widths.
 - `npm run lint` runs ESLint.
+- `.venv/bin/python web/sim-build/build_sim.py` (at the repo root) rebuilds the committed simulator in `src/live/sim/artifacts/`; it needs Verilator and Emscripten (see `sim-build/README.md`).
 
 ## The one rule about data
 
@@ -40,3 +41,10 @@ Their tests read `rtl/`, `tb/*/Makefile`, `test.sh`, `docs/decisions.md` and `do
 Every negative check the page lists must be run by `test.sh`, and every `*-check` target `test.sh` runs must be listed on the page.
 A block's number must equal a field of `performance.json` or appear in the decisions entry it cites.
 The web workflow runs for changes under those directories as well as under `web/`, so a rename in the RTL or the testbenches fails the web job instead of silently breaking the page.
+
+## The live demo's simulator is committed, not built in CI
+
+`src/live/sim/artifacts/` holds the WebAssembly build of `rtl/accel.v` for the 1x1, 2x2 and 4x4 meshes, its program and weight images, golden test data and a manifest of source hashes.
+CI has no Verilator or Emscripten, so it cannot rebuild them; instead `src/live/sim/freshness.test.ts` fails with the exact rebuild command when the RTL, the compiler inputs or the build scripts change without a rebuild, and `chip.test.ts` runs the committed `.wasm` in Node and requires bit-exact logits against the Python reference's golden data.
+The page checks every run against an independent TypeScript implementation of the network (`src/live/reference/`), which is tested against the same golden data.
+The 3D scene (`three.js`, `@react-three/fiber`) is a lazy chunk that the entry bundle must not contain; `e2e/live.spec.ts` checks that against `dist/`.
