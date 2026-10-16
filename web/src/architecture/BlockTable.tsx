@@ -17,14 +17,14 @@ export function BlockTable({ blocks }: { blocks: Block[] }) {
         <tbody>
           {blocks.map((block) => (
             <tr key={block.id}>
-              <td>{block.name}</td>
-              <td>{KIND_LABEL[block.kind]}</td>
-              <td>
+              <td data-label="Block">{block.name}</td>
+              <td data-label="Kind">{KIND_LABEL[block.kind]}</td>
+              <td data-label="RTL">
                 {block.rtl.map((file) => (
                   <code key={file}>{file}</code>
                 ))}
               </td>
-              <td>
+              <td data-label="Tests">
                 {block.suites.map((suite) => (
                   <code key={suite.dir}>
                     {suite.dir}
@@ -32,7 +32,7 @@ export function BlockTable({ blocks }: { blocks: Block[] }) {
                   </code>
                 ))}
               </td>
-              <td>
+              <td data-label="Number">
                 {block.number.value}
                 <br />
                 {block.number.label}

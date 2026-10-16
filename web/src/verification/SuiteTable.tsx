@@ -23,16 +23,16 @@ export function SuiteTable({ suites, layers }: { suites: Suite[]; layers: Layer[
                 .filter((suite) => suite.layer === layer)
                 .map((suite) => (
                   <tr key={suite.dir}>
-                    <td>
+                    <td data-label="Suite">
                       <code>{suite.dir}</code>
                     </td>
-                    <td>
+                    <td data-label="Under test">
                       {suite.dut.map((file) => (
                         <code key={file}>{file}</code>
                       ))}
                     </td>
-                    <td>{suite.proves}</td>
-                    <td>
+                    <td data-label="What it proves">{suite.proves}</td>
+                    <td data-label="Checks">
                       {suite.checks.map((check) => (
                         <code key={check.target}>
                           make {check.target} ({check.kind === "must-fail" ? "must fail" : "must hold"})

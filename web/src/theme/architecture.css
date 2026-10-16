@@ -356,3 +356,45 @@
 .must-fail code {
   font-family: var(--font-mono);
 }
+
+@media (max-width: 719px) {
+  .data-table.suite-table thead {
+    display: none;
+  }
+
+  .data-table.suite-table,
+  .data-table.suite-table tbody,
+  .data-table.suite-table tr,
+  .data-table.suite-table td {
+    display: block;
+  }
+
+  .data-table.suite-table caption {
+    display: block;
+  }
+
+  .data-table.suite-table td:empty {
+    display: none;
+  }
+
+  .data-table.suite-table tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-table.suite-table td {
+    min-width: 0;
+    padding: 0.15rem 0;
+    border-bottom: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .data-table.suite-table td::before {
+    display: block;
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+}
