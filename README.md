@@ -159,6 +159,8 @@ done; real PDK area/timing numbers are Phase 3 scope. See
 one-PR-per-task history of how this was built, and [`docs/learnings.md`](docs/learnings.md) /
 [`docs/decisions.md`](docs/decisions.md) for a running log of problems hit and decisions made. (Task
 tracking itself lives in a private Notion board, not a public GitHub Project.)
+The portfolio app lives in [`web/`](web/) and replays the recorded results from `docs/perf/`.
+Its live URL goes here once the Vercel project is connected.
 
 ## Repo layout
 

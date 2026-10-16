@@ -23,6 +23,39 @@ actually resolved.
 ---
 
 <!-- Entries below, most recent first -->
+
+### 2026-10-16 -- The root `*.json` ignore rule silently hid every web JSON file from `git add`
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** Three task commits into the web app, `git ls-files web` listed no JSON: `package.json`, the lockfile, `tsconfig.json` and the generated data were all untracked, and `git add web` printed nothing about it.
+**Cause:** `.gitignore` has `*.json` (for OpenLane outputs) with negations only for `config/`, `openlane/**/config.json` and `docs/perf/`.
+**Fix:** Added `!web/**/*.json`, committed the missing files, and proved the branch complete by cloning it fresh and running `npm ci`, lint, the tests and the build.
+**Takeaway:** After the first commit of a new directory, compare `git ls-files <dir>` to `ls`, and clone the branch fresh before trusting it.
+
+### 2026-10-16 -- A clipping check cannot see text that wraps instead of overflowing
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The Playwright test for "the longest hero number is clipped" passed at 1280 px while the screenshot showed `62,677,232` broken as `62,677,2` over `32`.
+**Cause:** `overflow-wrap: anywhere` let the number wrap inside its tile, so `scrollWidth` never exceeded `clientWidth`.
+**Fix:** Numbers are `white-space: nowrap` and sized from the tile with a container query (`15cqi`), so a number that does not fit overflows and the test sees it.
+**Takeaway:** Look at the screenshots even when the layout tests pass, and make the thing under test unable to hide the defect.
+
+### 2026-10-16 -- typescript-eslint did not support the newest TypeScript, so the pin moved down
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** `npm install` failed with ERESOLVE for the plan's TypeScript 7.0.2.
+**Cause:** `typescript-eslint` 8.71.2 declares a peer range of TypeScript `>=4.8.4 <6.1.0`.
+**Fix:** Pinned TypeScript 6.0.3.
+**Takeaway:** Pin the toolchain from the peer ranges of the tool that constrains it, not from each package's latest version.
+
+### 2026-10-16 -- end_step is null for most stories, so a trace consumer must allow null
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** The first schema sketch typed `end_step` as an integer, and 7 of the 8 stories in `docs/perf/lm_trace.json` have `null`.
+**Cause:** A story ends at the step that samples the next BOS, and a lane that never samples one has no end step.
+**Fix:** The zod schema uses `int.nullable()`, and a test pins that `null` survives into `lm-stories.json` and is never coerced to 0.
+**Takeaway:** Read the real file's values before typing a schema from a description of it.
+
 ### 2026-10-15 -- ALU commands do not wait for the DMA, so a perf tag needs a WAIT before it clears
 
 **Phase:** Phase 4.3 (4.3g)

@@ -18,6 +18,23 @@ of the alternatives. Useful for your own memory, and directly answers the
 ---
 
 <!-- Entries below, most recent first -->
+
+### 2026-10-16 -- Portfolio app: one layered static page, data generated from docs/perf and committed
+
+**Context:** Milestone 4.3 ended with machine-readable results in `docs/perf/`, and the portfolio app is the milestone after it.
+The app has to work for a three-minute hiring skim and for an interview walkthrough on a screen share.
+**Options considered:**
+(1) One scrolling page with a "Go deeper" drawer per section and a global Deep mode.
+(2) Two routes, a skim page and a deep walkthrough.
+(3) A skim page plus a scripted presenter mode.
+For data: generate it at build time on Vercel, or generate it locally and commit it.
+**Decision:** Option 1, in `web/` in this repo, hosted on Vercel, built as four sub-projects (Foundation, story replay, performance story, architecture and trust).
+The generated data is committed, and a vitest freshness test fails CI when it drifts from `docs/perf/`.
+**Why:** One layout keeps a recruiter from having to find the deep layer, and Deep mode in the URL (`?deep=1`) makes the interview view shareable with no stored state.
+Committing the data means Vercel only runs `vite build` and does not depend on reading files outside its root directory.
+The repository had no CI, so a workflow filtered to `web/**` and `docs/perf/**` is added without making unrelated RTL work able to turn it red.
+Full design: `docs/superpowers/specs/2026-10-16-portfolio-app-foundation-design.md`.
+
 ### 2026-10-15 -- 4.3g: a perf tag register, and temperature 1.0 as the headline
 
 **Context:** The 4.3 spec wants each decode step's cycles split into weight matmuls, attention, VPU and other, measured, not estimated. Attention and weight BLOCKs are both register-form BLOCKs, so nothing in the hardware told them apart; the VPU's busy cycles were already counted (as `wait_cyc`, which also includes WAIT-command drains) by `cmd_perf`.
