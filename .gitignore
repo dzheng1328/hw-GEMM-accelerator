@@ -62,3 +62,9 @@ openram/klayout_verify/
 CLAUDE.md
 AGENTS.md
 docs/superpowers/
+
+# Portfolio app build output
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
