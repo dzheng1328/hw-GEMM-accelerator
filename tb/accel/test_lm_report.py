@@ -78,6 +78,9 @@ def test_combine_keys_the_four_required_runs():
     (lambda rs: rs[0]["counters"].__setitem__("other_cyc", 99), "sum"),
     (lambda rs: rs[0]["step_deltas"][2]["cmd"].__setitem__("attn_wait_cyc", 60), "negative"),
     (lambda rs: rs[0]["step_deltas"].pop(), "steps"),
+    (lambda rs: rs[0].__setitem__("cycles", rs[0]["cycles"] + 1), "run_cyc counter"),
+    (lambda rs: rs[0].__setitem__("slots", rs[0]["slots"] + 1), "slot_cyc counter"),
+    (lambda rs: rs[0].__setitem__("slot_utilization", 0.5), "slots / cycles"),
 ])
 def test_combine_rejects_a_bad_record(break_it, match):
     rs = records()
@@ -122,7 +125,7 @@ def test_render_holds_the_stories_the_breakdown_and_the_scaling_table():
     assert "| weight matmuls |" in out and "| attention |" in out and "| VPU |" in out and "| other |" in out
     assert "| 1x1 |" in out and "| 2x2 |" in out and "| 4x4 |" in out
     assert "1.297" in out and "1.24" in out and "1.30" in out and "0.06" in out
-    assert "identical" in out  # the temperature 0 note
+    assert "The one story:\n\n> once a cat sat big" in out  # the temperature 0 story, decoded from the cold log
     assert "```mermaid" in out
     # mermaid's default palette starts near white: the chart sets colors that read on light and dark pages
     assert '"plotColorPalette": "#2563eb, #ea580c"}}}}%%\nxychart-beta' in out and 'x-axis "First step of the 32-step bucket" ["0"]' in out

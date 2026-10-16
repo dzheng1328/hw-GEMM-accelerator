@@ -41,6 +41,12 @@ def interval_sum(r):
 
 def check_run(r, where):
     check_split(r["counters"], where)
+    if r["cycles"] != r["counters"]["run_cyc"]:
+        raise ValueError(f"{where}: cycles {r['cycles']} differ from the run_cyc counter {r['counters']['run_cyc']}")
+    if r["slots"] != r["counters"]["slot_cyc"]:
+        raise ValueError(f"{where}: slots {r['slots']} differ from the slot_cyc counter {r['counters']['slot_cyc']}")
+    if abs(r["slot_utilization"] - r["slots"] / r["cycles"]) > 1e-6:
+        raise ValueError(f"{where}: slot_utilization {r['slot_utilization']} is not slots / cycles")
     if len(r["step_deltas"]) != r["steps"]:
         raise ValueError(f"{where}: {len(r['step_deltas'])} step intervals for {r['steps']} steps")
     for n, d in enumerate(r["step_deltas"]):
