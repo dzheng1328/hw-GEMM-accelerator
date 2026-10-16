@@ -10,6 +10,7 @@ import { manifest } from "./sim/manifest";
 import { MESH_KEYS } from "./sim/types";
 import { initialState, reducer } from "./state";
 import { decodeImageFile, type DecodedImage } from "./view/decodeImage";
+import { ErrorBoundary } from "./view/ErrorBoundary";
 import { ImagePicker } from "./view/ImagePicker";
 import { loadExamples as defaultLoadExamples, type LoadedExample } from "./view/loadExamples";
 import { loadScene as defaultLoadScene, type SceneComponent } from "./view/loadScene";
@@ -28,15 +29,21 @@ export interface LiveSectionProps {
   loadExamples?: () => Promise<LoadedExample[]>;
   decodeImage?: (file: File) => Promise<DecodedImage>;
   webgl?: () => boolean;
+  /** whether this browser can run Web Workers and WebAssembly */
+  supported?: () => boolean;
   scheduler?: Scheduler;
 }
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
+const UNSUPPORTED = "This browser cannot run Web Workers or WebAssembly, so the chip cannot run here.";
+
+function simulationSupported(): boolean {
+  return typeof Worker !== "undefined" && typeof WebAssembly !== "undefined";
+}
+
 function defaultCreateClient(): SimLike {
-  if (typeof Worker === "undefined" || typeof WebAssembly === "undefined") {
-    throw new SimError("This browser cannot run Web Workers or WebAssembly, so the chip cannot run here.", false);
-  }
+  if (!simulationSupported()) throw new SimError(UNSUPPORTED, false);
   return createWorkerClient();
 }
 
@@ -53,12 +60,14 @@ export function LiveSection({
   loadExamples = defaultLoadExamples,
   decodeImage = decodeImageFile,
   webgl = webglAvailable,
+  supported = simulationSupported,
   scheduler,
 }: LiveSectionProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const near = useInView(rootRef, "100% 0px");
   const reduced = usePrefersReducedMotion();
   const [hasWebgl] = useState(webgl);
+  const [canRun] = useState(supported);
   const examples = useLazyData(loadExamples, near);
   const scene = useLazyData(loadScene, near && hasWebgl);
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -78,7 +87,7 @@ export function LiveSection({
   const running = phase.name === "running";
 
   const onRun = useCallback(async () => {
-    if (!pixels) return;
+    if (!pixels || !canRun || running) return;
     const mine = tokenRef.current + 1;
     dispatch({ type: "start" });
     try {
@@ -87,6 +96,11 @@ export function LiveSection({
       dispatch({ type: "done", token: mine, run });
     } catch (error) {
       if (error instanceof SupersededError) return;
+      if (error instanceof SimError && !error.fault) {
+        // the worker may be gone (a failed load or a crash); the next run starts a fresh one
+        clientRef.current?.close();
+        clientRef.current = null;
+      }
       dispatch({
         type: "failed",
         token: mine,
@@ -94,7 +108,7 @@ export function LiveSection({
         fault: error instanceof SimError && error.fault,
       });
     }
-  }, [pixels, mesh, createClient]);
+  }, [pixels, mesh, createClient, canRun, running]);
 
   const onUpload = useCallback(
     async (file: File) => {
@@ -150,10 +164,22 @@ export function LiveSection({
         ) : null}
         <div className="live-actions">
           <MeshChoice value={mesh} onChange={(m) => dispatch({ type: "selectMesh", mesh: m })} />
-          <button type="button" className="live-run" disabled={!pixels || running} onClick={() => void onRun()}>
+          <button
+            type="button"
+            className="live-run"
+            disabled={!pixels || !canRun}
+            aria-disabled={running || undefined}
+            onClick={() => void onRun()}
+          >
             {running ? "Running..." : "Run on the chip"}
           </button>
         </div>
+        {canRun ? null : (
+          <p className="live-fallback">
+            {UNSUPPORTED} The recorded numbers are in the details below: one image takes{" "}
+            {MESH_KEYS.map((key) => `${formatInt(manifest.meshes[key]?.cycles ?? 0)} cycles on ${key}`).join(", ")}.
+          </p>
+        )}
         <p className="live-status" role="status">
           {phase.name === "running" ? STAGE_TEXT[phase.stage] : ""}
         </p>
@@ -164,8 +190,15 @@ export function LiveSection({
           </p>
         ) : null}
         {phase.name === "done" ? (
-          <RunView
+          <ErrorBoundary
             key={token}
+            fallback={
+              <p className="live-error" role="alert">
+                This run's result could not be shown. Press Run to try again.
+              </p>
+            }
+          >
+            <RunView
             run={phase.run}
             golden={golden}
             classNames={manifest.classNames}
@@ -175,6 +208,7 @@ export function LiveSection({
             reduced={reduced}
             scheduler={scheduler}
           />
+          </ErrorBoundary>
         ) : null}
         <p className="live-limits">
           The classifier knows ten CIFAR-10 classes ({classList}) and scores about {accuracy} on 32x32 test images.

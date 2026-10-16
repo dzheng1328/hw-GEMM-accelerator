@@ -9,6 +9,7 @@ import { meshEntry } from "../sim/manifest";
 import { layerSpans } from "../trace/layers";
 import { Trace, summarize } from "../trace/trace";
 import { Controls } from "./Controls";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { LayerStrip, layerAtCycle } from "./LayerStrip";
 import { Logits } from "./Logits";
 import type { SceneComponent } from "./loadScene";
@@ -144,7 +145,9 @@ function SceneArea({
   if (!Scene) return <p className="live-fallback">Loading the 3D view...</p>;
   return (
     <div className="live-scene" role="img" aria-label={`3D view of the ${w} by ${h} mesh: ${w * h} tiles, the links between them, and the command processor`}>
-      <Scene w={w} h={h} trace={trace} windowRef={windowRef} />
+      <ErrorBoundary fallback={<p className="live-fallback">The 3D view could not be shown. The rest of this run is unaffected.</p>}>
+        <Scene w={w} h={h} trace={trace} windowRef={windowRef} />
+      </ErrorBoundary>
     </div>
   );
 }

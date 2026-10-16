@@ -31,11 +31,16 @@ export interface EngineDeps {
   loadModel(): Promise<Model>;
 }
 
-/** Owns the chips and the reference model. Requests run one at a time, in order, and `run` never rejects. */
+/**
+ * Owns the chips and the reference model. Requests run one at a time, in order, and `run` never rejects.
+ * A request still waiting when a newer one has arrived is skipped without an event: its caller was already
+ * replaced, and a simulation cannot be cancelled once started, so running it would only delay the newest one.
+ */
 export class Engine {
   private readonly chips = new Map<MeshKey, Chip>();
   private model: Model | undefined;
-  private queue: Promise<void> = Promise.resolve();
+  private readonly waiting: { request: RunRequest; resolve: () => void }[] = [];
+  private draining = false;
 
   constructor(
     private readonly deps: EngineDeps,
@@ -43,8 +48,23 @@ export class Engine {
   ) {}
 
   run(request: RunRequest): Promise<void> {
-    this.queue = this.queue.then(() => this.execute(request));
-    return this.queue;
+    return new Promise<void>((resolve) => {
+      this.waiting.push({ request, resolve });
+      void this.drain();
+    });
+  }
+
+  private async drain(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      for (let next = this.waiting.shift(); next; next = this.waiting.shift()) {
+        if (this.waiting.length === 0) await this.execute(next.request);
+        next.resolve();
+      }
+    } finally {
+      this.draining = false;
+    }
   }
 
   private async execute({ id, mesh, pixels }: RunRequest): Promise<void> {

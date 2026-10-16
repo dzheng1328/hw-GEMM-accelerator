@@ -84,6 +84,14 @@ describe("SimClient", () => {
     await expect(promise).rejects.toMatchObject({ message: expect.stringContaining("worker script failed to load"), fault: false });
   });
 
+  it("rejects a new run at once after the worker failed, instead of waiting forever", async () => {
+    const t = new FakeTransport();
+    const client = new SimClient(t);
+    t.fail("worker script failed to load");
+    await expect(client.run("2x2", pixels)).rejects.toMatchObject({ message: expect.stringContaining("worker"), fault: false });
+    expect(t.posted).toHaveLength(0);
+  });
+
   it("ignores events for ids it does not know, and closes the transport", () => {
     const t = new FakeTransport();
     const client = new SimClient(t);

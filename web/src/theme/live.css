@@ -69,6 +69,7 @@
 
 .live-examples button:disabled,
 .live-run:disabled,
+.live-run[aria-disabled="true"],
 .live-controls button:disabled {
   opacity: 0.55;
   cursor: not-allowed;

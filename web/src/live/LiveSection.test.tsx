@@ -34,6 +34,7 @@ function setup(opts: { run?: RunImpl; props?: Partial<LiveSectionProps>; reduced
     loadExamples: async () => examples(),
     decodeImage: async () => ({ rgba: new Uint8ClampedArray(64 * 64 * 4).fill(200), width: 64, height: 64 }),
     webgl: () => true,
+    supported: () => true,
     scheduler,
     ...opts.props,
   };
@@ -245,5 +246,90 @@ describe("LiveSection", () => {
     await runAndWait(container);
     unmount();
     expect(close).toHaveBeenCalled();
+  });
+});
+
+describe("LiveSection robustness", () => {
+  const quietErrors = () => vi.spyOn(console, "error").mockImplementation(() => {});
+
+  it("keeps the rest of the page when the 3D scene crashes, and says the 3D view failed", async () => {
+    const spy = quietErrors();
+    const Broken = () => {
+      throw new Error("context lost");
+    };
+    const { container } = setup({ props: { loadScene: async () => Broken } });
+    await ready();
+    await runAndWait(container);
+    expect(await screen.findByText(/3D view could not be shown/)).toBeTruthy();
+    expect(container.querySelectorAll(".live-layers li")).toHaveLength(6);
+    expect(container.querySelector(".live-verdict")).toBeTruthy();
+    spy.mockRestore();
+  });
+
+  it("shows an alert instead of a blank page when a run's result cannot be drawn", async () => {
+    const spy = quietErrors();
+    const bad = () => ({ ...makeRun(), trace: new Uint8Array(13) });
+    const { container } = setup({ run: async () => bad() });
+    await ready();
+    fireEvent.click(runButton());
+    expect((await screen.findByRole("alert")).textContent).toContain("could not be shown");
+    expect(screen.getByRole("heading", { name: "Run it live" })).toBeTruthy();
+    expect(container.querySelector(".live-verdict")).toBeNull();
+    spy.mockRestore();
+  });
+
+  it("makes a new client after a failure that is not a chip fault, so a dead worker cannot hang the next run", async () => {
+    let created = 0;
+    let calls = 0;
+    const closes: number[] = [];
+    const { container } = setup({
+      props: {
+        createClient: () => {
+          const id = ++created;
+          return {
+            run: (async (mesh: MeshKey) => {
+              if (++calls === 1) throw new SimError("the simulator worker failed: boom", false);
+              return makeRun(mesh);
+            }) as never,
+            close: () => closes.push(id),
+          };
+        },
+      },
+    });
+    await ready();
+    fireEvent.click(runButton());
+    await screen.findByRole("alert");
+    await runAndWait(container);
+    expect(created).toBe(2);
+    expect(closes).toEqual([1]);
+  });
+
+  it("says up front that a browser without Workers or WebAssembly cannot run the chip, with the recorded numbers", async () => {
+    const { container } = setup({ props: { supported: () => false } });
+    await ready();
+    const note = container.querySelector(".live-fallback")!;
+    expect(note.textContent).toContain("cannot run Web Workers or WebAssembly");
+    expect(note.textContent).toContain("139,981");
+    expect((runButton() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps keyboard focus on the Run button while a run is in progress", async () => {
+    const { container } = setup({ run: () => new Promise<LiveRun>(() => {}) });
+    await ready();
+    const button = runButton();
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(container.querySelector(".live-status")?.textContent).not.toBe(""));
+    expect(document.activeElement).toBe(button);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("ignores a second press of Run while a run is in progress", async () => {
+    const { run } = setup({ run: () => new Promise<LiveRun>(() => {}) });
+    await ready();
+    const button = runButton();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(run).toHaveBeenCalledOnce();
   });
 });

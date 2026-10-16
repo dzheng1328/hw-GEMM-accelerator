@@ -34,10 +34,13 @@ interface Pending {
 export class SimClient {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
+  /** set when the worker itself failed; a dead worker never answers, so later runs must not wait for it */
+  private failure: string | null = null;
 
   constructor(private readonly transport: Transport) {
     transport.onEvent((event) => this.handle(event));
     transport.onError((message) => {
+      this.failure = message;
       for (const p of this.pending.values()) p.reject(new SimError(`the simulator worker failed: ${message}`, false));
       this.pending.clear();
     });
@@ -45,6 +48,9 @@ export class SimClient {
 
   /** Starts a run. Any earlier request still pending is rejected with SupersededError. */
   run(mesh: MeshKey, pixels: Uint8Array, onStage?: (stage: Stage) => void): Promise<LiveRun> {
+    if (this.failure !== null) {
+      return Promise.reject(new SimError(`the simulator worker failed: ${this.failure}`, false));
+    }
     for (const p of this.pending.values()) p.reject(new SupersededError("replaced by a newer run"));
     this.pending.clear();
     const id = this.nextId++;

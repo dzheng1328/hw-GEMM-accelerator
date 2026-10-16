@@ -53,6 +53,18 @@ describe("Engine", () => {
     expect(events.filter((e) => e.kind === "done").map((e) => e.id)).toEqual([1, 2]);
   }, 120_000);
 
+  it("skips a queued request that a newer one has replaced, and runs the newest", async () => {
+    const { events, engine } = setup();
+    const pixels = b64(cat().pixels);
+    await Promise.all([
+      engine.run({ id: 1, mesh: "2x2", pixels }),
+      engine.run({ id: 2, mesh: "2x2", pixels }),
+      engine.run({ id: 3, mesh: "2x2", pixels }),
+    ]);
+    expect(events.filter((e) => e.kind === "done").map((e) => e.id)).toEqual([1, 3]);
+    expect(events.some((e) => e.id === 2)).toBe(false);
+  }, 120_000);
+
   it("says so when the chip and the reference disagree", async () => {
     const { events, engine } = setup({
       loadModel: async () => {
