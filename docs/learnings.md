@@ -28,7 +28,7 @@ actually resolved.
 **Phase:** Phase 4.3 (4.3g)
 **Problem:** Planning the attention perf tag, the obvious program was "set r31, run the attention BLOCKs, clear r31". `cmd_seq` executes `step` commands (ADD, ALU, LOOP, ENDLOOP) as soon as the previous BLOCK's handoff is done, but a BLOCK's last flits are still being injected at node (0,0) after the handoff (the DMA carries them down its own pipeline), so a bare clear would count that tail as untagged.
 **Cause:** `drain` applies only to WAIT, END and VOP; the register-stability contract ends at the handoff, not at the last injected flit.
-**Fix:** The lowering emits a WAIT before every tag clear. The mutation without the WAIT was detected on 2x2 and 4x3 via the GO equality (`attn_go_cyc == attn_blocks`, 3430 vs 3520 with the WAIT removed), and NOT detected on 1x1; the static WAIT-before-clear test in `compiler/test_lower_lm.py` (Task 2) is the 1x1 guard. The testbench also checks `attn_slot_cyc == Tracer.tagged_slots`, which catches it only on some meshes, so the GO equality is the dynamic detector.
+**Fix:** The lowering emits a WAIT before every tag clear. The mutation without the WAIT was detected on 2x2 and 4x3 via the GO equality (`attn_go_cyc == attn_blocks`, 3430 vs 3520 with the WAIT removed), and NOT detected on 1x1; the static WAIT-before-clear test in `compiler/test_lower_lm.py` is the 1x1 guard. The testbench also checks `attn_slot_cyc == Tracer.tagged_slots`, which catches it only on some meshes, so the GO equality is the dynamic detector.
 **Takeaway:** Any counter or flag keyed on a register that a BLOCK's flits outlive needs a drain before it changes; a test that compares attributed counts with the golden's own attribution is what catches it, and a mesh where the mutation is invisible needs a static test.
 
 ### 2026-10-15 -- The model ends a story with BOS and never samples EOS
@@ -42,7 +42,7 @@ actually resolved.
 ### 2026-10-15 -- The hang budget needed a squared term: decode cost grows with the position
 
 **Phase:** Phase 4.3 (4.3g)
-**Problem:** The 256-step 4x4 run came out at 1.49x of the old `lm_extra_cycles` budget, close enough to a false hang.
+**Problem:** The 256-step 4x4 run the old `lm_extra_cycles` budget was only 1.49x the real length of the 256-step 4x4 run, under the 1.5x margin the budget test requires (a thin margin, not an overrun).
 **Cause:** Each step costs more than the one before (about 1,400 cycles more per step on 2x2, since attention and SOFTMAX grow with the context), so the total grows as steps squared, and the budget was linear in steps.
 **Fix:** `lm_extra_cycles` gained a `150*steps*steps` term; the measured runs are pinned in `test_cases.LM_MEASURED` (the budget is 1.65 to 2.8 times the real cycles).
 **Takeaway:** A budget for a decode loop must grow quadratically with its length; check it against the longest real run, not the short cases.
