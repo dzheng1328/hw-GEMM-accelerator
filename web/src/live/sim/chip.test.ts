@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { b64, exampleEntries, extremeEntries, nodeAssets } from "./artifacts.testlib";
 import { Chip, ChipFault } from "./chip";
 import { meshEntry } from "./manifest";
+import { MESH_KEYS } from "./types";
 
 const images = () => [
   ...exampleEntries().map((e) => ({ ...e, name: e.name })),
@@ -55,4 +56,27 @@ describe("the 2x2 chip in WebAssembly", () => {
     expect(chip.broken).toBe(false);
     expect(Array.from(chip.run(b64(cat().packed)).logits)).toEqual(cat().logits);
   }, 60_000);
+});
+
+describe("the tiles are mostly idle on 4x4, which the page's caption says", () => {
+  it("busy tile-cycles are under 20% of tiles x cycles", async () => {
+    const chip = await Chip.open("4x4", await nodeAssets("4x4"));
+    const r = chip.run(b64(images()[3]!.packed));
+    const busy = r.counters.busyCycles.reduce((a, b) => a + b, 0);
+    expect(busy / (r.nodes * r.cycles)).toBeLessThan(0.2);
+  }, 120_000);
+});
+
+describe("every mesh is bit-exact on every example, with its own cycle count", () => {
+  for (const mesh of MESH_KEYS) {
+    it(mesh, async () => {
+      const chip = await Chip.open(mesh, await nodeAssets(mesh));
+      for (const img of images()) {
+        const r = chip.run(b64(img.packed));
+        expect(Array.from(r.logits), `${mesh} ${img.name}`).toEqual(img.logits);
+        expect(r.cycles).toBe(meshEntry(mesh).cycles);
+        expect(r.trace.length).toBe(r.cycles * (6 + 2 * meshEntry(mesh).nodes));
+      }
+    }, 300_000);
+  }
 });
