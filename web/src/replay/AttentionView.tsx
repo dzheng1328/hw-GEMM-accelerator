@@ -15,11 +15,11 @@ function areaPoints(weights: number[]): string {
   return `0,24 ${points.join(" ")} 100,24`;
 }
 
-/** The two channels of an overlay chip for a strength in 0..1: a tint capped at 45% (so text keeps AA contrast) and an underline. */
+/** The two channels of an overlay chip for a strength in 0..1: a tint capped at 45% (so text keeps AA contrast) and an underline from 0 to 3 px. */
 export function overlayStyle(strength: number): { background: string; boxShadow: string } {
   return {
     background: `color-mix(in srgb, var(--cat-attention) ${Math.round(strength * 45)}%, transparent)`,
-    boxShadow: `inset 0 -${(1 + 3 * strength).toFixed(1)}px 0 var(--cat-attention)`,
+    boxShadow: `inset 0 -${(3 * strength).toFixed(1)}px 0 var(--cat-attention)`,
   };
 }
 

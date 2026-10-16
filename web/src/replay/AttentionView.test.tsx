@@ -57,14 +57,14 @@ describe("AttentionView", () => {
     expect(chips[weakest]!.dataset.strength).toBe("0.00");
   });
 
-  it("caps the tint at 45% and thickens the underline with the strength", () => {
+  it("caps the tint at 45% and thickens the underline from 0 to 3 px with the strength", () => {
     expect(overlayStyle(1)).toEqual({
       background: "color-mix(in srgb, var(--cat-attention) 45%, transparent)",
-      boxShadow: "inset 0 -4.0px 0 var(--cat-attention)",
+      boxShadow: "inset 0 -3.0px 0 var(--cat-attention)",
     });
     expect(overlayStyle(0)).toEqual({
       background: "color-mix(in srgb, var(--cat-attention) 0%, transparent)",
-      boxShadow: "inset 0 -1.0px 0 var(--cat-attention)",
+      boxShadow: "inset 0 -0.0px 0 var(--cat-attention)",
     });
   });
 
