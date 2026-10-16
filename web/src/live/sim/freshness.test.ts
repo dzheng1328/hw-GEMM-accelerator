@@ -18,6 +18,25 @@ describe("the committed simulator artifacts are fresh", () => {
     expect(stale.map(([rel]) => rel), FIX).toEqual([]);
   });
 
+  it("every committed artifact still has the recorded sha256, so a hand edit or a partial commit fails", () => {
+    const names = Object.keys(manifest.artifacts);
+    for (const key of MESH_KEYS) expect(names, key).toEqual(expect.arrayContaining([`cifar-${key}.wasm`, `cifar-${key}.mjs`, `program-${key}.bin`]));
+    expect(names).toContain("weights.bin");
+    const stale = Object.entries(manifest.artifacts).filter(
+      ([name, sha]) => createHash("sha256").update(readFileSync(join(ARTIFACTS, name))).digest("hex") !== sha,
+    );
+    expect(stale.map(([name]) => name), FIX).toEqual([]);
+  });
+
+  it("records which Verilator and Emscripten built the artifacts", () => {
+    expect(manifest.tools.verilator).toMatch(/Verilator \d/);
+    expect(manifest.tools.emscripten).toMatch(/emcc/);
+  });
+
+  it("hashes the Verilator waiver file, which changes what is built", () => {
+    expect(Object.keys(manifest.sources)).toContain("tb/lint_waivers.vlt");
+  });
+
   it("every rtl/*.v file is hashed or explicitly excluded", () => {
     const onDisk = readdirSync(join(REPO, "rtl")).filter((f) => f.endsWith(".v")).map((f) => `rtl/${f}`);
     const unaccounted = onDisk.filter((rel) => !(rel in manifest.sources) && !manifest.excludedRtl.includes(rel));

@@ -4,7 +4,7 @@
     .venv/bin/python web/sim-build/build_sim.py                 data, WebAssembly for every mesh, manifest
     .venv/bin/python web/sim-build/build_sim.py data            only the data files (no toolchain needed)
     .venv/bin/python web/sim-build/build_sim.py wasm 2x2        the data, one mesh's WebAssembly, the manifest
-    .venv/bin/python web/sim-build/build_sim.py manifest        only the manifest (runs each built mesh once in node)
+    .venv/bin/python web/sim-build/build_sim.py manifest        only the manifest (runs each built mesh once in node); refused when the sources changed
 
 The wasm step needs Verilator and Emscripten (em++) on PATH. A partial wasm build is refused when the sources
 changed since the last full build, because the other meshes would then be stale; add --force to override while
@@ -70,7 +70,31 @@ def measure(key):
     return json.loads(done.stdout.strip().splitlines()[-1])
 
 
+def tool_versions():
+    """First line of `verilator --version` and `em++ --version`; None for a tool that is not on PATH."""
+    out = {}
+    for key, tool in (("verilator", "verilator"), ("emscripten", "em++")):
+        if not shutil.which(tool):
+            out[key] = None
+            continue
+        done = subprocess.run([tool, "--version"], check=True, capture_output=True, text=True)
+        out[key] = done.stdout.strip().splitlines()[0]
+    return out
+
+
+def artifact_hashes():
+    names = ["weights.bin"]
+    for key in sources.MESHES:
+        names += [f"cifar-{key}.wasm", f"cifar-{key}.mjs", f"program-{key}.bin"]
+    return {n: sources.sha256_file(ARTIFACTS / n) for n in names if (ARTIFACTS / n).exists()}
+
+
 def write_manifest():
+    previous = {}
+    if (ARTIFACTS / "manifest.json").exists():
+        previous = json.loads((ARTIFACTS / "manifest.json").read_text())
+    tools = {k: v or previous.get("tools", {}).get(k) for k, v in tool_versions().items()}
+    assert all(tools.values()), f"no recorded version for {[k for k, v in tools.items() if not v]}: build with the tools on PATH"
     q = data.load_q()
     progs = data.programs(q)
     first = next(iter(progs.values()))
@@ -91,6 +115,8 @@ def write_manifest():
                       "note": "generated, do not edit by hand"},
         "sources": sources.source_hashes(),
         "excludedRtl": sources.EXCLUDED_RTL,
+        "artifacts": artifact_hashes(),
+        "tools": tools,
         "input": {"bytes": data.INPUT_BYTES, "words": data.INPUT_BYTES // 8},
         "output": {"base": int(out_bases.pop()), "stride": 8, "logits": 16, "classes": 10},
         "classNames": data.CLASS_NAMES,
@@ -99,6 +125,14 @@ def write_manifest():
     }
     data.dump_json(ARTIFACTS / "manifest.json", manifest)
     print("manifest written for", ", ".join(built))
+
+
+def refuse_changed_sources():
+    """`manifest` re-hashes the sources without rebuilding, so it must not bless wasm built from older ones."""
+    path = ARTIFACTS / "manifest.json"
+    if path.exists() and json.loads(path.read_text())["sources"] != sources.source_hashes():
+        sys.exit("the sources changed since the last build, so the committed wasm is stale: "
+                 "rebuild every mesh (build_sim.py wasm), or pass --force while developing")
 
 
 def refuse_stale_partial(rebuilt):
@@ -121,6 +155,8 @@ def main(argv):
         data.write_data()
         return
     if cmd == "manifest":
+        if not force:
+            refuse_changed_sources()
         write_manifest()
         return
     if cmd == "wasm" and not force:
