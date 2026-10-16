@@ -35,6 +35,17 @@ describe("App", () => {
     expect(ids).toEqual(["replay", "performance", "architecture", "verification", "built"]);
   });
 
+  it("has no placeholder left on the page", () => {
+    const { container } = render(<App />);
+    expect(container.textContent).not.toContain("Under construction");
+  });
+
+  it("renders the chip diagram and both ladders", () => {
+    const { container } = render(<App />);
+    expect(container.querySelectorAll("section#architecture .arch-block")).toHaveLength(12);
+    expect(container.querySelectorAll("section#verification .ladder")).toHaveLength(2);
+  });
+
   it("has one h1", () => {
     const { container } = render(<App />);
     expect(container.querySelectorAll("h1")).toHaveLength(1);
