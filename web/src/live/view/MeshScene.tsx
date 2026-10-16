@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import type { MeshStandardMaterial } from "three";
+import { Color, type MeshStandardMaterial } from "three";
 import type { CycleWindow } from "../playback/usePlayback";
 import { NO_TYPE, newSummary, summarize, type Trace } from "../trace/trace";
 import { FLIT_LEGEND, TILE, cameraFor, controllerCenter, glow, linkGeometry, tileCenter } from "./sceneLayout";
@@ -11,6 +11,9 @@ export interface MeshSceneProps {
   trace: Trace;
   /** what to show this frame; read every frame, so updating it does not re-render React */
   windowRef: MutableRefObject<CycleWindow>;
+  /** while playing the scene redraws every frame; otherwise only when `cycle` or something else it shows changes */
+  playing: boolean;
+  cycle: number;
   onReady?: () => void;
 }
 
@@ -50,7 +53,7 @@ function usePalette(): Palette {
 
 /** Drag sideways to swing the camera a little around the board; vertical swipes still scroll the page. */
 function Rig({ distance, height }: { distance: number; height: number }) {
-  const { camera, gl } = useThree();
+  const { camera, gl, invalidate } = useThree();
   const azimuth = useRef(0);
   useEffect(() => {
     const el = gl.domElement;
@@ -64,7 +67,10 @@ function Rig({ distance, height }: { distance: number; height: number }) {
       }
     };
     const move = (e: PointerEvent) => {
-      if (drag) azimuth.current = Math.max(-0.9, Math.min(0.9, drag.a - (e.clientX - drag.x) * 0.006));
+      if (drag) {
+        azimuth.current = Math.max(-0.9, Math.min(0.9, drag.a - (e.clientX - drag.x) * 0.006));
+        invalidate();
+      }
     };
     const up = () => {
       drag = null;
@@ -79,7 +85,7 @@ function Rig({ distance, height }: { distance: number; height: number }) {
       el.removeEventListener("pointerup", up);
       el.removeEventListener("pointercancel", up);
     };
-  }, [gl]);
+  }, [gl, invalidate]);
   useFrame(() => {
     const a = azimuth.current;
     camera.position.set(BOARD_X + Math.sin(a) * distance, height, Math.cos(a) * distance);
@@ -88,8 +94,20 @@ function Rig({ distance, height }: { distance: number; height: number }) {
   return null;
 }
 
-function Scene({ w, h, trace, windowRef }: Omit<MeshSceneProps, "onReady">) {
+function Scene({ w, h, trace, windowRef, playing, cycle }: Omit<MeshSceneProps, "onReady">) {
   const palette = usePalette();
+  const colors = useMemo(
+    () => ({
+      accent: new Color(palette.accent),
+      controller: new Color(palette.controller),
+      flit: palette.flit.map((c) => new Color(c)),
+    }),
+    [palette],
+  );
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [invalidate, cycle, playing, colors, w, h, trace]);
   const nodes = w * h;
   const geoms = useMemo(() => linkGeometry(w, h), [w, h]);
   const controller = useMemo(() => controllerCenter(w, h), [w, h]);
@@ -103,19 +121,19 @@ function Scene({ w, h, trace, windowRef }: Omit<MeshSceneProps, "onReady">) {
   useFrame(() => {
     const win = windowRef.current;
     const s = summarize(trace, win.from, win.to, summary.current);
-    for (let n = 0; n < nodes; n++) tileMats.current[n]?.emissive.set(palette.accent).multiplyScalar(glow(s.tiles[n]!));
+    for (let n = 0; n < nodes; n++) tileMats.current[n]?.emissive.copy(colors.accent).multiplyScalar(glow(s.tiles[n]!));
     geoms.forEach((g, i) => {
       const material = linkMats.current[i];
       if (!material) return;
       const type = s.linkType[g.link.id]!;
-      if (type === NO_TYPE) material.emissive.set("#000000");
-      else material.emissive.set(palette.flit[type]!).multiplyScalar(glow(s.links[g.link.id]!));
+      if (type === NO_TYPE) material.emissive.setRGB(0, 0, 0);
+      else material.emissive.copy(colors.flit[type]!).multiplyScalar(glow(s.links[g.link.id]!));
     });
     const busy = Math.max(s.dma, s.sequencer);
-    controllerMat.current?.emissive.set(palette.controller).multiplyScalar(glow(busy));
+    controllerMat.current?.emissive.copy(colors.controller).multiplyScalar(glow(busy));
     const injectType = s.injectType[0]!;
-    if (injectType === NO_TYPE) injectMat.current?.emissive.set("#000000");
-    else injectMat.current?.emissive.set(palette.flit[injectType]!).multiplyScalar(glow(s.inject[0]!));
+    if (injectType === NO_TYPE) injectMat.current?.emissive.setRGB(0, 0, 0);
+    else injectMat.current?.emissive.copy(colors.flit[injectType]!).multiplyScalar(glow(s.inject[0]!));
   });
 
   const boardW = w * 1.7 + 3.4;
@@ -178,12 +196,13 @@ function Scene({ w, h, trace, windowRef }: Omit<MeshSceneProps, "onReady">) {
   );
 }
 
-export default function MeshScene({ w, h, trace, windowRef, onReady }: MeshSceneProps) {
+export default function MeshScene({ w, h, trace, windowRef, playing, cycle, onReady }: MeshSceneProps) {
   const camera = useMemo(() => cameraFor(w, h), [w, h]);
   return (
     <Canvas
       camera={{ position: camera.position, fov: camera.fov }}
       dpr={[1, 2]}
+      frameloop={playing ? "always" : "demand"}
       onCreated={({ gl }) => {
         gl.domElement.dataset.sceneReady = "true";
         onReady?.();
@@ -192,7 +211,7 @@ export default function MeshScene({ w, h, trace, windowRef, onReady }: MeshScene
       <ambientLight intensity={0.7} />
       <directionalLight position={[4, 8, 5]} intensity={1.2} />
       <Rig distance={camera.distance} height={camera.height} />
-      <Scene w={w} h={h} trace={trace} windowRef={windowRef} />
+      <Scene w={w} h={h} trace={trace} windowRef={windowRef} playing={playing} cycle={cycle} />
     </Canvas>
   );
 }
