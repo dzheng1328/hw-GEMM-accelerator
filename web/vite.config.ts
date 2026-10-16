@@ -4,6 +4,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  worker: { format: "es" },
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
