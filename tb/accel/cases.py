@@ -164,11 +164,11 @@ def lm_extra_cycles(steps, vops, slots):
     bookkeeping. The VPU's share grows with the context just as the attention slots do, so
     2 cycles per slot stands for it at any length. The attention loops' stalls and drains grow
     with the context too (each step costs about 1,400 cycles more than the one before on 2x2),
-    so a long run's total grows as steps squared; and as the story runs are bound by node
-    (0,0)'s injection, not by the tiles, cycle_budget's per-tile share does not shrink them
-    on a wide mesh. Without the squared term the 256-step story on 4x4 (61.9M cycles) got
+    so a long run's total grows as steps squared; and as the story runs look bound by node
+    (0,0)'s injection rather than by the tiles (consistent with the measurements, not proven),
+    cycle_budget's per-tile share does not shrink them on a wide mesh. Without the squared term the 256-step story on 4x4 (61.9M cycles) got
     only 1.49 times its length. Measured against 1x1, 2x2, 4x3 and 4x4 runs of 8 to 256
-    steps (test_cases.LM_MEASURED): 1.65 to 2.8 times the real cycles."""
+    steps (test_cases.LM_MEASURED): 1.65 to 2.83 times the real cycles."""
     return 9_000 * steps + 150 * steps * steps + 40 * vops + 2 * slots + 20_000
 
 
