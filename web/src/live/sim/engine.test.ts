@@ -44,6 +44,27 @@ describe("Engine", () => {
     expect(opened).toEqual(["2x2", "1x1"]);
   }, 120_000);
 
+  it("keeps only the latest mesh's chip, so switching back reopens it instead of holding three 128 MB modules", async () => {
+    const { opened, engine } = setup();
+    const pixels = b64(cat().pixels);
+    await engine.run({ id: 1, mesh: "2x2", pixels });
+    await engine.run({ id: 2, mesh: "1x1", pixels });
+    await engine.run({ id: 3, mesh: "2x2", pixels });
+    expect(opened).toEqual(["2x2", "1x1", "2x2"]);
+  }, 120_000);
+
+  it("names the reference as the failing part when it cannot check an image, and the chip result is not blamed", async () => {
+    const { events, engine } = setup({
+      loadModel: async () => {
+        const model = loadModel();
+        model.layers[5]!.biasVal = 2 ** 30; // pushes the last layer's accumulators outside int32
+        return model;
+      },
+    });
+    await engine.run({ id: 1, mesh: "2x2", pixels: b64(cat().pixels) });
+    expect(events.at(-1)).toMatchObject({ id: 1, kind: "error", fault: false, message: expect.stringContaining("TypeScript reference") });
+  }, 60_000);
+
   it("runs queued requests one after another, in order", async () => {
     const { events, engine } = setup();
     const pixels = b64(cat().pixels);

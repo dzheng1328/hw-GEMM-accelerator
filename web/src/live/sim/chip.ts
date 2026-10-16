@@ -117,7 +117,7 @@ export class Chip {
         logits[c] = v;
       }
       const nodes = assets.entry.nodes;
-      return {
+      const result: RunResult = {
         mesh: this.mesh,
         cycles,
         logits,
@@ -132,6 +132,8 @@ export class Chip {
         },
         simMs: performance.now() - started,
       };
+      m._sim_free(); // everything needed has been copied out; do not keep the model and its trace resident
+      return result;
     } catch (error) {
       this.#broken = true;
       if (error instanceof ChipFault) throw error;

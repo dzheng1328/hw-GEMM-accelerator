@@ -74,6 +74,8 @@ export class Engine {
       let chip = this.chips.get(mesh);
       if (!chip || chip.broken) {
         chip = await this.deps.openChip(mesh);
+        // each module reserves 128 MB of wasm memory, so only the mesh in use stays loaded
+        this.chips.clear();
         this.chips.set(mesh, chip);
       }
       this.model ??= await this.deps.loadModel();
@@ -87,7 +89,12 @@ export class Engine {
       }
       this.emit({ id, kind: "stage", stage: "checking" });
       const started = performance.now();
-      const reference = runNetwork(this.model, pixels);
+      let reference: Int32Array;
+      try {
+        reference = runNetwork(this.model, pixels);
+      } catch (error) {
+        throw new Error(`the TypeScript reference could not check this image: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      }
       const match = reference.length === result.logits.length && reference.every((v, i) => v === result.logits[i]);
       const run: LiveRun = { ...result, reference, match, refMs: performance.now() - started };
       this.emit({ id, kind: "done", run }, [result.trace.buffer]);

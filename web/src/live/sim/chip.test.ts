@@ -50,6 +50,34 @@ describe("the 2x2 chip in WebAssembly", () => {
     expect(Array.from(good.run(b64(cat().packed)).logits)).toEqual(cat().logits);
   }, 60_000);
 
+  it("releases the simulated model after each run, once everything has been read from it", async () => {
+    const assets = await nodeAssets("2x2");
+    const calls: string[] = [];
+    const chip = await Chip.open("2x2", {
+      ...assets,
+      createModule: async () => {
+        const real = await assets.createModule();
+        return new Proxy(real, {
+          get(target, name, receiver) {
+            const value = Reflect.get(target, name, receiver) as unknown;
+            if (typeof name === "string" && name.startsWith("_sim_") && typeof value === "function") {
+              return (...args: unknown[]) => {
+                calls.push(name);
+                return (value as (...a: unknown[]) => unknown)(...args);
+              };
+            }
+            return value;
+          },
+        });
+      },
+    });
+    const r = chip.run(b64(cat().packed));
+    expect(calls.at(-1)).toBe("_sim_free");
+    expect(calls.filter((c) => c === "_sim_free")).toHaveLength(1); // sim_init frees the previous model inside C++
+    expect(Array.from(r.logits)).toEqual(cat().logits);
+    expect(Array.from(chip.run(b64(cat().packed)).logits)).toEqual(cat().logits);
+  }, 60_000);
+
   it("rejects an image of the wrong size without breaking the chip", async () => {
     const chip = await Chip.open("2x2", await nodeAssets("2x2"));
     expect(() => chip.run(new Uint8Array(10))).toThrow(RangeError);
