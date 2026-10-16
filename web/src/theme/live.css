@@ -21,7 +21,7 @@
 
 .live-examples {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
@@ -41,13 +41,21 @@
   display: grid;
   justify-items: center;
   gap: var(--space-1);
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-1);
   font-size: 0.8rem;
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .live-examples button {
+    font-size: 0.68rem;
+  }
 }
 
 .live-examples canvas {
-  width: 3.5rem;
-  height: 3.5rem;
+  width: min(3.5rem, 100%);
+  aspect-ratio: 1;
+  height: auto;
   image-rendering: pixelated;
   border-radius: 4px;
   background: var(--bg);
@@ -333,6 +341,10 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+
+.live-speed button {
+  padding-inline: 0.6rem;
 }
 
 .live-readout {

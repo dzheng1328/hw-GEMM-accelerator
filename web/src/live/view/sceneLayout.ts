@@ -51,7 +51,7 @@ export function controllerCenter(w: number, h: number): Vec3 {
 
 export function cameraFor(w: number, h: number) {
   const span = Math.max(w, h) * PITCH + PITCH; // one extra pitch for the controller block
-  const distance = 3.2 + span * 1.35;
+  const distance = 2.2 + span * 1.05;
   return { position: [0, distance * 0.78, distance * 0.82] as [number, number, number], fov: 38, distance, height: distance * 0.78 };
 }
 

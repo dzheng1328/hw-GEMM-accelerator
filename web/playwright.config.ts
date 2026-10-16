@@ -11,7 +11,10 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
-  use: { baseURL: "http://localhost:4173" },
+  use: {
+    baseURL: "http://localhost:4173",
+    launchOptions: { args: ["--enable-unsafe-swiftshader"] },
+  },
   projects: [
     { name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 } } },
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } } },

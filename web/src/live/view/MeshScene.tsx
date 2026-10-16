@@ -14,6 +14,9 @@ export interface MeshSceneProps {
   onReady?: () => void;
 }
 
+/** The board is centred half a pitch left of the origin, because the controller block sits beside node 0. */
+const BOARD_X = -0.85;
+
 interface Palette {
   board: string;
   tile: string;
@@ -79,8 +82,8 @@ function Rig({ distance, height }: { distance: number; height: number }) {
   }, [gl]);
   useFrame(() => {
     const a = azimuth.current;
-    camera.position.set(Math.sin(a) * distance, height, Math.cos(a) * distance);
-    camera.lookAt(0, 0, 0);
+    camera.position.set(BOARD_X + Math.sin(a) * distance, height, Math.cos(a) * distance);
+    camera.lookAt(BOARD_X, 0, 0);
   });
   return null;
 }
@@ -117,7 +120,7 @@ function Scene({ w, h, trace, windowRef }: Omit<MeshSceneProps, "onReady">) {
 
   const boardW = w * 1.7 + 3.4;
   const boardD = h * 1.7 + 0.6;
-  const boardX = -0.85;
+  const boardX = BOARD_X;
   return (
     <>
       <mesh position={[boardX, -0.12, 0]}>

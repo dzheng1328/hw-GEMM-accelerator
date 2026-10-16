@@ -36,14 +36,14 @@ test("Deep mode opens every drawer, shares through the URL, and closes them agai
 
   expect(await open()).toBe(0);
   await toggle.click();
-  expect(await open()).toBe(5);
+  expect(await open()).toBe(6);
   expect(new URL(page.url()).search).toBe("?utm=x&deep=1");
   await toggle.click();
   expect(await open()).toBe(0);
   expect(new URL(page.url()).search).toBe("?utm=x");
 
   await page.goto("/?deep=1");
-  expect(await open()).toBe(5);
+  expect(await open()).toBe(6);
 });
 
 test("no horizontal scroll at 1280, 390 and 360 px", async ({ page }) => {
