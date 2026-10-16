@@ -8,7 +8,7 @@ import pytest
 import lm_report
 from lm_perf import add
 
-PIECES = np.array(["<unk>", "<s>", "</s>", "▁once", "▁a", "▁cat", "▁sat", "▁big"])
+PIECES = np.array(["<unk>", "<s>", "</s>", "▁once", "▁a", "▁cat", "▁sat", "▁big", "<0x0A>"])
 
 
 def step(tiles=2, k=1):
@@ -57,8 +57,9 @@ def record(mesh, inv_temp, steps=6, tiles=2, k=1):
     }
 
 
-def records():
-    return [record("2x2", 0), record("2x2", 256), record("1x1", 256, tiles=1, k=2), record("4x4", 256)]
+def records(steps=6):
+    return [record("2x2", 0, steps), record("2x2", 256, steps), record("1x1", 256, steps, tiles=1, k=2),
+            record("4x4", 256, steps)]
 
 
 def q():
@@ -92,6 +93,28 @@ def test_combine_requires_the_intervals_to_sum_to_the_totals():
         lm_report.combine(rs)
 
 
+def ended_records():
+    """records() with story 0 at temperature 1.0 (on every mesh) given a second paragraph and then a BOS at row 7,
+    which step 6 sampled: the model ends a story with a BOS (llama2.c), not an EOS."""
+    rs = records(steps=10)
+    for r in rs[1:]:
+        r["tokens"][0][5:10] = [8, 7, 1, 3, 4]
+    return rs
+
+
+@pytest.mark.parametrize("log, end", [([1, 3, 4, 1, 5], 2), ([1, 3, 2, 1], 2), ([1, 3, 4], None), ([1], None)])
+def test_a_story_ends_at_the_step_that_sampled_the_next_bos(log, end):
+    """As model/lm_tok.py decodes it: the next BOS ends the story, an EOS is skipped (the model never samples one)."""
+    assert lm_report.story_end(log) == end
+
+
+def test_render_quotes_each_paragraph_and_names_the_step_a_story_ended():
+    out = lm_report.render(lm_report.combine(ended_records()), q())
+    assert "**Story 0** (ends at step 6)" in out and "**Story 1**\n" in out
+    assert "> once a cat sat\n>\n> big\n" in out  # a paragraph break stays one inside the quote
+    assert not any(line != line.rstrip() for line in out.splitlines())
+
+
 def test_render_holds_the_stories_the_breakdown_and_the_scaling_table():
     out = lm_report.render(lm_report.combine(records()), q())
     assert "do not edit" in out
@@ -101,6 +124,8 @@ def test_render_holds_the_stories_the_breakdown_and_the_scaling_table():
     assert "1.297" in out and "1.24" in out and "1.30" in out and "0.06" in out
     assert "identical" in out  # the temperature 0 note
     assert "```mermaid" in out
+    # a lone line takes the palette's first color, near white in mermaid's default theme, so the chart sets its own
+    assert '"plotColorPalette": "#2563eb"' in out and 'x-axis "First step of the 32-step bucket" ["0"]' in out
     assert "\u2014" not in out  # the em dash is banned in docs
 
 
@@ -121,3 +146,12 @@ def test_trace_names_its_source_and_holds_per_step_breakdowns(monkeypatch):
     assert len(t["steps"][0]["tile_busy"]) == 2
     assert len(t["attention"]["probs"]) == 6 and len(t["attention"]["probs"][3][4]) == 8
     assert len(t["attention"]["probs"][3][4][0]) == 4
+    assert [s["end_step"] for s in t["stories"]] == [None] * 8
+
+
+def test_trace_names_the_step_a_story_ended(monkeypatch):
+    rs = ended_records()
+    monkeypatch.setattr("lm_reference.generate", lambda *a, **kw: (np.array(rs[1]["tokens"]).T, []))
+    t = lm_report.trace(lm_report.combine(rs), dict(q(), prompt_ids=np.array([1, 3, 4, 5, 6]), seeds=np.arange(8)))
+    assert [s["end_step"] for s in t["stories"]] == [6] + [None] * 7
+    assert t["stories"][0]["text"] == "once a cat sat\n big"  # as model/lm_tok.py decodes it

@@ -90,6 +90,21 @@ def story_texts(pieces, tokens):
     return [decode(pieces, s) for s in tokens]
 
 
+def story_end(log):
+    """The step that sampled the BOS ending a lane's story (row n of the token log is step n - 1's sample), or None.
+    As model/lm_tok.py decodes it: the model, trained on llama2.c's BOS-delimited stories, ends a story with a BOS
+    and never samples an EOS, which the decoder skips."""
+    from lm_spec import BOS
+
+    return next((n - 1 for n, t in enumerate(log) if n > 0 and t == BOS), None)
+
+
+def quote(text):
+    """A Markdown blockquote with one quoted paragraph per line of the story (a bare `>` line between them, as a
+    single newline inside a quote would join the paragraphs), each without its trailing space."""
+    return "\n>\n".join("> " + p.strip() for p in text.split("\n") if p.strip())
+
+
 def whole_categories(r):
     return categories(interval_sum(r))
 
@@ -129,22 +144,24 @@ def render(combined, q):
         "",
         "## Stories (temperature 1.0)",
         "",
-        "Each story is one B lane's token log, decoded by `model/lm_tok.py`; a story ends at the next BOS.",
+        "Each story is one B lane's token log, decoded by `model/lm_tok.py`; a story ends at the next BOS, after which the lane starts a new one (not shown).",
+        "A story with no BOS stops where the run does, after its last step, often mid-word.",
         "The prompt is the same in every lane; the per-lane seeds make the stories differ.",
         "",
     ]
     for n, text in enumerate(texts):
-        eos = next((i for i, t in enumerate(head["tokens"][n]) if t == 2), None)
-        lines += [f"**Story {n}**" + (f" (EOS at step {eos})" if eos is not None else ""), "", "> " + text.replace("\n", "\n> "), ""]
+        end = story_end(head["tokens"][n])
+        lines += [f"**Story {n}**" + (f" (ends at step {end})" if end is not None else ""), "", quote(text), ""]
     cold_text = story_texts(q["vocab"], cold["tokens"])[0]
+    cold_end = story_end(cold["tokens"][0])
     lines += [
         "## Temperature 0",
         "",
         "At temperature 0 the sampler is argmax and ignores the per-lane seeds, so with one prompt the 8 stories are identical by construction.",
         "That run is a bit-exactness check (the token log equals the reference's), not 8 samples.",
-        "The one story:",
+        "The one story" + (f" (ends at step {cold_end}):" if cold_end is not None else ":"),
         "",
-        "> " + cold_text.replace("\n", "\n> "),
+        quote(cold_text),
         "",
         "## Where the cycles go (2x2, temperature 1.0)",
         "",
@@ -172,9 +189,11 @@ def render(combined, q):
         series.append(cyc / (hi - lo))
         lines.append(f"| {lo}-{hi - 1} | {cyc / (hi - lo):,.0f} | " + " | ".join(pct(total[c] / cyc) for c in CATEGORIES) + " |")
     labels = [f"{lo}" for lo in range(0, steps, BUCKET)]
-    lines += ["", "Cycles per step by position (mean over each bucket):", "", "```mermaid", "xychart-beta",
+    # A lone line takes the palette's first color, near white in mermaid's default theme: set one that reads on both.
+    lines += ["", "Cycles per step by position (mean over each bucket):", "", "```mermaid",
+              '%%{init: {"themeVariables": {"xyChart": {"plotColorPalette": "#2563eb"}}}}%%', "xychart-beta",
               '    title "Cycles per decode step"',
-              "    x-axis [" + ", ".join(f'"{x}"' for x in labels) + "]",
+              f'    x-axis "First step of the {BUCKET}-step bucket" [' + ", ".join(f'"{x}"' for x in labels) + "]",
               f'    y-axis "Cycles per step" 0 --> {int(-(-max(series) * 1.1 // 10_000) * 10_000)}',
               "    line [" + ", ".join(f"{v:.0f}" for v in series) + "]", "```", "",
               "## Scaling (temperature 1.0)", "",
@@ -210,8 +229,7 @@ def trace(combined, q):
     log, probs = lm_reference.generate(q, prompt, steps, head["inv_temp"], seeds, return_probs=True)
     if not np.array_equal(log, np.array(head["tokens"]).T):
         raise ValueError("model/lm_reference.py's tokens differ from the chip's")
-    stories = [{"tokens": s, "text": decode(q["vocab"], s), "eos_step": next((i for i, t in enumerate(s) if t == 2), None)}
-               for s in head["tokens"]]
+    stories = [{"tokens": s, "text": decode(q["vocab"], s), "end_step": story_end(s)} for s in head["tokens"]]
     return {
         "config": {"mesh": head["mesh"], "inv_temp": head["inv_temp"], "steps": steps,
                    "prompt_ids": [int(x) for x in prompt], "seeds": [int(x) for x in seeds],
