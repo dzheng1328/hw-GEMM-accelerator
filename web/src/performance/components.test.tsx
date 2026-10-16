@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatPercent } from "../format";
+import { formatInt, formatPercent } from "../format";
 import { performance } from "./data";
-import { findMesh } from "./derive";
+import { cyclesBars, findMesh, speedupBars } from "./derive";
+import { CifarCard } from "./CifarCard";
+import { MeshBarChart } from "./MeshBarChart";
 import { MeshDiagram } from "./MeshDiagram";
 import { MeshSelector } from "./MeshSelector";
+import { PortBars } from "./PortBars";
 
 afterEach(cleanup);
 
@@ -77,5 +80,87 @@ describe("MeshDiagram", () => {
     for (const r of container.querySelectorAll(".tile-fill")) {
       expect(Number(r.getAttribute("fill-opacity"))).toBeLessThanOrEqual(0.45);
     }
+  });
+});
+
+describe("MeshBarChart", () => {
+  const bars = speedupBars(cifar);
+  const props = { title: "Speedup over 1x1", bars, max: 16, format: (v: number) => `${v.toFixed(2)}x`, referenceLabel: "linear ideal" };
+
+  it("draws one bar per mesh and highlights only the selected one", () => {
+    const { container } = render(<MeshBarChart {...props} selected="2x2" />);
+    expect(container.querySelectorAll(".bar")).toHaveLength(5);
+    const selected = container.querySelectorAll(".bar-selected");
+    expect(selected).toHaveLength(1);
+    expect(selected[0]!.getAttribute("data-mesh")).toBe("2x2");
+  });
+
+  it("draws the reference line through one point per mesh", () => {
+    const { container } = render(<MeshBarChart {...props} selected="2x2" />);
+    expect(container.querySelector(".ref-line")!.getAttribute("points")!.split(" ")).toHaveLength(5);
+  });
+
+  it("scales bar heights with their values", () => {
+    const { container } = render(<MeshBarChart {...props} selected="1x1" />);
+    const heights = [...container.querySelectorAll(".bar")].map((b) => Number(b.getAttribute("height")));
+    expect(heights[4]!).toBeGreaterThan(heights[0]!);
+    expect(heights[0]!).toBeGreaterThan(0);
+  });
+
+  it("states every value and the reference in text", () => {
+    const { getByRole, container } = render(<MeshBarChart {...props} selected="2x2" />);
+    const label = getByRole("img").getAttribute("aria-label")!;
+    for (const m of cifar) expect(label).toContain(`${m.mesh} ${m.speedup.toFixed(2)}x`);
+    expect(label).toContain("linear ideal");
+    expect(container.querySelectorAll(".bar-label")).toHaveLength(5);
+  });
+
+  it("draws cycles per image against a constant floor", () => {
+    const floor = cyclesBars(cifar, performance.floorFlitsPerImage);
+    const { container } = render(
+      <MeshBarChart title="Cycles per image" bars={floor} selected="4x4" max={350000} format={formatInt} referenceLabel="134,482-flit floor" />,
+    );
+    const points = container.querySelector(".ref-line")!.getAttribute("points")!.split(" ").map((p) => p.split(",")[1]);
+    expect(new Set(points).size).toBe(1);
+  });
+});
+
+describe("PortBars", () => {
+  const rows = [
+    { label: "CIFAR-10, 2x2", port: findMesh(cifar, "2x2").port, waitLabel: "WAIT/END stall" },
+    { label: "Story model, 2x2", port: findMesh(performance.lm.meshes, "2x2").port, waitLabel: "WAIT, END or VPU running" },
+  ];
+
+  it("draws one stacked bar per workload with five segments each", () => {
+    const { container } = render(<PortBars rows={rows} />);
+    expect(container.querySelectorAll(".port-row")).toHaveLength(2);
+    expect(container.querySelectorAll(".port-bar")[0]!.children).toHaveLength(5);
+  });
+
+  it("sizes each segment by its share and labels it in text", () => {
+    const { container } = render(<PortBars rows={rows} />);
+    const first = container.querySelectorAll(".port-bar")[0]!.children[0] as HTMLElement;
+    expect(parseFloat(first.style.width)).toBeCloseTo(rows[0]!.port.shares.operand * 100, 1);
+    const legend = container.querySelectorAll(".port-legend")[0]!.textContent!;
+    expect(legend).toContain("OPERAND flits");
+    expect(legend).toContain(formatPercent(rows[0]!.port.shares.operand, 1));
+  });
+
+  it("uses each workload's own label for the WAIT category", () => {
+    const { container } = render(<PortBars rows={rows} />);
+    expect(container.querySelectorAll(".port-legend")[0]!.textContent).toContain("WAIT/END stall");
+    expect(container.querySelectorAll(".port-legend")[1]!.textContent).toContain("WAIT, END or VPU running");
+  });
+});
+
+describe("CifarCard", () => {
+  it("shows the accuracy, the agreement and the cycles per image on 1x1 and 2x2", () => {
+    const { container } = render(<CifarCard />);
+    const text = container.textContent!;
+    expect(text).toContain(formatPercent(performance.cifar.accuracy.int8));
+    expect(text).toContain(formatPercent(performance.cifar.accuracy.float));
+    expect(text).toContain(formatPercent(performance.cifar.accuracy.agreement));
+    expect(text).toContain(formatInt(findMesh(cifar, "2x2").cyclesPerUnit));
+    expect(text).toContain(formatInt(findMesh(cifar, "1x1").cyclesPerUnit));
   });
 });
