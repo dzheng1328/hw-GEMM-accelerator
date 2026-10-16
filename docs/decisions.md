@@ -19,6 +19,21 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-16 -- Portfolio replay: cycle-proportional pacing, a vocabulary export, and data fetched as assets
+
+**Context:** The "Watch it think" section replays the recorded 4.3g run: eight stories, a cycle counter and an attention view.
+It needs each token's text, which the trace does not carry, and it has to stay honest about cost.
+**Options considered:**
+(1) A constant step rate or cycle-proportional playback.
+(2) Adding per-token strings to `lm_trace.json`, which needs four 256-step simulations to regenerate, or exporting the 512 vocabulary pieces once.
+(3) Importing the large JSON into the bundle, or importing it as a URL and fetching it when the section is near the viewport.
+**Decision:** Cycle-proportional playback (25 s at 1x, so the last step takes about 6.2 times as long as the first), a `model/export_vocab.py` that writes `docs/perf/lm_vocab.json` from `lm_quantized.npz`, and `?url&no-inline` imports with `fetch`.
+**Why:** Later steps really cost more, and proportional pacing lets a visitor feel that instead of reading it from a chart.
+The vocabulary file is tiny and deterministic, and a consistency test decodes every story from it and requires the trace's text, so the two files cannot drift apart.
+Importing the 2.7 MB attention file as JSON would make TypeScript infer a type for it and put it in the bundle, while an asset URL keeps it cacheable and out of first paint.
+Full design: `docs/superpowers/specs/2026-10-16-portfolio-replay-design.md`.
+
+
 ### 2026-10-16 -- Portfolio app: one layered static page, data generated from docs/perf and committed
 
 **Context:** Milestone 4.3 ended with machine-readable results in `docs/perf/`, and the portfolio app is the milestone after it.

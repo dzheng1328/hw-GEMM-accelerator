@@ -18,6 +18,7 @@ Run these in `web/`.
 
 `src/data/generated/` is generated and committed, and is never edited by hand.
 After re-running `make lm`, `make cifar` or `make scaling` in `tb/accel/`, run `npm run build:data` and commit the result.
+After retraining the tokenizer, run `python model/export_vocab.py` first, then `npm run build:data`.
 CI fails with the exact fix command until you do.
 
 ## Deploy
