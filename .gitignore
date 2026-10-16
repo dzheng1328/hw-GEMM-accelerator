@@ -23,6 +23,7 @@ venv/
 !config/*.json
 !openlane/**/config.json
 !docs/perf/*.json
+!web/**/*.json
 docs/perf/*.tmp
 runs/
 
