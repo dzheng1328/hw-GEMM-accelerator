@@ -9,6 +9,29 @@ const categories = z.object({
   other: int,
 });
 
+const counters = z.object({
+  run_cyc: int,
+  blocks: int,
+  slot_cyc: int,
+  go_cyc: int,
+  inj_stall_cyc: int,
+  wait_cyc: int,
+  credit_cyc: int,
+  other_cyc: int,
+});
+
+const meshPerf = z.object({
+  corner: z.object({
+    lcl_in_xfer: int,
+    lcl_in_stall: int,
+    out_xfer_l: int,
+    out_xfer_n: int,
+    out_xfer_e: int,
+  }),
+  feed_cyc: z.array(int),
+  busy_cyc: z.array(int),
+});
+
 export const lmTraceSchema = z.object({
   config: z.object({
     mesh: z.string(),
@@ -56,6 +79,9 @@ export const lmRunsSchema = z.object({
       slots: int,
       blocks: int,
       slot_utilization: z.number(),
+      counters,
+      mesh_perf: meshPerf,
+      vpu: z.array(int),
     }),
   ),
 });
@@ -74,6 +100,8 @@ export const cifarSchema = z.object({
   cycles: int,
   cycles_per_image: z.number(),
   slot_utilization: z.number(),
+  float_agreement: z.number(),
+  counters,
 });
 
 export const scalingSchema = z.array(
@@ -83,8 +111,15 @@ export const scalingSchema = z.array(
     cycles: int,
     cycles_per_image: z.number(),
     slot_utilization: z.number(),
+    counters,
+    mesh_perf: meshPerf,
   }),
 );
+
+export type LmTrace = z.infer<typeof lmTraceSchema>;
+export type LmRuns = z.infer<typeof lmRunsSchema>;
+export type CifarRun = z.infer<typeof cifarSchema>;
+export type Scaling = z.infer<typeof scalingSchema>;
 
 export function parseInput<S extends z.ZodType>(name: string, schema: S, raw: unknown): z.infer<S> {
   const result = schema.safeParse(raw);
