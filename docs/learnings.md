@@ -42,7 +42,7 @@ actually resolved.
 ### 2026-10-15 -- The hang budget needed a squared term: decode cost grows with the position
 
 **Phase:** Phase 4.3 (4.3g)
-**Problem:** The 256-step 4x4 run the old `lm_extra_cycles` budget was only 1.49x the real length of the 256-step 4x4 run, under the 1.5x margin the budget test requires (a thin margin, not an overrun).
+**Problem:** The old `lm_extra_cycles` budget was only 1.49x the real length of the 256-step 4x4 run, under the 1.5x margin the budget test requires (a thin margin, not an overrun).
 **Cause:** Each step costs more than the one before (about 1,400 cycles more per step on 2x2, since attention and SOFTMAX grow with the context), so the total grows as steps squared, and the budget was linear in steps.
 **Fix:** `lm_extra_cycles` gained a `150*steps*steps` term; the measured runs are pinned in `test_cases.LM_MEASURED` (the budget is 1.65 to 2.8 times the real cycles).
 **Takeaway:** A budget for a decode loop must grow quadratically with its length; check it against the longest real run, not the short cases.
