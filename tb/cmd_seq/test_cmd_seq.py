@@ -663,6 +663,44 @@ async def test_start_clears_registers(dut):
         assert dut_regs(dut) == golden_regs(prog)
 
 
+@cocotb.test()
+async def test_reset_returns_to_golden_initial_state(dut):
+    """rst clears the registers, the sticky error and its pc, and a half-run program, whether the run
+    finished, faulted or was cut off mid-way; the next run from reset matches golden as from a cold start."""
+    await setup_dut(dut)
+    rng = random.Random(8)
+    initial = golden_regs([isa.end()])
+    dirty = [isa.add(5, 0, 7), isa.add(6, 5, 9), isa.loop(2), isa.add(7, 7, 1), isa.endloop(), isa.end()]
+    ends = {"done": dirty, "fault": dirty[:2] + [isa.endloop()]}
+    for how in ("done", "fault", "cut off"):
+        await load(dut, ends.get(how, dirty))
+        env = Env(dut, rng)
+        if how == "cut off":
+            dut.start.value = 1
+            await RisingEdge(dut.clk)
+            dut.start.value = 0
+            for _ in range(3):
+                await FallingEdge(dut.clk)
+            assert dut.busy.value, "the program should still be running"
+        else:
+            await run(dut, env)
+            assert bool(dut.error.value) == (how == "fault")
+        assert dut_regs(dut) != initial, f"{how}: the program left no registers set"
+        env.stop()
+        await reset(dut)
+        await FallingEdge(dut.clk)
+        assert dut_regs(dut) == initial, f"{how}: reset left {dut_regs(dut)}"
+        assert not (dut.done.value or dut.error.value or dut.busy.value), f"{how}: done, error or busy after reset"
+        assert int(dut.error_pc.value) == 0, f"{how}: error_pc {int(dut.error_pc.value)} after reset"
+    prog = dirty
+    await load(dut, prog)
+    env = Env(dut, rng)
+    await run(dut, env)
+    env.stop()
+    assert dut.done.value and not dut.error.value
+    assert dut_regs(dut) == golden_regs(prog)
+
+
 # Fault programs; golden supplies each expected pc.
 FAULTS = [
     [0],                                           # opcode 0: zeroed memory
