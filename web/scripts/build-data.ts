@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OUT_DIR, REPO_ROOT, readPerf } from "./paths";
+import { buildPerformance } from "./performance";
 import { cifarSchema, lmRunsSchema, lmTraceSchema, lmVocabSchema, parseInput, scalingSchema } from "./schema";
 
 export const GENERATED_FILES = [
@@ -10,6 +11,7 @@ export const GENERATED_FILES = [
   "lm-stories.json",
   "lm-attention.json",
   "lm-vocab.json",
+  "performance.json",
 ] as const;
 export type GeneratedName = (typeof GENERATED_FILES)[number];
 
@@ -110,17 +112,20 @@ export function buildAll(root: string = REPO_ROOT) {
     pieces: vocab.pieces,
   };
 
+  const performance = buildPerformance({ trace, lm, cifar, scaling });
+
   return {
     "summary.json": summary,
     "lm-steps.json": lmSteps,
     "lm-stories.json": lmStories,
     "lm-attention.json": lmAttention,
     "lm-vocab.json": lmVocab,
+    "performance.json": performance,
   } satisfies Record<GeneratedName, unknown>;
 }
 
 export function serialize(name: GeneratedName, data: unknown): string {
-  const text = name === "summary.json" ? JSON.stringify(data, null, 2) : JSON.stringify(data);
+  const text = name === "summary.json" || name === "performance.json" ? JSON.stringify(data, null, 2) : JSON.stringify(data);
   return `${text}\n`;
 }
 

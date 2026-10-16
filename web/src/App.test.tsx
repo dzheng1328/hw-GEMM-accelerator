@@ -9,9 +9,9 @@ beforeEach(() => window.history.replaceState(null, "", "/"));
 afterEach(cleanup);
 
 describe("App", () => {
-  it("renders the four titled sections, each with a closed drawer", () => {
+  it("renders the five titled sections, each with a closed drawer", () => {
     const { container } = render(<App />);
-    for (const id of ["replay", "performance", "architecture", "verification"]) {
+    for (const id of ["replay", "performance", "architecture", "verification", "built"]) {
       expect(container.querySelector(`section#${id} h2`)?.textContent?.length, id).toBeGreaterThan(0);
       expect(container.querySelector(`section#${id} details`)?.hasAttribute("open"), id).toBe(false);
     }
@@ -22,11 +22,17 @@ describe("App", () => {
     expect(container.querySelectorAll(".tile")).toHaveLength(4);
   });
 
-  it("Deep mode opens all four drawers", () => {
+  it("Deep mode opens all five drawers", () => {
     const { container, getByRole } = render(<App />);
     fireEvent.click(getByRole("button", { name: /deep mode/i }));
     expect(Array.from(container.querySelectorAll("details")).every((d) => d.open)).toBe(true);
-    expect(container.querySelectorAll("details")).toHaveLength(4);
+    expect(container.querySelectorAll("details")).toHaveLength(5);
+  });
+
+  it("puts the new sections in order: performance second, built last", () => {
+    const { container } = render(<App />);
+    const ids = [...container.querySelectorAll("main > section")].map((s) => s.id);
+    expect(ids).toEqual(["replay", "performance", "architecture", "verification", "built"]);
   });
 
   it("has one h1", () => {

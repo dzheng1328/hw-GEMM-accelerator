@@ -26,3 +26,9 @@ CI fails with the exact fix command until you do.
 Vercel builds this directory only.
 Project settings: root directory `web/`, build command `npm run build`, output directory `dist`, install command `npm ci`.
 Vercel never runs the generator, so the generated files must be committed.
+
+## The timeline is authored, not generated
+
+`src/content/timeline.ts` is written by hand, so the freshness check does not cover it.
+`src/content/timeline.test.ts` ties it to the repository instead: each node cites a `docs/decisions.md` entry by date and the start of its title, every number in a node's metric must appear in that entry, and a node can name a field of `performance.json` that its metric must match.
+If a decisions heading is renamed, the test fails with the node id and the missing heading, and the fix is a one-line edit to the node.

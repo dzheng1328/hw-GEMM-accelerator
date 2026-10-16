@@ -24,7 +24,7 @@ test("the hero numbers are visible with no click and no errors", async ({ page }
   page.on("pageerror", (error) => errors.push(String(error)));
 
   await page.goto("/");
-  for (const value of HERO) await expect(page.getByText(value, { exact: true })).toBeVisible();
+  for (const value of HERO) await expect(page.locator(".tile-value").getByText(value, { exact: true })).toBeVisible();
 
   expect(errors).toEqual([]);
 });
@@ -36,14 +36,14 @@ test("Deep mode opens every drawer, shares through the URL, and closes them agai
 
   expect(await open()).toBe(0);
   await toggle.click();
-  expect(await open()).toBe(4);
+  expect(await open()).toBe(5);
   expect(new URL(page.url()).search).toBe("?utm=x&deep=1");
   await toggle.click();
   expect(await open()).toBe(0);
   expect(new URL(page.url()).search).toBe("?utm=x");
 
   await page.goto("/?deep=1");
-  expect(await open()).toBe(4);
+  expect(await open()).toBe(5);
 });
 
 test("no horizontal scroll at 1280, 390 and 360 px", async ({ page }) => {
@@ -52,6 +52,7 @@ test("no horizontal scroll at 1280, 390 and 360 px", async ({ page }) => {
     await page.goto("/");
     expect(await noHorizontalScroll(page), `${width}px`).toBe(true);
     const longest = await page
+      .locator(".tile-value")
       .getByText(HERO[1]!, { exact: true })
       .evaluate((el) => el.scrollWidth <= el.clientWidth);
     expect(longest, `${width}px: the longest hero number is clipped`).toBe(true);

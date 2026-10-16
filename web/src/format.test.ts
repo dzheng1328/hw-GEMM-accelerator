@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatInt, formatPercent, formatRatio } from "./format";
+import { formatDate, formatInt, formatPercent, formatRatio } from "./format";
 
 describe("format", () => {
   it("groups thousands with commas and rounds to an integer", () => {
@@ -18,5 +18,11 @@ describe("format", () => {
     expect(formatRatio(1.2278484793329738)).toBe("1.23x");
     expect(formatRatio(1.2424014727332795)).toBe("1.24x");
     expect(formatRatio(1)).toBe("1.00x");
+  });
+});
+describe("formatDate", () => {
+  it("writes an ISO date as a short English date", () => {
+    expect(formatDate("2026-07-05")).toBe("Jul 5, 2026");
+    expect(formatDate("2026-10-16")).toBe("Oct 16, 2026");
   });
 });

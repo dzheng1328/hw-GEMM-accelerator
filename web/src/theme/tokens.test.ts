@@ -33,6 +33,8 @@ const TEXT_ON_SURFACES: [string, string][] = [
   ["accent", "bg"], ["accent", "surface"],
   ["cat-weights", "surface"], ["cat-attention", "surface"],
   ["cat-vpu", "surface"], ["cat-other", "surface"],
+  ["port-operand", "surface"], ["port-go", "surface"], ["port-stall", "surface"],
+  ["port-wait", "surface"], ["port-other", "surface"],
 ];
 
 describe("theme tokens", () => {
@@ -75,4 +77,17 @@ describe("theme tokens", () => {
     const rule = /\.otok-bos\s*\{([^}]*)\}/.exec(replay)?.[1] ?? "";
     expect(rule).toContain("color: var(--text)");
   });
+
+  for (const theme of ["dark", "light"] as const) {
+    it(`${theme}: tile text keeps AA on the strongest tile tint (45% of the accent over the surface)`, () => {
+      const t = themes[theme];
+      const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+      const tinted =
+        "#" +
+        [0, 1, 2]
+          .map((i) => Math.round(channel(t.accent!, i) * 0.45 + channel(t.surface!, i) * 0.55).toString(16).padStart(2, "0"))
+          .join("");
+      expect(contrast(t.text!, tinted)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
 });
