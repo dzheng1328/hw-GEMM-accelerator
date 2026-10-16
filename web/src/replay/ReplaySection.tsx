@@ -44,12 +44,18 @@ export function ReplaySection({ scheduler = browserScheduler, loadData = loadRep
   );
   const series = useMemo(() => (data ? attentionShareSeries(data.steps) : []), [data]);
 
-  const autoplayed = useRef(false);
+  // Reduced motion shows the finished run as soon as the data is there, wherever the section is on the screen.
+  // Everyone else autoplays once, when the section's top first enters the viewport.
+  const started = useRef(false);
   useEffect(() => {
-    if (!data || !entered || autoplayed.current) return;
-    autoplayed.current = true;
-    if (reduced) seek(TOTAL_SECONDS);
-    else replay();
+    if (!data || started.current) return;
+    if (reduced) {
+      started.current = true;
+      seek(TOTAL_SECONDS);
+    } else if (entered) {
+      started.current = true;
+      replay();
+    }
   }, [data, entered, reduced, seek, replay]);
 
   const lastStep = data ? data.steps.length - 1 : 0;

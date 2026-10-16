@@ -105,6 +105,28 @@ describe("ReplaySection", () => {
     expect(counter(container)).toBe("1,000");
   });
 
+  it("starts at the end under reduced motion even when the section has not scrolled into view", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce") }));
+    // Only the "near the viewport" observer fires, as on a phone where the section starts below the fold.
+    class NearOnlyObserver {
+      private cb: IntersectionObserverCallback;
+      private margin: string;
+      constructor(cb: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.cb = cb;
+        this.margin = options?.rootMargin ?? "";
+      }
+      observe() {
+        if (this.margin.startsWith("100%")) this.cb([{ isIntersecting: true } as IntersectionObserverEntry], this as never);
+      }
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", NearOnlyObserver);
+    const { container } = renderSection();
+    await ready();
+    expect(counter(container)).toBe("1,000");
+    expect(screen.getByRole("button", { name: "Replay" })).toBeTruthy();
+  });
+
   it("freezes a story that has ended while the others keep growing", async () => {
     const { container } = renderSection();
     await ready();
