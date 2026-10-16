@@ -738,7 +738,23 @@ async def test_perf_tag_follows_bit_zero_of_register_31(dut):
             seen.append(int(dut.perf_tag.value))
         if dut.done.value:
             break
-    env.stop()
     assert dut.done.value and not dut.error.value
     assert seen == [0, 1, 0, 1], seen
     assert dut_regs(dut)[isa.PERF_TAG] == golden_regs(prog)[isa.PERF_TAG] == 3
+    assert int(dut.perf_tag.value) == 1
+    # A restart clears r31, so perf_tag is 0 from the first cycles of the second run (r31 is set again only by its SETR).
+    dut.start.value = 1
+    await RisingEdge(dut.clk)
+    dut.start.value = 0
+    await FallingEdge(dut.clk)
+    assert not dut.done.value and int(dut.perf_tag.value) == 0 and dut_regs(dut)[isa.PERF_TAG] == 0
+    seen = [0]
+    for _ in range(40):
+        await FallingEdge(dut.clk)
+        if seen[-1] != int(dut.perf_tag.value):
+            seen.append(int(dut.perf_tag.value))
+        if dut.done.value:
+            break
+    env.stop()
+    assert dut.done.value and not dut.error.value and dut_regs(dut)[isa.PERF_TAG] == 3
+    assert seen == [0, 1, 0, 1], seen
