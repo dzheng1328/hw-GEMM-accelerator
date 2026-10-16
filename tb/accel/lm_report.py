@@ -174,6 +174,7 @@ def render(combined, q):
         "",
         "Run cycles by category, from `rtl/cmd_perf.v` and `rtl/vpu_perf.v` (every category counted at node (0,0)'s injection port or at the VPU's busy line; the rows sum to 100%).",
         "*Attention* is every cycle inside the program's attention loops (the QK^T and AV BLOCKs, their bookkeeping and the WAIT that drains them); *VPU* is the VPU's busy cycles; *weight matmuls* are the other cycles with a flit at the injection port or stalled; *other* is the rest (the command processor's ALU and loop commands, drains, credit stalls).",
+        "SOFTMAX is counted under VPU, not under attention: attention is the QK^T and AV BLOCKs only.",
         "",
         "| Category | Cycles | Share |",
         "|---|---:|---:|",
@@ -181,7 +182,11 @@ def render(combined, q):
     lines += [f"| {c} | {cats[c]:,} | {pct(cats[c] / run)} |" for c in CATEGORIES]
     lines += ["", "VPU busy cycles by sub-op:", "", "| Sub-op | Cycles | Share of run |", "|---|---:|---:|"]
     lines += [f"| {VOP_NAMES[i]} | {head['vpu'][i]:,} | {pct(head['vpu'][i] / run)} |" for i in range(1, 10)]
-    lines += ["", f"Cost by position ({BUCKET}-step buckets; attention grows with the context, the weight matmuls do not):", "",
+    deltas = head["step_deltas"]
+    last_lo = (steps - 1) // BUCKET * BUCKET
+    vpu_first = sum(categories(d)["VPU"] for d in deltas[:BUCKET]) / len(deltas[:BUCKET])
+    vpu_last = sum(categories(d)["VPU"] for d in deltas[last_lo:]) / len(deltas[last_lo:])
+    lines += ["", f"Cost by position ({BUCKET}-step buckets; attention grows with the context, and so do the VPU cycles per step (about {vpu_first:,.0f} in the first bucket to {vpu_last:,.0f} in the last); the weight matmuls do not):", "",
               "| Steps | Cycles per step | " + " | ".join(CATEGORIES) + " |", "|---|---:|" + "---:|" * len(CATEGORIES)]
     series = []
     for lo in range(0, steps, BUCKET):

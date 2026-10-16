@@ -104,6 +104,7 @@ The one story (ends at step 221):
 
 Run cycles by category, from `rtl/cmd_perf.v` and `rtl/vpu_perf.v` (every category counted at node (0,0)'s injection port or at the VPU's busy line; the rows sum to 100%).
 *Attention* is every cycle inside the program's attention loops (the QK^T and AV BLOCKs, their bookkeeping and the WAIT that drains them); *VPU* is the VPU's busy cycles; *weight matmuls* are the other cycles with a flit at the injection port or stalled; *other* is the rest (the command processor's ALU and loop commands, drains, credit stalls).
+SOFTMAX is counted under VPU, not under attention: attention is the QK^T and AV BLOCKs only.
 
 | Category | Cycles | Share |
 |---|---:|---:|
@@ -126,7 +127,7 @@ VPU busy cycles by sub-op:
 | TRANSPOSE | 97,280 | 0.2% |
 | SAMPLE | 778,940 | 1.2% |
 
-Cost by position (32-step buckets; attention grows with the context, the weight matmuls do not):
+Cost by position (32-step buckets; attention grows with the context, and so do the VPU cycles per step (about 22,839 in the first bucket to 94,905 in the last); the weight matmuls do not):
 
 | Steps | Cycles per step | weight matmuls | attention | VPU | other |
 |---|---:|---:|---:|---:|---:|
