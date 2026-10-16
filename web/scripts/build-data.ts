@@ -2,13 +2,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OUT_DIR, REPO_ROOT, readPerf } from "./paths";
-import { cifarSchema, lmRunsSchema, lmTraceSchema, parseInput, scalingSchema } from "./schema";
+import { cifarSchema, lmRunsSchema, lmTraceSchema, lmVocabSchema, parseInput, scalingSchema } from "./schema";
 
 export const GENERATED_FILES = [
   "summary.json",
   "lm-steps.json",
   "lm-stories.json",
   "lm-attention.json",
+  "lm-vocab.json",
 ] as const;
 export type GeneratedName = (typeof GENERATED_FILES)[number];
 
@@ -24,6 +25,7 @@ export function buildAll(root: string = REPO_ROOT) {
   const lm = parseInput("lm.json", lmRunsSchema, read("lm.json"));
   const cifar = parseInput("cifar.json", cifarSchema, read("cifar.json"));
   const scaling = parseInput("scaling.json", scalingSchema, read("scaling.json"));
+  const vocab = parseInput("lm_vocab.json", lmVocabSchema, read("lm_vocab.json"));
 
   const meshCycles = (key: string): number => {
     const m = trace.meshes[key];
@@ -101,11 +103,19 @@ export function buildAll(root: string = REPO_ROOT) {
     probs: trace.attention.probs,
   };
 
+  const lmVocab = {
+    _generated: stamp(["lm_vocab.json"]),
+    bos: vocab.bos,
+    eos: vocab.eos,
+    pieces: vocab.pieces,
+  };
+
   return {
     "summary.json": summary,
     "lm-steps.json": lmSteps,
     "lm-stories.json": lmStories,
     "lm-attention.json": lmAttention,
+    "lm-vocab.json": lmVocab,
   } satisfies Record<GeneratedName, unknown>;
 }
 

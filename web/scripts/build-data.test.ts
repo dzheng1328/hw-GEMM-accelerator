@@ -73,3 +73,14 @@ describe("serialize", () => {
     }
   });
 });
+
+describe("lm-vocab.json", () => {
+  it("carries the exported pieces in id order", () => {
+    const v = built["lm-vocab.json"];
+    const rawVocab = raw("lm_vocab.json");
+    expect(v.pieces).toEqual(rawVocab.pieces);
+    expect(v.bos).toBe(rawVocab.bos);
+    expect(v.eos).toBe(rawVocab.eos);
+    expect(v._generated.regenerate).toContain("npm run build:data");
+  });
+});
