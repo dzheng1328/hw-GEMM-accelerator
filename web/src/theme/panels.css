@@ -20,8 +20,13 @@
   outline-offset: 2px;
 }
 
-html {
-  scroll-padding-top: var(--bar-h);
+/*
+ * Keep a focused control clear of the sticky bar. This is a margin on the controls inside main, never scroll-padding on
+ * the page: scroll-padding would also count the bar's own controls as hidden, and focusing one (Tab) would scroll the
+ * page up by hundreds of pixels.
+ */
+main :is(a, button, input, select, textarea, summary, [tabindex]) {
+  scroll-margin-top: calc(var(--bar-h) + 8px);
 }
 
 @media (prefers-reduced-motion: no-preference) {

@@ -7,8 +7,13 @@ export interface ExampleImage {
   pixels: Uint8Array;
 }
 
+/** One example per CIFAR-10 class: the number of tiles to reserve space for while the examples load. */
+export const EXAMPLE_COUNT = 10;
+
 export interface ImagePickerProps {
   examples: ExampleImage[];
+  /** true while the examples are loading: inert placeholders hold the grid's space so the page below does not jump */
+  loading?: boolean;
   selected: number | null;
   uploadName: string | null;
   disabled?: boolean;
@@ -42,10 +47,18 @@ function Thumb({ pixels }: { pixels: Uint8Array }) {
   return <canvas ref={ref} width={IMAGE_SIDE} height={IMAGE_SIDE} aria-hidden="true" />;
 }
 
-export function ImagePicker({ examples, selected, uploadName, disabled, onExample, onUpload }: ImagePickerProps) {
+export function ImagePicker({ examples, loading, selected, uploadName, disabled, onExample, onUpload }: ImagePickerProps) {
   return (
     <div className="live-picker">
       <div className="live-examples" role="group" aria-label="Example images">
+        {loading
+          ? Array.from({ length: EXAMPLE_COUNT }, (_, i) => (
+              <button key={i} type="button" className="live-example-placeholder" aria-hidden="true" tabIndex={-1} disabled>
+                <canvas width={IMAGE_SIDE} height={IMAGE_SIDE} />
+                <span>&nbsp;</span>
+              </button>
+            ))
+          : null}
         {examples.map((example, i) => (
           <button
             key={example.name}

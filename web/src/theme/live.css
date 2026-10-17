@@ -52,6 +52,11 @@
   }
 }
 
+.live-example-placeholder {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .live-examples canvas {
   width: min(3.5rem, 100%);
   aspect-ratio: 1;

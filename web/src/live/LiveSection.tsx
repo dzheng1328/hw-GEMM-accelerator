@@ -145,6 +145,7 @@ export function LiveSection({
         </p>
         <ImagePicker
           examples={(loaded ?? []).map((e) => ({ name: e.name, pixels: e.pixels }))}
+          loading={examples.status === "idle" || examples.status === "loading"}
           selected={source.kind === "example" ? source.index : null}
           uploadName={source.kind === "upload" ? source.name : null}
           onExample={(index) => {

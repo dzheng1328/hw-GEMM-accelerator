@@ -1,8 +1,7 @@
 .band {
   padding: 56px 0;
   background: var(--bg);
-  /* the bar height itself comes from html { scroll-padding-top } in panels.css, so it is counted once */
-  scroll-margin-top: 16px;
+  scroll-margin-top: calc(var(--bar-h) + 16px);
 }
 
 .band-alt {
@@ -52,7 +51,7 @@
   max-width: 70ch;
   margin: var(--space-2) 0 var(--space-5);
   color: var(--muted);
-  font-size: var(--text-lg);
+  font-size: 1.125rem;
 }
 
 .hero-band {

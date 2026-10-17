@@ -125,6 +125,22 @@ describe("ImagePicker", () => {
     expect(onExample).toHaveBeenCalledWith(2);
   });
 
+  it("reserves the grid's space while the examples load, so the page below does not jump when they arrive", () => {
+    const { container, rerender } = render(<ImagePicker examples={[]} loading selected={null} uploadName={null} onExample={noop} onUpload={noop} />);
+    const placeholders = container.querySelectorAll(".live-examples .live-example-placeholder");
+    expect(placeholders).toHaveLength(10);
+    for (const placeholder of placeholders) {
+      expect(placeholder.getAttribute("aria-hidden")).toBe("true");
+      expect((placeholder as HTMLButtonElement).disabled).toBe(true);
+      expect(placeholder.getAttribute("tabindex")).toBe("-1");
+    }
+    expect(screen.queryAllByRole("button", { name: /^Example: / })).toHaveLength(0);
+    const loaded = ["airplane", "cat", "dog"].map((name) => ({ name, pixels: new Uint8Array(3072) }));
+    rerender(<ImagePicker examples={loaded} selected={null} uploadName={null} onExample={noop} onUpload={noop} />);
+    expect(container.querySelectorAll(".live-example-placeholder")).toHaveLength(0);
+    expect(screen.getAllByRole("button", { name: /^Example: / })).toHaveLength(3);
+  });
+
   it("reports an uploaded file, ignores an empty selection, and names the upload in use", () => {
     const onUpload = vi.fn();
     const { rerender } = render(<ImagePicker examples={examples} selected={null} uploadName="me.png" onExample={noop} onUpload={onUpload} />);

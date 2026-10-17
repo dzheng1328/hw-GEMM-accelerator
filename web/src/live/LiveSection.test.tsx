@@ -62,6 +62,22 @@ describe("LiveSection", () => {
     expect(container.querySelector("details")?.hasAttribute("open")).toBe(false);
   });
 
+  it("shows ten inert placeholders until the examples arrive, then the real buttons", async () => {
+    let resolve: (value: ReturnType<typeof examples>) => void = () => {};
+    const { container } = setup({ props: { loadExamples: () => new Promise((r) => { resolve = r; }) } });
+    await waitFor(() => expect(container.querySelectorAll(".live-example-placeholder")).toHaveLength(10));
+    expect(screen.queryByRole("button", { name: /^Example: / })).toBeNull();
+    resolve(examples());
+    await ready();
+    expect(container.querySelectorAll(".live-example-placeholder")).toHaveLength(0);
+  });
+
+  it("shows no placeholders when the examples fail to load", async () => {
+    const { container } = setup({ props: { loadExamples: async () => { throw new Error("offline"); } } });
+    await waitFor(() => expect(container.textContent).toContain("could not be loaded"));
+    expect(container.querySelectorAll(".live-example-placeholder")).toHaveLength(0);
+  });
+
   it("starts with the cat and the 2x2 mesh selected", async () => {
     setup();
     await ready();

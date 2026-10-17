@@ -1,6 +1,9 @@
+import { useCallback } from "react";
+import { flushSync } from "react-dom";
 import { ArchitectureSection } from "./architecture/ArchitectureSection";
 import { DeepContext } from "./components/deepContext";
 import { HeroBand } from "./components/HeroBand";
+import { holdPosition } from "./components/holdPosition";
 import { SiteFooter } from "./components/SiteFooter";
 import { TopBar } from "./components/TopBar";
 import { useActiveSection } from "./components/useActiveSection";
@@ -17,13 +20,20 @@ export default function App() {
   const [deep, setDeep] = useDeepMode();
   const [theme, toggleTheme] = useTheme();
   const active = useActiveSection(SECTION_IDS);
+  // Deep mode opens every drawer, which can grow the page above the visitor: keep the section they are reading in place
+  const changeDeep = useCallback(
+    (next: boolean) => {
+      holdPosition(active ? document.getElementById(active) : null, () => flushSync(() => setDeep(next)));
+    },
+    [active, setDeep],
+  );
 
   return (
     <DeepContext.Provider value={deep}>
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <TopBar active={active} deep={deep} onDeepChange={setDeep} theme={theme} onThemeToggle={toggleTheme} />
+      <TopBar active={active} deep={deep} onDeepChange={changeDeep} theme={theme} onThemeToggle={toggleTheme} />
       <main id="main" tabIndex={-1}>
         <HeroBand />
         <ReplaySection />
