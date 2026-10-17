@@ -29,6 +29,22 @@ describe("PerformanceSection", () => {
     expect(selected).toEqual(["1x1", "1x1"]);
   });
 
+  it("puts the mesh diagram and its three stats side by side in one panel", () => {
+    const { container, getByRole } = render(<PerformanceSection />);
+    const panel = container.querySelector(".mesh-panel")!;
+    expect(panel.querySelector(".mesh-figure")).not.toBeNull();
+    const stats = panel.querySelector("dl.mesh-stats")!;
+    const read = () => [...stats.querySelectorAll("dt")].map((dt) => [dt.textContent, dt.nextElementSibling!.textContent]);
+    const four = findMesh(cifar, "4x4");
+    expect(read()).toEqual([
+      ["Cycles per image", formatInt(four.cyclesPerUnit)],
+      ["Speedup over 1x1", formatRatio(four.speedup)],
+      ["MAC utilization per tile", formatPercent(four.macUtilization, 1)],
+    ]);
+    fireEvent.click(getByRole("button", { name: "2x2" }));
+    expect(read()[0]![1]).toBe(formatInt(findMesh(cifar, "2x2").cyclesPerUnit));
+  });
+
   it("states the CIFAR-10 and story-model findings", () => {
     const { container } = render(<PerformanceSection />);
     const text = container.textContent!;

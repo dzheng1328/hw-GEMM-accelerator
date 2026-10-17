@@ -71,11 +71,61 @@
   text-anchor: middle;
 }
 
+.mesh-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  margin-bottom: var(--space-4);
+}
+
+@media (min-width: 720px) {
+  .mesh-panel {
+    grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+}
+
+.mesh-panel .mesh-figure {
+  margin: 0;
+}
+
+.mesh-side {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.mesh-side .finding {
+  margin: 0;
+}
+
 .mesh-stats {
-  margin: 0 0 var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.mesh-stats > div {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.mesh-stats dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.mesh-stats dd {
+  margin: var(--space-1) 0 0;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.9rem;
+  font-size: 1.75rem;
+  font-weight: 600;
 }
 
 .chart-grid {

@@ -107,6 +107,14 @@ describe("MeshBarChart", () => {
     expect(heights[0]!).toBeGreaterThan(0);
   });
 
+  it("draws the reference line over the bars and under the labels, so a label is never struck through", () => {
+    const { container } = render(<MeshBarChart {...props} selected="2x2" />);
+    const order = [...container.querySelector("svg")!.querySelectorAll(".bar, .ref-line, .bar-label")];
+    const at = (cls: string) => order.map((el, i) => (el.classList.contains(cls) ? i : -1)).filter((i) => i >= 0);
+    expect(Math.max(...at("bar"))).toBeLessThan(at("ref-line")[0]!);
+    expect(at("ref-line")[0]!).toBeLessThan(Math.min(...at("bar-label")));
+  });
+
   it("states every value and the reference in text", () => {
     const { getByRole, container } = render(<MeshBarChart {...props} selected="2x2" />);
     const label = getByRole("img").getAttribute("aria-label")!;

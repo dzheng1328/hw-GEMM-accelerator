@@ -2,7 +2,7 @@ import { memo } from "react";
 import type { Bar } from "./derive";
 
 const W = 320;
-const H = 160;
+const H = 200;
 const PAD_L = 8;
 const PAD_R = 8;
 const PAD_T = 22;
@@ -34,15 +34,19 @@ export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, 
       <h3>{title}</h3>
       <svg className="bar-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
         {bars.map((b, i) => (
+          <rect
+            key={b.mesh}
+            className={b.mesh === selected ? "bar bar-selected" : "bar"}
+            data-mesh={b.mesh}
+            x={cx(i) - barWidth / 2}
+            y={y(b.value)}
+            width={barWidth}
+            height={H - PAD_B - y(b.value)}
+          />
+        ))}
+        <polyline className="ref-line" points={bars.map((b, i) => `${cx(i).toFixed(1)},${y(b.reference).toFixed(1)}`).join(" ")} />
+        {bars.map((b, i) => (
           <g key={b.mesh}>
-            <rect
-              className={b.mesh === selected ? "bar bar-selected" : "bar"}
-              data-mesh={b.mesh}
-              x={cx(i) - barWidth / 2}
-              y={y(b.value)}
-              width={barWidth}
-              height={H - PAD_B - y(b.value)}
-            />
             <text className="bar-label" x={cx(i)} y={y(b.value) - 4}>
               {format(b.value)}
             </text>
@@ -51,7 +55,6 @@ export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, 
             </text>
           </g>
         ))}
-        <polyline className="ref-line" points={bars.map((b, i) => `${cx(i).toFixed(1)},${y(b.reference).toFixed(1)}`).join(" ")} />
       </svg>
       <figcaption className="counter-note">Dashed line: {referenceLabel}.</figcaption>
     </figure>
