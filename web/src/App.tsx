@@ -3,6 +3,8 @@ import { DeepContext } from "./components/deepContext";
 import { DeepToggle } from "./components/DeepToggle";
 import { HeroStrip } from "./components/HeroStrip";
 import { useDeepMode } from "./components/useDeepMode";
+import { SiteFooter } from "./components/SiteFooter";
+import { REPO_URL } from "./content/timeline";
 import { LiveSection } from "./live/LiveSection";
 import { PerformanceSection } from "./performance/PerformanceSection";
 import { ReplaySection } from "./replay/ReplaySection";
@@ -23,7 +25,12 @@ export default function App() {
               model, simulated end to end in RTL.
             </p>
           </div>
-          <DeepToggle deep={deep} onChange={setDeep} />
+          <nav className="site-actions" aria-label="Site">
+            <a className="source-link" href={REPO_URL} target="_blank" rel="noopener noreferrer">
+              Source on GitHub
+            </a>
+            <DeepToggle deep={deep} onChange={setDeep} />
+          </nav>
         </header>
         <main>
           <HeroStrip />
@@ -34,6 +41,7 @@ export default function App() {
           <VerificationSection />
           <BuiltSection />
         </main>
+        <SiteFooter />
       </div>
     </DeepContext.Provider>
   );

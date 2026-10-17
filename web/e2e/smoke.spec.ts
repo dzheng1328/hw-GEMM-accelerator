@@ -68,3 +68,20 @@ test("the light scheme repaints the page", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   expect(await background()).toBe("rgb(247, 249, 251)");
 });
+
+test("the footer sits at the very end of the page and the icons and preview image are served", async ({ page, request }) => {
+  await page.goto("/");
+  const footer = page.locator("footer.site-footer");
+  await footer.scrollIntoViewIfNeeded();
+  await expect(footer.getByRole("link", { name: "Source on GitHub" })).toBeVisible();
+  await expect(footer.getByRole("link", { name: "MIT license" })).toBeVisible();
+  await expect(page.locator("header").getByRole("link", { name: "Source on GitHub" })).toBeVisible();
+  const gap = await page.evaluate(() => document.documentElement.scrollHeight - document.querySelector("footer.site-footer")!.getBoundingClientRect().bottom - window.scrollY);
+  expect(gap, "the footer is the last thing on the page").toBeLessThan(80);
+
+  for (const [path, type] of [["/favicon.svg", "image/svg+xml"], ["/og.png", "image/png"], ["/apple-touch-icon.png", "image/png"]] as const) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(200);
+    expect(response.headers()["content-type"], path).toContain(type);
+  }
+});
