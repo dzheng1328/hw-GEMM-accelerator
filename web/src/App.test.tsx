@@ -64,7 +64,7 @@ describe("App links out", () => {
     expect(hrefs(container, "header")).toContain("https://github.com/dzheng1328/hw-GEMM-accelerator");
   });
 
-  it("ends with a footer linking the source, the license and the author, all opening safely", () => {
+  it("ends with a footer linking the source, the license, the author profiles and an email, web links opening safely", () => {
     const { container } = render(<App />);
     const footer = container.querySelector("footer.site-footer");
     expect(footer, "footer").not.toBeNull();
@@ -73,8 +73,12 @@ describe("App links out", () => {
       "https://github.com/dzheng1328/hw-GEMM-accelerator",
       "https://github.com/dzheng1328/hw-GEMM-accelerator/blob/main/LICENSE",
       "https://github.com/dzheng1328",
+      "https://www.linkedin.com/in/d-zheng",
+      "mailto:davezheng1328@gmail.com",
     ]);
-    for (const a of footer!.querySelectorAll("a")) expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+    for (const a of footer!.querySelectorAll<HTMLAnchorElement>('a[href^="http"]')) {
+      expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+    }
     expect(footer?.textContent).toContain("MIT");
   });
 });

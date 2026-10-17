@@ -26,11 +26,26 @@ export function PerformanceSection() {
       drawer={{ summary: "Go deeper", body: <CounterTable /> }}
     >
       <MeshSelector meshes={cifar.meshes.map((m) => m.mesh)} selected={selected} onSelect={setSelected} />
-      <MeshDiagram mesh={mesh} />
-      <p className="mesh-stats">
-        {mesh.mesh}: {formatInt(mesh.cyclesPerUnit)} cycles per image, {formatRatio(mesh.speedup)} over 1x1,{" "}
-        {formatPercent(mesh.macUtilization, 1)} MAC utilization per tile
-      </p>
+      <div className="mesh-panel">
+        <MeshDiagram mesh={mesh} />
+        <div className="mesh-side">
+          <dl className="mesh-stats">
+            <div>
+              <dt>Cycles per image</dt>
+              <dd>{formatInt(mesh.cyclesPerUnit)}</dd>
+            </div>
+            <div>
+              <dt>Speedup over 1x1</dt>
+              <dd>{formatRatio(mesh.speedup)}</dd>
+            </div>
+            <div>
+              <dt>MAC utilization per tile</dt>
+              <dd>{formatPercent(mesh.macUtilization, 1)}</dd>
+            </div>
+          </dl>
+          <p className="finding">{cifarFinding(findMesh(cifar.meshes, "4x4"), floorFlitsPerImage)}</p>
+        </div>
+      </div>
       <div className="chart-grid">
         <MeshBarChart
           title="Speedup over 1x1"
@@ -49,7 +64,6 @@ export function PerformanceSection() {
           referenceLabel={`the ${floor}-flit injection floor`}
         />
       </div>
-      <p className="finding">{cifarFinding(findMesh(cifar.meshes, "4x4"), floorFlitsPerImage)}</p>
       <PortBars
         rows={[
           { label: "CIFAR-10, 2x2", port: findMesh(cifar.meshes, "2x2").port, waitLabel: "WAIT/END stall" },
