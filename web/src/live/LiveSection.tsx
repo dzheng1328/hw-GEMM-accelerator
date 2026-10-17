@@ -128,6 +128,7 @@ export function LiveSection({
   );
 
   const accuracy = formatPercent(summary.cifar.int8Accuracy, 0);
+  const images = summary.cifar.images;
   const classList = manifest.classNames.join(", ");
 
   return (
@@ -135,7 +136,7 @@ export function LiveSection({
       id="live"
       title="Run it live"
       headline="Pick an image and run it on the chip: the repository's RTL, compiled to WebAssembly, classifies it in your browser."
-      drawer={{ summary: "Go deeper", body: <LiveDetails accuracy={accuracy} /> }}
+      drawer={{ summary: "Go deeper", body: <LiveDetails accuracy={accuracy} images={images} /> }}
     >
       <div ref={rootRef} className="live-root">
         <p className="live-note">
@@ -211,7 +212,7 @@ export function LiveSection({
           </ErrorBoundary>
         ) : null}
         <p className="live-limits">
-          The classifier knows ten CIFAR-10 classes ({classList}) and scores about {accuracy} on 32x32 test images.
+          The classifier knows ten CIFAR-10 classes ({classList}) and scores about {accuracy} (measured on {images} test images, each 32x32).
           A photograph, or anything that is not one of those ten, still gets one of the ten answers, so read all ten bars and not only the
           winner. Large photos are cropped to a square and shrunk to 32x32 in your browser, which is not how CIFAR was made, so expect lower
           accuracy than that.
@@ -221,7 +222,7 @@ export function LiveSection({
   );
 }
 
-function LiveDetails({ accuracy }: { accuracy: string }) {
+function LiveDetails({ accuracy, images }: { accuracy: string; images: number }) {
   return (
     <div className="live-details">
       <h3>How the chip gets into the page</h3>
@@ -269,7 +270,7 @@ function LiveDetails({ accuracy }: { accuracy: string }) {
       </p>
       <h3>Limits</h3>
       <ul>
-        <li>The network was measured at {accuracy} on its test images, which are 32x32 CIFAR-10 pictures. Uploads are not.</li>
+        <li>The network was measured at {accuracy} on {images} test images, which are 32x32 CIFAR-10 pictures. Uploads are not.</li>
         <li>This is a simulation of the design, not silicon: it says nothing about clock speed, power or area.</li>
         <li>The 3D view shows recorded activity, windowed at the default pace; it is not drawn by the chip.</li>
         <li>The language-model story stays in the replay section above, because it is far too long to run here.</li>

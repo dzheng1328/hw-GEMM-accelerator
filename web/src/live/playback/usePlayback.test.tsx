@@ -128,4 +128,34 @@ describe("usePlayback", () => {
     expect(result.current.cycle).toBe(0);
     expect(result.current.playing).toBe(false);
   });
+
+  it("does not jump ahead for the time a hidden tab spent without frames", () => {
+    // a scheduler that can skip time without running a frame, like requestAnimationFrame in a background tab
+    let time = 0;
+    let next = 1;
+    const queue = new Map<number, () => void>();
+    const scheduler = {
+      now: () => time,
+      request: (cb: () => void) => (queue.set(next, cb), next++),
+      cancel: (handle: number) => void queue.delete(handle),
+    };
+    const flush = () =>
+      act(() => {
+        const callbacks = [...queue.values()];
+        queue.clear();
+        callbacks.forEach((cb) => cb());
+      });
+    const { result } = renderHook(() => usePlayback(TOTAL, scheduler, 0));
+    act(() => result.current.play());
+    time = 1000;
+    flush();
+    expect(result.current.cycle).toBe(1000);
+    time += 60_000; // the tab is hidden: no frames run
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    time += 16;
+    flush();
+    expect(result.current.cycle).toBe(1016);
+  });
 });

@@ -229,6 +229,7 @@ describe("LiveSection", () => {
     expect(text).toContain("ten CIFAR-10 classes");
     expect(text).toContain("still gets one of the ten answers");
     expect(text).toContain("never leaves");
+    expect(text).toContain("measured on 128 test images");
   });
 
   it("opens its drawer in Deep mode and lists the cycles of each mesh", async () => {
@@ -238,6 +239,7 @@ describe("LiveSection", () => {
     expect(container.textContent).toContain("313,539");
     expect(container.textContent).toContain("139,981");
     expect(container.textContent).toContain("136,987");
+    expect(container.textContent).toContain("on 128 test images");
   });
 
   it("closes the worker client when it unmounts", async () => {
@@ -331,5 +333,29 @@ describe("LiveSection robustness", () => {
     fireEvent.click(button);
     fireEvent.click(button);
     expect(run).toHaveBeenCalledOnce();
+  });
+});
+
+describe("LiveSection and the reduced-motion setting", () => {
+  it("stops playing and shows the end of the run when the setting is switched on mid-visit", async () => {
+    let reduce = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", () => ({
+      get matches() {
+        return reduce;
+      },
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+    }));
+    const { container } = setup();
+    await ready();
+    await runAndWait(container);
+    expect(await screen.findByRole("button", { name: "Pause" })).toBeTruthy();
+    act(() => {
+      reduce = true;
+      listeners.forEach((fn) => fn());
+    });
+    expect(await screen.findByRole("button", { name: "Replay" })).toBeTruthy();
+    expect((screen.getByRole("slider", { name: "Cycle" }) as HTMLInputElement).value).toBe(String(makeRun().cycles));
   });
 });

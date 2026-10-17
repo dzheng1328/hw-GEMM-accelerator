@@ -41,10 +41,13 @@ export function RunView({ run, golden, classNames, Scene, sceneStatus, webgl, re
     }
   }, [trace, entry]);
   const playback = usePlayback(run.cycles, scheduler, reduced ? run.cycles : 0);
-  const { play } = playback;
+  const { play, seek } = playback;
+  const total = run.cycles;
   useEffect(() => {
-    if (!reduced) play();
-  }, [reduced, play]);
+    // reduced motion shows the end of the run paused; it can also be switched on while a run is playing
+    if (reduced) seek(total);
+    else play();
+  }, [reduced, play, seek, total]);
 
   const layerName = spans ? entry.layers[layerAtCycle(spans, playback.cycle)]!.name : "the network";
   const finished = playback.atEnd;
@@ -65,7 +68,16 @@ export function RunView({ run, golden, classNames, Scene, sceneStatus, webgl, re
     <div className="live-result" data-mesh={run.mesh}>
       <div className="live-stage">
         <div className="live-view">
-          <SceneArea run={run} trace={trace} windowRef={playback.windowRef} Scene={Scene} status={sceneStatus} webgl={webgl} />
+          <SceneArea
+            run={run}
+            trace={trace}
+            windowRef={playback.windowRef}
+            playing={playback.playing}
+            cycle={playback.cycle}
+            Scene={Scene}
+            status={sceneStatus}
+            webgl={webgl}
+          />
           <ul className="live-legend" aria-label="Legend">
             {FLIT_LEGEND.map((item) => (
               <li key={item.type}>
@@ -121,6 +133,8 @@ function SceneArea({
   run,
   trace,
   windowRef,
+  playing,
+  cycle,
   Scene,
   status,
   webgl,
@@ -128,6 +142,8 @@ function SceneArea({
   run: LiveRun;
   trace: Trace;
   windowRef: MeshSceneProps["windowRef"];
+  playing: boolean;
+  cycle: number;
   Scene: SceneComponent | null;
   status: LazyStatus;
   webgl: boolean;
@@ -146,7 +162,7 @@ function SceneArea({
   return (
     <div className="live-scene" role="img" aria-label={`3D view of the ${w} by ${h} mesh: ${w * h} tiles, the links between them, and the command processor`}>
       <ErrorBoundary fallback={<p className="live-fallback">The 3D view could not be shown. The rest of this run is unaffected.</p>}>
-        <Scene w={w} h={h} trace={trace} windowRef={windowRef} />
+        <Scene w={w} h={h} trace={trace} windowRef={windowRef} playing={playing} cycle={cycle} />
       </ErrorBoundary>
     </div>
   );

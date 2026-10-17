@@ -106,3 +106,16 @@ def test_layer_ranges_partition_each_program(q):
             assert r["pcEnd"] > r["pcStart"], key
         for r in ranges[:-1]:
             assert int(p.words[r["pcEnd"] - 1]) == int(isa.wait()), f"{key}: layer {r['name']} must end in WAIT"
+
+
+def test_the_verilator_waiver_file_is_hashed_because_it_changes_what_gets_built():
+    assert "tb/lint_waivers.vlt" in sources.HASHED
+
+
+def test_committed_program_and_weight_images_are_what_the_compiler_produces(q):
+    out = sources.ARTIFACTS
+    progs = data.programs(q)
+    first = next(iter(progs.values()))
+    assert (out / "weights.bin").read_bytes() == first.weights.tobytes()
+    for key, p in progs.items():
+        assert (out / f"program-{key}.bin").read_bytes() == p.words.tobytes(), key

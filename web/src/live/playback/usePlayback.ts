@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { browserScheduler, type Scheduler } from "../../replay/useClock";
 
-/** Speeds as multiples of the default pace; 0.01x on a 2x2 run is about one cycle per second. */
+/** Speeds as multiples of the default pace. A run lasts PACE_SECONDS at 1x, so 0.01x on a 2x2 run is about 70 cycles per second. */
 export const SPEEDS = [0.01, 0.05, 0.25, 1, 4, 16] as const;
 export type PlaybackSpeed = (typeof SPEEDS)[number];
 /** Seconds a whole run lasts at 1x. */
@@ -54,6 +54,11 @@ export function usePlayback(total: number, scheduler: Scheduler = browserSchedul
     const rate = total / PACE_SECONDS;
     let last = scheduler.now();
     let handle = 0;
+    // a hidden tab gets no frames; without this the first frame back would carry the whole absence as elapsed time
+    const resume = () => {
+      last = scheduler.now();
+    };
+    document.addEventListener("visibilitychange", resume);
     const frame = () => {
       const now = scheduler.now();
       const before = Math.floor(position.current);
@@ -72,7 +77,10 @@ export function usePlayback(total: number, scheduler: Scheduler = browserSchedul
       handle = scheduler.request(frame);
     };
     handle = scheduler.request(frame);
-    return () => scheduler.cancel(handle);
+    return () => {
+      document.removeEventListener("visibilitychange", resume);
+      scheduler.cancel(handle);
+    };
   }, [playing, total, scheduler]);
 
   const play = useCallback(() => {

@@ -105,6 +105,23 @@ test("pausing at the end names the cat, and the readout and layer strip follow t
   await expect(live(page).getByRole("button", { name: "Replay" })).toBeVisible();
 });
 
+test("the 3D view redraws when the slider moves while paused", async ({ page }) => {
+  await openLive(page);
+  await runChip(page);
+  await expect(verdict(page)).toBeVisible({ timeout: 60_000 });
+  await live(page).getByRole("button", { name: /^(Pause|Replay)$/ }).click();
+  const canvas = live(page).locator(".live-scene canvas[data-scene-ready='true']");
+  await expect(canvas).toBeVisible();
+  const slider = live(page).getByRole("slider", { name: "Cycle" });
+  await slider.fill("30");
+  await page.waitForTimeout(300);
+  const early = await canvas.screenshot();
+  await slider.fill("60000");
+  await page.waitForTimeout(300);
+  const later = await canvas.screenshot();
+  expect(early.equals(later), "the scene looks the same at cycle 30 and cycle 60,000").toBe(false);
+});
+
 test("the 4x4 mesh runs the same image on 16 tiles in fewer cycles than 1x1", async ({ page }) => {
   await openLive(page);
   await live(page).getByRole("radio", { name: "4x4 (16 tiles)" }).check();

@@ -112,6 +112,33 @@ function dominant(counts: Uint32Array, at: number): number {
   return best;
 }
 
+interface Scratch {
+  typeCounts: Uint32Array;
+  xferCounts: Uint32Array;
+  busy: Uint32Array;
+  results: Uint32Array;
+}
+const scratchBySize = new Map<number, Scratch>();
+
+/** Zeroed counting arrays for a mesh size, reused between calls so a per-frame summary allocates nothing. */
+function scratchFor(nodes: number): Scratch {
+  let scratch = scratchBySize.get(nodes);
+  if (!scratch) {
+    scratch = {
+      typeCounts: new Uint32Array(nodes * PORTS * 4),
+      xferCounts: new Uint32Array(nodes * PORTS),
+      busy: new Uint32Array(nodes),
+      results: new Uint32Array(nodes),
+    };
+    scratchBySize.set(nodes, scratch);
+  }
+  scratch.typeCounts.fill(0);
+  scratch.xferCounts.fill(0);
+  scratch.busy.fill(0);
+  scratch.results.fill(0);
+  return scratch;
+}
+
 /** Activity over the cycles [from, to): busy and transfer fractions, dominant flit types, the program address. */
 export function summarize(trace: Trace, from: number, to: number, out: WindowSummary = newSummary(trace.nodes)): WindowSummary {
   const { nodes, cycles } = trace;
@@ -136,10 +163,7 @@ export function summarize(trace: Trace, from: number, to: number, out: WindowSum
   out.from = a;
   out.to = b;
 
-  const typeCounts = new Uint32Array(nodes * PORTS * 4);
-  const xferCounts = new Uint32Array(nodes * PORTS);
-  const busy = new Uint32Array(nodes);
-  const results = new Uint32Array(nodes);
+  const { typeCounts, xferCounts, busy, results } = scratchFor(nodes);
   let dma = 0;
   let writeback = 0;
   let sequencer = 0;

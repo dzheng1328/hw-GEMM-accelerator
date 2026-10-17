@@ -32,14 +32,19 @@ RTL_FILES = [
 EXCLUDED_RTL = ["rtl/noc_pair.v"]
 
 HASHED = RTL_FILES + [
+    "tb/lint_waivers.vlt",
     "compiler/build.py", "compiler/lower.py", "compiler/schedule.py", "compiler/isa.py", "compiler/emit.py",
     "model/cifar_reference.py", "model/cifar_spec.py", "model/fixedpoint.py", "model/cifar_quantized.npz",
     "web/sim-build/sources.py", "web/sim-build/data.py", "web/sim-build/harness.py", "web/sim-build/build_sim.py",
 ]
 
 
+def sha256_file(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
 def sha256(rel):
-    return hashlib.sha256((REPO / rel).read_bytes()).hexdigest()
+    return sha256_file(REPO / rel)
 
 
 def source_hashes():

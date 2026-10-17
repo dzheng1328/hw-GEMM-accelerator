@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,
+  // the chip runs are CPU-heavy (4x4 takes seconds), so a small CI runner gets two workers
+  workers: process.env.CI ? 2 : undefined,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",
   webServer: {

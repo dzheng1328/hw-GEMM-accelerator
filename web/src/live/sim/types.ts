@@ -24,6 +24,10 @@ export interface Manifest {
   generated: { regenerate: string; note: string };
   sources: Record<string, string>;
   excludedRtl: string[];
+  /** sha256 of every committed binary the page loads, so a hand edit or a partial commit is caught */
+  artifacts: Record<string, string>;
+  /** the tools that built the artifacts (informational: CI cannot run them) */
+  tools: { verilator: string; emscripten: string };
   input: { bytes: number; words: number };
   output: { base: number; stride: number; logits: number; classes: number };
   classNames: string[];
