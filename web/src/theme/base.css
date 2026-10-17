@@ -13,7 +13,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-text);
-  line-height: 1.5;
+  font-size: var(--text-md);
+  line-height: 1.55;
 }
 
 .deep-toggle {
@@ -32,12 +33,6 @@ body {
   color: var(--accent);
 }
 
-.deep-toggle:focus-visible,
-.drawer summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .hero {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
@@ -53,7 +48,6 @@ body {
   container-type: inline-size;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
   padding: var(--space-4);
   min-width: 0;
 }
@@ -90,12 +84,12 @@ body {
   margin-top: var(--space-3);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
 }
 
 .drawer summary {
   padding: 0.6rem var(--space-3);
   color: var(--accent);
+  font-weight: 600;
   cursor: pointer;
 }
 

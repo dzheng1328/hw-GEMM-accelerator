@@ -9,6 +9,7 @@ import "./theme/replay.css";
 import "./theme/performance.css";
 import "./theme/live.css";
 import "./theme/architecture.css";
+import "./theme/panels.css";
 import App from "./App";
 
 const root = document.getElementById("root");

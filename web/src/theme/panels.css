@@ -1,0 +1,63 @@
+/* One panel look: the surface, the hairline border and this radius. Loaded last so it wins over the section sheets. */
+.tile,
+.drawer,
+.chart-figure,
+.mesh-stats > div,
+.stat-grid > div,
+.arch-detail,
+.rung-card,
+.lane {
+  border-radius: var(--radius-panel);
+}
+
+/* the native disclosure marker is the chevron; padding keeps the tap target above 44 px */
+.drawer summary {
+  padding-block: 0.8rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+html {
+  scroll-padding-top: var(--bar-h);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  a,
+  button,
+  summary {
+    transition:
+      color 0.15s,
+      background-color 0.15s,
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  .topbar-nav a[aria-current="location"] {
+    text-decoration: underline;
+    text-underline-offset: 6px;
+  }
+}
