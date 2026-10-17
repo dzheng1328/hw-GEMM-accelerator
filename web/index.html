@@ -25,6 +25,17 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script>
+      (function () {
+        var theme = "dark";
+        try {
+          if (localStorage.getItem("hwgemm-theme") === "light") theme = "light";
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", theme);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", theme === "light" ? "#f7f9fb" : "#080b10");
+      })();
+    </script>
     <title>hw-GEMM accelerator</title>
   </head>
   <body>
