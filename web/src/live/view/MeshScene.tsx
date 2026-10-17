@@ -1,9 +1,10 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, type MutableRefObject } from "react";
 import { Color, type MeshStandardMaterial } from "three";
 import type { CycleWindow } from "../playback/usePlayback";
 import { NO_TYPE, newSummary, summarize, type Trace } from "../trace/trace";
-import { FLIT_LEGEND, TILE, cameraFor, controllerCenter, glow, linkGeometry, tileCenter } from "./sceneLayout";
+import { usePalette } from "./palette";
+import { TILE, cameraFor, controllerCenter, glow, linkGeometry, tileCenter } from "./sceneLayout";
 
 export interface MeshSceneProps {
   w: number;
@@ -19,37 +20,6 @@ export interface MeshSceneProps {
 
 /** The board is centred half a pitch left of the origin, because the controller block sits beside node 0. */
 const BOARD_X = -0.85;
-
-interface Palette {
-  board: string;
-  tile: string;
-  accent: string;
-  controller: string;
-  flit: string[];
-}
-
-function readPalette(): Palette {
-  const style = getComputedStyle(document.documentElement);
-  const get = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
-  return {
-    board: get("--surface", "#121922"),
-    tile: get("--border", "#2a3644"),
-    accent: get("--accent", "#4cc3ff"),
-    controller: get("--kind-control", "#ff9f43"),
-    flit: FLIT_LEGEND.map((l) => get(l.token, "#4cc3ff")),
-  };
-}
-
-function usePalette(): Palette {
-  const [palette, setPalette] = useState(readPalette);
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-color-scheme: light)");
-    const update = () => setPalette(readPalette());
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return palette;
-}
 
 /** Drag sideways to swing the camera a little around the board; vertical swipes still scroll the page. */
 function Rig({ distance, height }: { distance: number; height: number }) {
