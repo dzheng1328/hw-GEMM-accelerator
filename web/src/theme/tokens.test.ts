@@ -84,6 +84,12 @@ describe("theme tokens", () => {
     }
   });
 
+  it("widens the gutter with the window, in one place the bar and the bands share", () => {
+    expect(blocks.dark).toContain("--gutter: 16px");
+    expect(css).toMatch(/@media \(min-width: 720px\)\s*\{\s*:root\s*\{\s*--gutter: 24px;/);
+    expect(css).toMatch(/@media \(min-width: 1100px\)\s*\{\s*:root\s*\{\s*--gutter: 32px;/);
+  });
+
   it("declares the layout and type tokens once, in the :root block", () => {
     for (const token of ["--content-max: 1200px", "--bar-h: 56px", "--radius-panel: 12px", "--text-hero:"]) {
       expect(blocks.dark, token).toContain(token);

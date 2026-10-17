@@ -19,16 +19,6 @@
   .band {
     padding: 96px 0;
   }
-
-  .band-inner {
-    padding: 0 24px;
-  }
-}
-
-@media (min-width: 1100px) {
-  .band-inner {
-    padding: 0 32px;
-  }
 }
 
 .kicker {

@@ -389,3 +389,23 @@
   text-align: left;
   border-bottom: 1px solid var(--border);
 }
+
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+.live-upload input::file-selector-button {
+  margin-right: var(--space-2);
+  padding: 0.45rem 0.9rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.live-upload input::file-selector-button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

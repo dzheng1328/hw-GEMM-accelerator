@@ -193,3 +193,30 @@ test("the skip link is the first tab stop and jumps to main", async ({ page }) =
   await page.keyboard.press("Enter");
   expect(new URL(page.url()).hash).toBe("#main");
 });
+
+test("the bar's content lines up with the section content at its left and right edges", async ({ page }) => {
+  await page.goto("/");
+  const edges = await page.evaluate(() => {
+    const content = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return { left: rect.left + parseFloat(style.paddingLeft), right: rect.right - parseFloat(style.paddingRight) };
+    };
+    return { bar: content(document.querySelector(".topbar-row")!), section: content(document.querySelector("#replay .band-inner")!) };
+  });
+  expect(Math.abs(edges.bar.left - edges.section.left), "left edge").toBeLessThanOrEqual(1);
+  expect(Math.abs(edges.bar.right - edges.section.right), "right edge").toBeLessThanOrEqual(1);
+});
+
+test("the upload button and the radio buttons use the page's own look, not the browser default", async ({ page }) => {
+  await page.goto("/");
+  const look = await page.evaluate(() => {
+    const file = document.querySelector<HTMLInputElement>('#live input[type="file"]')!;
+    const radio = document.querySelector<HTMLInputElement>('#live input[type="radio"]')!;
+    const button = getComputedStyle(file, "::file-selector-button");
+    return { background: button.backgroundColor, radius: button.borderTopLeftRadius, accent: getComputedStyle(radio).accentColor };
+  });
+  expect(look.background).toBe("rgb(17, 25, 34)");
+  expect(look.radius).toBe("8px");
+  expect(look.accent).toBe("rgb(76, 195, 255)");
+});
