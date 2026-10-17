@@ -25,6 +25,15 @@
  * the page: scroll-padding would also count the bar's own controls as hidden, and focusing one (Tab) would scroll the
  * page up by hundreds of pixels.
  */
+/* the skip link focuses main: land below the bar, and draw no box around the whole page */
+main {
+  scroll-margin-top: var(--bar-h);
+}
+
+main:focus {
+  outline: none;
+}
+
 main :is(a, button, input, select, textarea, summary, [tabindex]) {
   scroll-margin-top: calc(var(--bar-h) + 8px);
 }

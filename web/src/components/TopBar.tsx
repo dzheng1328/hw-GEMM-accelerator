@@ -46,7 +46,11 @@ export function TopBar({ active, deep, onDeepChange, theme, onThemeToggle }: Top
     const link = strip.querySelector<HTMLElement>(`[data-section="${active}"]`);
     if (!link) return;
     strip.scrollTo?.({
-      left: centerOffset(link.offsetLeft, link.offsetWidth, strip.clientWidth),
+      left: centerOffset(
+        link.getBoundingClientRect().left - strip.getBoundingClientRect().left + strip.scrollLeft,
+        link.offsetWidth,
+        strip.clientWidth,
+      ),
       behavior: reduced ? "auto" : "smooth",
     });
   }, [active, reduced]);

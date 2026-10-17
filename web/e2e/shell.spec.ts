@@ -132,6 +132,14 @@ test("on a phone the active link scrolls into view in the strip", async ({ page 
       return box.x >= strip.x - 1 && box.x + box.width <= strip.x + strip.width + 1;
     })
     .toBe(true);
+  await link(page, "replay").click();
+  await expect(link(page, "replay")).toHaveAttribute("aria-current", "location");
+  await expect
+    .poll(async () => {
+      const box = (await link(page, "replay").boundingBox())!;
+      return box.x >= strip.x - 1 && box.x + box.width <= strip.x + strip.width + 1;
+    })
+    .toBe(true);
 });
 
 test("the bar is about 88 px on a phone and 56 px on desktop, and its controls are 44 px tall on a phone", async ({ page }, info) => {
@@ -186,12 +194,16 @@ test("reduced motion turns smooth scrolling and transitions off", async ({ page 
   expect(await page.evaluate(() => getComputedStyle(document.querySelector(".topbar-nav a")!).transitionDuration)).toBe("0s");
 });
 
-test("the skip link is the first tab stop and jumps to main", async ({ page }) => {
+test("the skip link is the first tab stop, jumps to main, and leaves the heading clear of the bar", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   await page.keyboard.press("Enter");
   expect(new URL(page.url()).hash).toBe("#main");
+  const barBox = (await bar(page).boundingBox())!;
+  const h1 = (await page.locator("h1").boundingBox())!;
+  expect(h1.y, "the h1 is not hidden under the bar").toBeGreaterThanOrEqual(barBox.y + barBox.height - 1);
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector("main")!).outlineStyle), "no focus box around the whole page").toBe("none");
 });
 
 test("the bar's content lines up with the section content at its left and right edges", async ({ page }) => {
@@ -219,4 +231,95 @@ test("the upload button and the radio buttons use the page's own look, not the b
   expect(look.background).toBe("rgb(17, 25, 34)");
   expect(look.radius).toBe("8px");
   expect(look.accent).toBe("rgb(76, 195, 255)");
+});
+
+test("a keyboard focus ring on a section link is drawn inside the link, where the scrolling strip cannot clip it", async ({ page }) => {
+  await page.goto("/");
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Tab");
+  await expect(link(page, "replay")).toBeFocused();
+  const ring = await page.evaluate(() => {
+    const style = getComputedStyle(document.activeElement!);
+    return { style: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset };
+  });
+  expect(ring.style).toBe("solid");
+  expect(ring.width).toBe("2px");
+  expect(parseFloat(ring.offset), "the ring sits inside the link").toBeLessThanOrEqual(0);
+});
+
+test("at tablet width the bar uses its two rows, the strip scrolls to the active link, and nothing overflows", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await page.goto("/");
+  const height = (await bar(page).boundingBox())!.height;
+  expect(height).toBeGreaterThanOrEqual(86);
+  expect(height).toBeLessThanOrEqual(96);
+  expect(await noHorizontalScroll(page)).toBe(true);
+  await link(page, "built").click();
+  await expect(link(page, "built")).toHaveAttribute("aria-current", "location");
+  const strip = (await page.locator("header.topbar nav").boundingBox())!;
+  await expect
+    .poll(async () => {
+      const box = (await link(page, "built").boundingBox())!;
+      return box.x >= strip.x - 1 && box.x + box.width <= strip.x + strip.width + 1;
+    })
+    .toBe(true);
+  await link(page, "replay").click();
+  await expect(link(page, "replay")).toHaveAttribute("aria-current", "location");
+  await expect
+    .poll(async () => {
+      const box = (await link(page, "replay").boundingBox())!;
+      return box.x >= strip.x - 1 && box.x + box.width <= strip.x + strip.width + 1;
+    })
+    .toBe(true);
+});
+
+test("without a reduced-motion preference the page scrolls smoothly and its links fade (the counterpart of the reduced-motion test)", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe("smooth");
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector(".topbar-nav a")!).transitionDuration)).toContain("0.15s");
+});
+
+test("in forced-colors mode the active link keeps its underline and loses the glow", async ({ page }) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.goto("/");
+  await page.evaluate(() => {
+    const top = document.getElementById("performance")!.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo(0, top + 200);
+  });
+  await expect(link(page, "performance")).toHaveAttribute("aria-current", "location");
+  const style = await link(page, "performance").evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { decoration: s.textDecorationLine, textShadow: s.textShadow, boxShadow: s.boxShadow };
+  });
+  expect(style.decoration).toBe("underline");
+  expect(style.textShadow).toBe("none");
+  expect(style.boxShadow).toBe("none");
+});
+
+test("a link to a section opens on that section, and keeps it while content above it arrives", async ({ page }) => {
+  // hold the recorded run back: the replay is only fetched when it is near the view, so it arrives late for #live
+  await page.route("**/assets/lm-*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await route.continue();
+  });
+  const cases = [
+    { url: "/#performance", id: "performance", dataArrives: false },
+    { url: "/#live", id: "live", dataArrives: true },
+    { url: "/?deep=1#live", id: "live", dataArrives: true },
+    { url: "/?deep=1#built", id: "built", dataArrives: false },
+  ];
+  for (const { url, id, dataArrives } of cases) {
+    // a fresh load each time: going from one #hash to another on the same page is only a native jump, with no new mount
+    await page.goto("about:blank");
+    await page.goto(url);
+    const headingTop = () => page.locator(`#${id} h2`).evaluate((el) => el.getBoundingClientRect().top);
+    const barBox = (await bar(page).boundingBox())!;
+    await expect.poll(headingTop, { message: `${url} lands on the section` }).toBeLessThan(barBox.height + 260);
+    expect(await headingTop(), `${url} is not under the bar`).toBeGreaterThanOrEqual(barBox.height - 1);
+    const landed = await headingTop();
+    if (dataArrives) await page.waitForFunction(() => document.querySelectorAll("#replay .lane").length > 0);
+    await page.waitForTimeout(500);
+    expect(Math.abs((await headingTop()) - landed), `${url} stays put`).toBeLessThan(3);
+    await expect(link(page, id)).toHaveAttribute("aria-current", "location");
+  }
 });

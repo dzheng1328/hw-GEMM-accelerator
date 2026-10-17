@@ -115,3 +115,35 @@ describe("App shell", () => {
     }
   });
 });
+
+describe("App opens on a section named in the URL", () => {
+  const scrollIntoView = vi.fn();
+  beforeEach(() => {
+    scrollIntoView.mockClear();
+    Element.prototype.scrollIntoView = scrollIntoView as unknown as typeof Element.prototype.scrollIntoView;
+  });
+
+  const scrolledIds = () => scrollIntoView.mock.contexts.map((el) => (el as HTMLElement).id);
+
+  it("scrolls the section into view at once when the URL has its hash", () => {
+    window.history.replaceState(null, "", "/#performance");
+    render(<App />);
+    expect(scrolledIds()).toEqual(["performance"]);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "instant" });
+  });
+
+  it("does the same in Deep mode", () => {
+    window.history.replaceState(null, "", "/?deep=1#built");
+    render(<App />);
+    expect(scrolledIds()).toEqual(["built"]);
+  });
+
+  it("does nothing for no hash, an unknown hash, or the hash of something that is not a section", () => {
+    for (const url of ["/", "/#nope", "/#main"]) {
+      window.history.replaceState(null, "", url);
+      render(<App />);
+      cleanup();
+    }
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+});

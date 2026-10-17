@@ -8,6 +8,7 @@ import { SiteFooter } from "./components/SiteFooter";
 import { TopBar } from "./components/TopBar";
 import { useActiveSection } from "./components/useActiveSection";
 import { useDeepMode } from "./components/useDeepMode";
+import { useInitialSection } from "./components/useInitialSection";
 import { useTheme } from "./components/useTheme";
 import { SECTION_IDS } from "./content/sections";
 import { LiveSection } from "./live/LiveSection";
@@ -20,6 +21,7 @@ export default function App() {
   const [deep, setDeep] = useDeepMode();
   const [theme, toggleTheme] = useTheme();
   const active = useActiveSection(SECTION_IDS);
+  useInitialSection();
   // Deep mode opens every drawer, which can grow the page above the visitor: keep the section they are reading in place
   const changeDeep = useCallback(
     (next: boolean) => {
