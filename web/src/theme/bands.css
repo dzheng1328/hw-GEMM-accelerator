@@ -1,0 +1,56 @@
+.band {
+  padding: 56px 0;
+  background: var(--bg);
+  /* the bar height itself comes from html { scroll-padding-top } in panels.css, so it is counted once */
+  scroll-margin-top: 16px;
+}
+
+.band-alt {
+  background: var(--band);
+  border-block: 1px solid var(--border);
+}
+
+.band-inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+@media (min-width: 720px) {
+  .band {
+    padding: 96px 0;
+  }
+
+  .band-inner {
+    padding: 0 24px;
+  }
+}
+
+@media (min-width: 1100px) {
+  .band-inner {
+    padding: 0 32px;
+  }
+}
+
+.kicker {
+  margin: 0 0 var(--space-2);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.band h2 {
+  margin: 0;
+  font-size: var(--text-2xl);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.band .headline {
+  max-width: 70ch;
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--muted);
+  font-size: var(--text-lg);
+}
