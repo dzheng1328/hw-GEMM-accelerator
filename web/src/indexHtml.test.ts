@@ -35,8 +35,9 @@ describe("index.html head", () => {
     expect(existsSync(join(root, "public", "og.png"))).toBe(true);
   });
 
-  it("gives the browser UI a theme colour for each scheme", () => {
-    expect(html).toMatch(/<meta name="theme-color" content="#0b0f14" media="\(prefers-color-scheme: dark\)"/);
-    expect(html).toMatch(/<meta name="theme-color" content="#f7f9fb" media="\(prefers-color-scheme: light\)"/);
+  it("has one theme colour (the inline theme script and the toggle update it) and no color-scheme meta", () => {
+    expect(html).toMatch(/<meta name="theme-color" content="#080b10"\s*\/>/);
+    expect(html.match(/<meta name="theme-color"/g)).toHaveLength(1);
+    expect(html).not.toContain('name="color-scheme"');
   });
 });

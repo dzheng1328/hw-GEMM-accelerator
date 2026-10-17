@@ -59,14 +59,25 @@ test("no horizontal scroll at 1280, 390 and 360 px", async ({ page }) => {
   }
 });
 
-test("the light scheme repaints the page", async ({ page }) => {
+test("the theme toggle repaints the page and the choice survives a reload", async ({ page }) => {
   await page.goto("/");
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
-  await page.emulateMedia({ colorScheme: "dark" });
-  expect(await background()).toBe("rgb(11, 15, 20)");
-  await page.emulateMedia({ colorScheme: "light" });
+  expect(await background()).toBe("rgb(8, 11, 16)");
+  await page.getByRole("button", { name: "Switch to light theme" }).click();
   expect(await background()).toBe("rgb(247, 249, 251)");
+  await page.reload();
+  expect(await background()).toBe("rgb(247, 249, 251)");
+  await expect(page.getByRole("button", { name: "Switch to dark theme" })).toBeVisible();
+  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await page.reload();
+  expect(await background()).toBe("rgb(8, 11, 16)");
+});
+
+test("the page opens dark even when the operating system prefers light", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/");
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(8, 11, 16)");
 });
 
 test("the footer sits at the very end of the page and the icons and preview image are served", async ({ page, request }) => {
@@ -75,7 +86,7 @@ test("the footer sits at the very end of the page and the icons and preview imag
   await footer.scrollIntoViewIfNeeded();
   await expect(footer.getByRole("link", { name: "Source on GitHub" })).toBeVisible();
   await expect(footer.getByRole("link", { name: "MIT license" })).toBeVisible();
-  await expect(page.locator("header").getByRole("link", { name: "Source on GitHub" })).toBeVisible();
+  await expect(page.locator("header.topbar").getByRole("link", { name: "GitHub", exact: true })).toBeVisible();
   const gap = await page.evaluate(() => document.documentElement.scrollHeight - document.querySelector("footer.site-footer")!.getBoundingClientRect().bottom - window.scrollY);
   expect(gap, "the footer is the last thing on the page").toBeLessThan(80);
 

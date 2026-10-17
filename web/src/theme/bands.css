@@ -1,0 +1,109 @@
+.band {
+  padding: 56px 0;
+  background: var(--bg);
+  scroll-margin-top: calc(var(--bar-h) + 16px);
+}
+
+.band-alt {
+  background: var(--band);
+  border-block: 1px solid var(--border);
+}
+
+.band-inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+@media (min-width: 720px) {
+  .band {
+    padding: 96px 0;
+  }
+}
+
+.kicker {
+  margin: 0 0 var(--space-2);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.band h2 {
+  margin: 0;
+  font-size: var(--text-2xl);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.band .headline {
+  max-width: 70ch;
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--muted);
+  font-size: 1.125rem;
+}
+
+.hero-band {
+  position: relative;
+  padding: 56px 0 48px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.hero-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: linear-gradient(#000 35%, transparent);
+  mask-image: linear-gradient(#000 35%, transparent);
+  pointer-events: none;
+}
+
+.hero-band .band-inner {
+  position: relative;
+}
+
+.hero-band h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, var(--text-hero));
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.hero-band .tagline {
+  max-width: 60ch;
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font-size: var(--text-lg);
+  text-wrap: balance;
+}
+
+.hero-display {
+  margin-top: var(--space-5);
+}
+
+.hero-display .hero {
+  margin: 0;
+}
+
+.hero-display .tile-value {
+  font-size: min(3rem, 15cqi);
+  text-shadow: 0 0 24px var(--glow);
+}
+
+@media (min-width: 720px) {
+  .hero-band {
+    padding: 88px 0 72px;
+  }
+}
+
+.site-footer {
+  padding: var(--space-5) 0 var(--space-6);
+  background: var(--band);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}

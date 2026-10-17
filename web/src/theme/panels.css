@@ -1,0 +1,77 @@
+/* One panel look: the surface, the hairline border and this radius. Loaded last so it wins over the section sheets. */
+.tile,
+.drawer,
+.chart-figure,
+.mesh-stats > div,
+.stat-grid > div,
+.arch-detail,
+.rung-card,
+.lane {
+  border-radius: var(--radius-panel);
+}
+
+/* the native disclosure marker is the chevron; padding keeps the tap target above 44 px */
+.drawer summary {
+  padding-block: 0.8rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/*
+ * Keep a focused control clear of the sticky bar. This is a margin on the controls inside main, never scroll-padding on
+ * the page: scroll-padding would also count the bar's own controls as hidden, and focusing one (Tab) would scroll the
+ * page up by hundreds of pixels.
+ */
+/* the skip link focuses main: land below the bar, and draw no box around the whole page */
+main {
+  scroll-margin-top: var(--bar-h);
+}
+
+main:focus {
+  outline: none;
+}
+
+main :is(a, button, input, select, textarea, summary, [tabindex]) {
+  scroll-margin-top: calc(var(--bar-h) + 8px);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  a,
+  button,
+  summary {
+    transition:
+      color 0.15s,
+      background-color 0.15s,
+      border-color 0.15s,
+      box-shadow 0.15s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  * {
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  .topbar-nav a[aria-current="location"] {
+    text-decoration: underline;
+    text-underline-offset: 6px;
+  }
+}

@@ -1,10 +1,16 @@
+import { useCallback } from "react";
+import { flushSync } from "react-dom";
 import { ArchitectureSection } from "./architecture/ArchitectureSection";
 import { DeepContext } from "./components/deepContext";
-import { DeepToggle } from "./components/DeepToggle";
-import { HeroStrip } from "./components/HeroStrip";
-import { useDeepMode } from "./components/useDeepMode";
+import { HeroBand } from "./components/HeroBand";
+import { holdPosition } from "./components/holdPosition";
 import { SiteFooter } from "./components/SiteFooter";
-import { REPO_URL } from "./content/timeline";
+import { TopBar } from "./components/TopBar";
+import { useActiveSection } from "./components/useActiveSection";
+import { useDeepMode } from "./components/useDeepMode";
+import { useInitialSection } from "./components/useInitialSection";
+import { useTheme } from "./components/useTheme";
+import { SECTION_IDS } from "./content/sections";
 import { LiveSection } from "./live/LiveSection";
 import { PerformanceSection } from "./performance/PerformanceSection";
 import { ReplaySection } from "./replay/ReplaySection";
@@ -13,36 +19,33 @@ import { VerificationSection } from "./verification/VerificationSection";
 
 export default function App() {
   const [deep, setDeep] = useDeepMode();
+  const [theme, toggleTheme] = useTheme();
+  const active = useActiveSection(SECTION_IDS);
+  useInitialSection();
+  // Deep mode opens every drawer, which can grow the page above the visitor: keep the section they are reading in place
+  const changeDeep = useCallback(
+    (next: boolean) => {
+      holdPosition(active ? document.getElementById(active) : null, () => flushSync(() => setDeep(next)));
+    },
+    [active, setDeep],
+  );
 
   return (
     <DeepContext.Provider value={deep}>
-      <div className="page">
-        <header className="site-header">
-          <div>
-            <h1>hw-GEMM accelerator</h1>
-            <p className="tagline">
-              A systolic GEMM accelerator with a command processor, a vector unit and a tiny language
-              model, simulated end to end in RTL.
-            </p>
-          </div>
-          <nav className="site-actions" aria-label="Site">
-            <a className="source-link" href={REPO_URL} target="_blank" rel="noopener noreferrer">
-              Source on GitHub
-            </a>
-            <DeepToggle deep={deep} onChange={setDeep} />
-          </nav>
-        </header>
-        <main>
-          <HeroStrip />
-          <ReplaySection />
-          <LiveSection />
-          <PerformanceSection />
-          <ArchitectureSection />
-          <VerificationSection />
-          <BuiltSection />
-        </main>
-        <SiteFooter />
-      </div>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
+      <TopBar active={active} deep={deep} onDeepChange={changeDeep} theme={theme} onThemeToggle={toggleTheme} />
+      <main id="main" tabIndex={-1}>
+        <HeroBand />
+        <ReplaySection />
+        <LiveSection />
+        <PerformanceSection />
+        <ArchitectureSection />
+        <VerificationSection />
+        <BuiltSection />
+      </main>
+      <SiteFooter />
     </DeepContext.Provider>
   );
 }

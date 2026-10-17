@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { themeBlocks } from "./themeBlocks.testlib";
 
 const css = readFileSync(join(import.meta.dirname, "tokens.css"), "utf8");
-const MARKER = "@media (prefers-color-scheme: light)";
 
 function colors(block: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -11,8 +11,8 @@ function colors(block: string): Record<string, string> {
   return out;
 }
 
-const [darkPart = "", lightPart = ""] = css.split(MARKER);
-const themes = { dark: colors(darkPart), light: colors(lightPart) };
+const blocks = themeBlocks(css);
+const themes = { dark: colors(blocks.dark), light: colors(blocks.light) };
 
 function luminance(hex: string): number {
   const channel = (i: number) => {
@@ -28,11 +28,13 @@ function contrast(a: string, b: string): number {
 }
 
 const TEXT_ON_SURFACES: [string, string][] = [
-  ["text", "bg"], ["text", "surface"],
-  ["muted", "bg"], ["muted", "surface"],
-  ["accent", "bg"], ["accent", "surface"],
+  ["text", "bg"], ["text", "band"], ["text", "surface"],
+  ["muted", "bg"], ["muted", "band"], ["muted", "surface"],
+  ["accent", "bg"], ["accent", "band"], ["accent", "surface"],
   ["cat-weights", "surface"], ["cat-attention", "surface"],
   ["cat-vpu", "surface"], ["cat-other", "surface"],
+  ["cat-weights", "band"], ["cat-attention", "band"],
+  ["cat-vpu", "band"], ["cat-other", "band"],
   ["port-operand", "surface"], ["port-go", "surface"], ["port-stall", "surface"],
   ["port-wait", "surface"], ["port-other", "surface"],
   ["kind-control", "surface"], ["kind-movement", "surface"], ["kind-compute", "surface"], ["kind-memory", "surface"],
@@ -55,6 +57,45 @@ describe("theme tokens", () => {
 
   it("make the two themes actually different", () => {
     expect(themes.dark.bg).not.toBe(themes.light.bg);
+  });
+
+  it("has no operating-system color-scheme media query left (the page never follows the OS)", () => {
+    expect(css).not.toContain("prefers-color-scheme");
+  });
+
+  it("opens dark: the :root block declares color-scheme dark and the light block declares light", () => {
+    expect(blocks.dark).toContain("color-scheme: dark");
+    expect(blocks.light).toContain("color-scheme: light");
+  });
+
+  for (const theme of ["dark", "light"] as const) {
+    for (const surface of ["bg", "band", "surface"]) {
+      it(`${theme}: the focus ring reaches 3:1 against ${surface}`, () => {
+        const t = themes[theme];
+        expect(contrast(t.ring!, t[surface]!)).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+
+  it("defines the glow and the backdrop grid in both themes", () => {
+    for (const block of [blocks.dark, blocks.light]) {
+      expect(block).toMatch(/--glow:\s*rgba\(/);
+      expect(block).toMatch(/--grid:\s*rgba\(/);
+    }
+  });
+
+  it("widens the gutter with the window, in one place the bar and the bands share", () => {
+    expect(blocks.dark).toContain("--gutter: 16px");
+    expect(css).toMatch(/@media \(min-width: 720px\)\s*\{\s*:root\s*\{\s*--gutter: 24px;/);
+    expect(css).toMatch(/@media \(min-width: 1100px\)\s*\{\s*:root\s*\{\s*--gutter: 32px;/);
+  });
+
+  it("declares the layout and type tokens once, in the :root block", () => {
+    for (const token of ["--content-max: 1200px", "--bar-h: 56px", "--radius-panel: 12px", "--text-hero:"]) {
+      expect(blocks.dark, token).toContain(token);
+    }
+    expect(blocks.dark).toContain('"IBM Plex Sans"');
+    expect(blocks.dark).toContain('"IBM Plex Mono"');
   });
 
   for (const theme of ["dark", "light"] as const) {

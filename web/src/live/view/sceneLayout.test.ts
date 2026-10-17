@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { meshLinks } from "../trace/links";
 import { FLIT_GO, FLIT_OPERAND, FLIT_RESULT, FLIT_RESULT8 } from "../trace/trace";
 import { FLIT_LEGEND, PITCH, TILE, cameraFor, controllerCenter, glow, linkGeometry, tileCenter } from "./sceneLayout";
+import { themeBlocks } from "../../theme/themeBlocks.testlib";
 
 describe("tileCenter", () => {
   it("centres the mesh on the origin, with north (y + 1) going away from the camera", () => {
@@ -78,7 +79,7 @@ describe("FLIT_LEGEND", () => {
     expect(FLIT_LEGEND.map((l) => l.type)).toEqual([FLIT_OPERAND, FLIT_GO, FLIT_RESULT, FLIT_RESULT8]);
   });
   it("uses only colour tokens that exist in both themes", () => {
-    const [dark = "", light = ""] = css.split("@media (prefers-color-scheme: light)");
+    const { dark, light } = themeBlocks(css);
     for (const { token } of FLIT_LEGEND) {
       expect(dark, token).toContain(`${token}:`);
       expect(light, token).toContain(`${token}:`);
