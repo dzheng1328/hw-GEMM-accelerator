@@ -59,13 +59,12 @@ test("no horizontal scroll at 1280, 390 and 360 px", async ({ page }) => {
   }
 });
 
-test("the light scheme repaints the page", async ({ page }) => {
+test("the dark theme is the default and data-theme=light repaints the page", async ({ page }) => {
   await page.goto("/");
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
-  await page.emulateMedia({ colorScheme: "dark" });
-  expect(await background()).toBe("rgb(11, 15, 20)");
-  await page.emulateMedia({ colorScheme: "light" });
+  expect(await background()).toBe("rgb(8, 11, 16)");
+  await page.evaluate(() => (document.documentElement.dataset.theme = "light"));
   expect(await background()).toBe("rgb(247, 249, 251)");
 });
 

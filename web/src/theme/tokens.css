@@ -1,11 +1,15 @@
 :root {
   color-scheme: dark;
-  --bg: #0b0f14;
-  --surface: #121922;
+  --bg: #080b10;
+  --band: #0d131a;
+  --surface: #111922;
   --text: #e6edf3;
   --muted: #9fb0c0;
-  --border: #2a3644;
+  --border: #243040;
   --accent: #4cc3ff;
+  --ring: #7fd5ff;
+  --glow: rgba(76, 195, 255, 0.35);
+  --grid: rgba(76, 195, 255, 0.07);
   --cat-weights: #4cc3ff;
   --cat-attention: #ff9f43;
   --cat-vpu: #b78cff;
@@ -20,8 +24,14 @@
   --kind-compute: #b78cff;
   --kind-memory: #3ddc97;
 
-  --font-text: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-text: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-2xl: 2rem;
+  --text-hero: 3.5rem;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -29,30 +39,34 @@
   --space-5: 1.5rem;
   --space-6: 2.5rem;
   --gutter: 16px;
-  --content-max: 960px;
+  --content-max: 1200px;
+  --bar-h: 56px;
+  --radius-panel: 12px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --bg: #f7f9fb;
-    --surface: #ffffff;
-    --text: #14202b;
-    --muted: #4a5b6b;
-    --border: #c5d0db;
-    --accent: #0a6aa1;
-    --cat-weights: #0a6aa1;
-    --cat-attention: #a84a00;
-    --cat-vpu: #6d3fc4;
-    --cat-other: #566371;
-    --port-operand: #0a6aa1;
-    --port-go: #0b7a4f;
-    --port-stall: #c0392b;
-    --port-wait: #6d3fc4;
-    --port-other: #566371;
-    --kind-control: #a84a00;
-    --kind-movement: #0a6aa1;
-    --kind-compute: #6d3fc4;
-    --kind-memory: #0b7a4f;
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f9fb;
+  --band: #edf2f7;
+  --surface: #ffffff;
+  --text: #14202b;
+  --muted: #4a5b6b;
+  --border: #c5d0db;
+  --accent: #0a6aa1;
+  --ring: #0a6aa1;
+  --glow: rgba(10, 106, 161, 0.22);
+  --grid: rgba(10, 106, 161, 0.08);
+  --cat-weights: #0a6aa1;
+  --cat-attention: #a84a00;
+  --cat-vpu: #6d3fc4;
+  --cat-other: #566371;
+  --port-operand: #0a6aa1;
+  --port-go: #0b7a4f;
+  --port-stall: #c0392b;
+  --port-wait: #6d3fc4;
+  --port-other: #566371;
+  --kind-control: #a84a00;
+  --kind-movement: #0a6aa1;
+  --kind-compute: #6d3fc4;
+  --kind-memory: #0b7a4f;
 }
