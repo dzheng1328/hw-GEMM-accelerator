@@ -49,6 +49,35 @@ body {
   font-size: 0.9rem;
 }
 
+.site-actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.source-link {
+  color: var(--accent);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.site-footer {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.site-footer p {
+  margin: 0 0 var(--space-2);
+}
+
+.site-footer a {
+  color: var(--accent);
+}
+
 .deep-toggle {
   flex: none;
   font: inherit;

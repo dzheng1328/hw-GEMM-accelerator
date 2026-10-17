@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "build:data": "tsx scripts/build-data.ts",
+    "build:og": "tsx scripts/build-og.ts",
     "test": "vitest run",
     "lint": "eslint .",
     "e2e": "playwright test"

@@ -54,3 +54,27 @@ describe("App", () => {
     expect(container.querySelectorAll("h1")).toHaveLength(1);
   });
 });
+
+describe("App links out", () => {
+  const hrefs = (container: HTMLElement, selector: string) =>
+    [...container.querySelectorAll<HTMLAnchorElement>(`${selector} a`)].map((a) => a.getAttribute("href"));
+
+  it("links to the source in the header", () => {
+    const { container } = render(<App />);
+    expect(hrefs(container, "header")).toContain("https://github.com/dzheng1328/hw-GEMM-accelerator");
+  });
+
+  it("ends with a footer linking the source, the license and the author, all opening safely", () => {
+    const { container } = render(<App />);
+    const footer = container.querySelector("footer.site-footer");
+    expect(footer, "footer").not.toBeNull();
+    expect(footer?.previousElementSibling?.tagName).toBe("MAIN");
+    expect(hrefs(container, "footer")).toEqual([
+      "https://github.com/dzheng1328/hw-GEMM-accelerator",
+      "https://github.com/dzheng1328/hw-GEMM-accelerator/blob/main/LICENSE",
+      "https://github.com/dzheng1328",
+    ]);
+    for (const a of footer!.querySelectorAll("a")) expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(footer?.textContent).toContain("MIT");
+  });
+});
