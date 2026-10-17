@@ -172,3 +172,7 @@ demo/         static HTML demo of hardware results
 sim/          simulation build artifacts (gitignored)
 docs/         learnings log, design decisions
 ```
+
+## License
+
+MIT, see [`LICENSE`](LICENSE).
