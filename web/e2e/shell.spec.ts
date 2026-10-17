@@ -85,13 +85,15 @@ test("focusing a bar control mid-page does not move the page (a keyboard user ca
   await page.evaluate(() => window.scrollTo(0, 6000));
   const scrollY = () => page.evaluate(() => Math.round(window.scrollY));
   const before = await scrollY();
+  // the bug this guards against moved the page by 400+ px; allow a couple of pixels for sub-pixel layout differences between machines
+  const drift = async () => Math.abs((await scrollY()) - before);
   for (const name of ["Deep mode", /Switch to/]) {
     await page.getByRole("button", { name }).focus();
-    expect(await scrollY(), `focusing ${name}`).toBe(before);
+    expect(await drift(), `focusing ${name}`).toBeLessThanOrEqual(2);
   }
   await link(page, "built").focus();
   await page.getByRole("link", { name: "GitHub", exact: true }).focus();
-  expect(await scrollY()).toBe(before);
+  expect(await drift()).toBeLessThanOrEqual(2);
 });
 
 test("focusing a control just under the bar scrolls it clear of the bar", async ({ page }) => {
