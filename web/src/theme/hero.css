@@ -1,0 +1,66 @@
+/* The stage is drawn by both the hero (.hero-stage-view) and the Live section (.live-scene). */
+.hero-stage-view,
+.live-scene {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+}
+
+.hero-stage-view {
+  aspect-ratio: 2 / 1;
+  max-height: 55svh;
+  box-shadow: 0 0 40px var(--glow);
+}
+
+@media (max-width: 720px) {
+  .hero-stage-view {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+.stage-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.stage-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y;
+}
+
+.mesh-board {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.25s ease;
+}
+
+[data-ready="true"] > .mesh-board {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mesh-board {
+    transition: none;
+  }
+}
+
+.board-bg {
+  fill: var(--surface);
+}
+
+.board-tile,
+.board-link,
+.board-controller {
+  fill: var(--border);
+}
+
+.board-controller {
+  stroke: var(--kind-control);
+  stroke-width: 1;
+}

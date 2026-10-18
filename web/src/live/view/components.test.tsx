@@ -76,6 +76,14 @@ describe("LayerStrip", () => {
     expect(Array.from(items).filter((li) => li.getAttribute("aria-current") === "step").map((li) => li.textContent)).toEqual(["conv3"]);
   });
 
+  it("with no spans (nothing has run) shows the layers equally wide and none current", () => {
+    const { container } = render(<LayerStrip layers={layers} spans={null} cycle={0} total={139981} />);
+    const items = container.querySelectorAll("li");
+    expect(items).toHaveLength(6);
+    expect(Array.from(items).every((li) => (li as HTMLElement).style.flexGrow === "1")).toBe(true);
+    expect(container.querySelector("[aria-current]")).toBeNull();
+  });
+
   it("shows the cycle counter", () => {
     const { container } = render(<LayerStrip layers={layers} spans={spans} cycle={1234} total={139981} />);
     expect(container.querySelector(".live-cycle-current")?.textContent).toBe("1,234");
