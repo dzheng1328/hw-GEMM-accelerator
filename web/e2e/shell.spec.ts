@@ -239,6 +239,8 @@ test("the upload button and the radio buttons use the page's own look, not the b
 
 test("a keyboard focus ring on a section link is drawn inside the link, where the scrolling strip cannot clip it", async ({ page }) => {
   await page.goto("/");
+  // Tab only once the bar exists: pressing it during the first render lands focus on the wrong element on a busy runner
+  await expect(link(page, "replay")).toBeVisible();
   for (let i = 0; i < 3; i++) await page.keyboard.press("Tab");
   await expect(link(page, "replay")).toBeFocused();
   const ring = await page.evaluate(() => {

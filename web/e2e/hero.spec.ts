@@ -57,6 +57,8 @@ test("the numbers below the stage do not move while the status text changes", as
   await page.goto("/");
   const tile = page.locator(".tile").first();
   await expect(tile).toBeVisible();
+  // the web fonts swap in after first paint and re-wrap the text above; that is not what this test is about
+  await page.evaluate(() => document.fonts.ready);
   const top = async () => (await tile.boundingBox())!.y + (await page.evaluate(() => window.scrollY));
   const first = await top();
   await expect(status(page)).toHaveText(/cycle \d/, { timeout: 90_000 });
