@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeScheduler } from "../../replay/fakeScheduler";
 import { manifest } from "../sim/manifest";
 import { makeRun } from "../view/testRun.testlib";
-import { RunAnnouncer, RunPlaybackProvider, useRunPlayback } from "./RunPlaybackProvider";
+import { RunAnnouncer, RunPlaybackProvider, useReportOnScreen, useRunPlayback } from "./RunPlaybackProvider";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
+let latest: ReturnType<typeof useRunPlayback> = null;
 function Probe() {
   const rp = useRunPlayback();
+  useEffect(() => {
+    latest = rp;
+  });
   if (!rp) return <p data-testid="probe">none</p>;
   return (
     <p data-testid="probe">
@@ -57,6 +62,59 @@ describe("RunPlaybackProvider", () => {
     expect(text()).toBe("none");
     rerender(provider(makeRun("4x4"), { scheduler }));
     expect(text()).toMatch(/^conv1\|0\|true\|false\|cat\|trace$/);
+  });
+
+  it("plays every new run at normal speed, whatever speed the last one was set to", () => {
+    const scheduler = fakeScheduler();
+    const { rerender } = render(provider(makeRun(), { scheduler }));
+    act(() => latest!.playback.setSpeed(0.01));
+    expect(latest!.playback.speed).toBe(0.01);
+    rerender(provider(null, { scheduler }));
+    rerender(provider(makeRun("4x4"), { scheduler }));
+    expect(latest!.playback.speed).toBe(1);
+    act(() => latest!.playback.setSpeed(16));
+    rerender(provider(makeRun("1x1"), { scheduler }));
+    expect(latest!.playback.speed).toBe(1);
+  });
+
+  it("commits playback slowly while no stage reports itself on screen, and every frame while one does", () => {
+    const scheduler = fakeScheduler();
+    function Watcher() {
+      useReportOnScreen(true);
+      return null;
+    }
+    const withWatcher = (watching: boolean) => (
+      <RunPlaybackProvider run={makeRun()} golden={null} reduced={false} scheduler={scheduler} classNames={manifest.classNames}>
+        <Probe />
+        {watching ? <Watcher /> : null}
+      </RunPlaybackProvider>
+    );
+    const { rerender } = render(withWatcher(false));
+    act(() => scheduler.advance(100));
+    expect(latest!.playback.cycle).toBe(0);
+    rerender(withWatcher(true));
+    act(() => scheduler.advance(16));
+    expect(latest!.playback.cycle).toBeGreaterThan(0);
+    rerender(withWatcher(false));
+    const seen = latest!.playback.cycle;
+    act(() => scheduler.advance(100));
+    expect(latest!.playback.cycle).toBe(seen);
+  });
+
+  it("a stage that is not on screen does not count as watching", () => {
+    const scheduler = fakeScheduler();
+    function Watcher() {
+      useReportOnScreen(false);
+      return null;
+    }
+    render(
+      <RunPlaybackProvider run={makeRun()} golden={null} reduced={false} scheduler={scheduler} classNames={manifest.classNames}>
+        <Probe />
+        <Watcher />
+      </RunPlaybackProvider>,
+    );
+    act(() => scheduler.advance(100));
+    expect(latest!.playback.cycle).toBe(0);
   });
 
   it("keeps its children mounted when a run comes and goes", () => {

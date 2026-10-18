@@ -6,6 +6,7 @@ import { manifest } from "../sim/manifest";
 import { LiveSessionProvider, type LiveSessionProviderProps } from "../session/LiveSessionProvider";
 import { useLiveSession } from "../session/context";
 import type { LiveSession } from "../session/context";
+import { fakeScheduler } from "../../replay/fakeScheduler";
 import { makeRun } from "./testRun.testlib";
 import { MeshStage, type StageVariant } from "./MeshStage";
 
@@ -101,6 +102,29 @@ describe("MeshStage", () => {
     await waitFor(() => expect(seen[seen.length - 1]!.trace).toBeDefined());
     expect(screen.getByTestId("scene")).toBe(scene);
     expect(seen[seen.length - 1]!.windowRef).toBeDefined();
+  });
+
+  it("lets the playback clock commit every frame only while the stage is on screen", async () => {
+    class Observer {
+      static last: Observer;
+      constructor(readonly callback: (entries: { isIntersecting: boolean }[]) => void) {
+        Observer.last = this;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", Observer);
+    const scheduler = fakeScheduler();
+    const { session } = setup("inline", { scheduler });
+    act(() => session().wantAssets());
+    await screen.findByTestId("scene");
+    act(() => session().run());
+    await waitFor(() => expect(seen[seen.length - 1]!.trace).toBeDefined());
+    act(() => scheduler.advance(100));
+    expect(seen[seen.length - 1]!.cycle).toBe(0);
+    act(() => Observer.last.callback([{ isIntersecting: true }]));
+    act(() => scheduler.advance(16));
+    expect(seen[seen.length - 1]!.cycle).toBeGreaterThan(0);
   });
 
   it("follows the mesh: a mesh change redraws the board and the scene's size", async () => {

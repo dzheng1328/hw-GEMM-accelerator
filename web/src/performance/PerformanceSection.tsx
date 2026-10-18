@@ -18,22 +18,26 @@ export function PerformanceSection() {
   const { cifar, lm, floorFlitsPerImage } = performance;
   const session = useLiveSession();
   const shared = session.state.mesh;
-  /** a mesh the chip has no build for (2x1, 3x3) can be looked at here, but it is not shared and never runs */
-  const [local, setLocal] = useState<{ mesh: string; shared: MeshKey } | null>(null);
-  const selected = local && local.shared === shared ? local.mesh : shared;
-  /** the mesh a run was started for from this section, so the line below the selector can talk about it */
-  const [startedFor, setStartedFor] = useState<MeshKey | null>(null);
+  /** counts changes of the shared mesh, so a view or a run line tied to one moment cannot come back when the mesh returns to an old value */
+  const [change, setChange] = useState({ shared, n: 0 });
+  if (change.shared !== shared) setChange({ shared, n: change.n + 1 });
+  /** a mesh the chip has no build for (2x1, 3x3) can be looked at here, but it is not shared and never runs; it lasts until the shared mesh next changes */
+  const [local, setLocal] = useState<{ mesh: string; n: number } | null>(null);
+  const selected = local && local.n === change.n ? local.mesh : shared;
+  /** the run a choice here started, so the line below the selector can talk about it; it belongs to that one change of the shared mesh */
+  const [startedFor, setStartedFor] = useState<{ mesh: MeshKey; n: number } | null>(null);
   const select = (next: string) => {
     if (!isBuilt(next)) {
-      setLocal({ mesh: next, shared });
+      setLocal({ mesh: next, n: change.n });
       return;
     }
     setLocal(null);
-    setStartedFor(next !== shared && session.state.hasRun ? next : null);
+    setStartedFor(next !== shared && session.state.hasRun ? { mesh: next, n: change.n + 1 } : null);
     session.setMesh(next);
   };
   const phase = session.state.phase;
-  const showRun = startedFor === shared && selected === shared && (phase.name === "running" || phase.name === "done");
+  const showRun =
+    startedFor !== null && startedFor.n === change.n && startedFor.mesh === shared && selected === shared && (phase.name === "running" || phase.name === "done");
   const watch = () =>
     document.querySelector(".hero-band")?.scrollIntoView({ block: "start", behavior: session.reduced ? "instant" : "smooth" });
 

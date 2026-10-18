@@ -7,6 +7,9 @@ export type PlaybackSpeed = (typeof SPEEDS)[number];
 /** Seconds a whole run lasts at 1x. */
 export const PACE_SECONDS = 20;
 
+/** While nobody is watching, React state is committed this often (ms); the clock itself keeps exact time. */
+export const SLOW_COMMIT_MS = 500;
+
 export interface CycleWindow {
   /** half open: cycles [from, to) are what the scene summarises this frame */
   from: number;
@@ -30,7 +33,11 @@ export interface Playback {
 
 const lastCycle = (c: number): CycleWindow => ({ from: Math.max(0, c - 1), to: Math.max(1, c) });
 
-export function usePlayback(total: number, scheduler: Scheduler = browserScheduler, initialCycle = 0): Playback {
+/**
+ * `slow` says no view of the run is on screen: the position and the cycle window still advance exactly, but the cycle
+ * is committed to React only every SLOW_COMMIT_MS (and at the end), so the page does not re-render per frame unseen.
+ */
+export function usePlayback(total: number, scheduler: Scheduler = browserScheduler, initialCycle = 0, slow = false): Playback {
   const start = Math.min(total, Math.max(0, initialCycle));
   const [cycle, setCycle] = useState(start);
   const [playing, setPlaying] = useState(false);
@@ -38,6 +45,10 @@ export function usePlayback(total: number, scheduler: Scheduler = browserSchedul
   const position = useRef(start);
   const speedRef = useRef<PlaybackSpeed>(1);
   const windowRef = useRef<CycleWindow>(lastCycle(start));
+  const slowRef = useRef(slow);
+  useEffect(() => {
+    slowRef.current = slow;
+  }, [slow]);
 
   const place = useCallback(
     (to: number) => {
@@ -53,6 +64,8 @@ export function usePlayback(total: number, scheduler: Scheduler = browserSchedul
     if (!playing) return;
     const rate = total / PACE_SECONDS;
     let last = scheduler.now();
+    let lastCommit = last;
+    let committed = Math.floor(position.current);
     let handle = 0;
     // a hidden tab gets no frames; without this the first frame back would carry the whole absence as elapsed time
     const resume = () => {
@@ -66,8 +79,10 @@ export function usePlayback(total: number, scheduler: Scheduler = browserSchedul
       last = now;
       position.current = next;
       const after = Math.floor(next);
-      if (after !== before) {
-        windowRef.current = { from: before, to: after };
+      if (after !== before) windowRef.current = { from: before, to: after };
+      if (after !== committed && (!slowRef.current || now - lastCommit >= SLOW_COMMIT_MS || next >= total)) {
+        committed = after;
+        lastCommit = now;
         setCycle(after);
       }
       if (next >= total) {

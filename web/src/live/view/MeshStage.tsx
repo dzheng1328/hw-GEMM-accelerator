@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useLiveSession } from "../session/context";
-import { useRunPlayback } from "../session/RunPlaybackProvider";
+import { useReportOnScreen, useRunPlayback } from "../session/RunPlaybackProvider";
 import { meshEntry } from "../sim/manifest";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { MeshBoard } from "./MeshBoard";
@@ -23,6 +23,7 @@ export function MeshStage({ variant }: { variant: StageVariant }) {
   const rp = useRunPlayback();
   const ref = useRef<HTMLDivElement>(null);
   const onScreen = useOnScreen(ref);
+  useReportOnScreen(onScreen);
   const [ready, setReady] = useState(false);
   const [crashed, setCrashed] = useState(false);
   const onReady = useCallback(() => setReady(true), []);

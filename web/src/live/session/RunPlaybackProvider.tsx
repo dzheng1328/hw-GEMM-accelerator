@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useMemo, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { formatInt } from "../../format";
 import type { Scheduler } from "../../replay/useClock";
 import { usePlayback, type Playback } from "../playback/usePlayback";
@@ -28,6 +28,18 @@ export interface RunPlayback {
 
 const RunPlaybackContext = createContext<RunPlayback | null>(null);
 
+/** A view of the run says it is on screen by calling this; it returns the function that says it left. */
+const WatchContext = createContext<() => () => void>(() => () => {});
+
+/** While `onScreen` is true this view counts as watching the run; with none watching, playback ticks React slowly. */
+export function useReportOnScreen(onScreen: boolean): void {
+  const report = useContext(WatchContext);
+  useEffect(() => {
+    if (!onScreen) return;
+    return report();
+  }, [onScreen, report]);
+}
+
 /** The finished run being shown and its playback clock, or null when there is none. */
 export function useRunPlayback(): RunPlayback | null {
   return useContext(RunPlaybackContext);
@@ -48,8 +60,18 @@ export interface RunPlaybackProviderProps {
  */
 export function RunPlaybackProvider({ run, golden, reduced, scheduler, classNames, children }: RunPlaybackProviderProps) {
   const total = run?.cycles ?? 0;
-  const playback = usePlayback(total, scheduler, 0);
-  const { play, seek } = playback;
+  const [watchers, setWatchers] = useState(0);
+  const report = useCallback(() => {
+    setWatchers((n) => n + 1);
+    return () => setWatchers((n) => n - 1);
+  }, []);
+  const playback = usePlayback(total, scheduler, 0, watchers === 0);
+  const { play, seek, setSpeed } = playback;
+
+  // every run starts at the normal pace: a speed chosen for the last one (0.01x to watch single transfers) must not slow the next
+  useLayoutEffect(() => {
+    setSpeed(1);
+  }, [run, setSpeed]);
 
   // a layout effect, so a run appears already at the start (or, with reduced motion, at its end) and never flashes the wrong state
   useLayoutEffect(() => {
@@ -93,7 +115,11 @@ export function RunPlaybackProvider({ run, golden, reduced, scheduler, className
       golden,
     };
   }
-  return <RunPlaybackContext.Provider value={value}>{children}</RunPlaybackContext.Provider>;
+  return (
+    <WatchContext.Provider value={report}>
+      <RunPlaybackContext.Provider value={value}>{children}</RunPlaybackContext.Provider>
+    </WatchContext.Provider>
+  );
 }
 
 /** The page's one polite live region for the run; render it once. */

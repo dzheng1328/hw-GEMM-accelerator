@@ -69,6 +69,30 @@ describe("PerformanceSection", () => {
     expect(getByRole("button", { name: "3x3" }).getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("a local view does not come back when the shared mesh goes away and returns", () => {
+    const { container, getByRole, session } = renderSection();
+    fireEvent.click(getByRole("button", { name: "2x1" }));
+    expect(container.querySelectorAll(".mesh-tile")).toHaveLength(2);
+    act(() => session().setMesh("4x4"));
+    act(() => session().setMesh("2x2"));
+    expect(container.querySelectorAll(".mesh-tile")).toHaveLength(4);
+    expect(getByRole("button", { name: "2x2" }).getAttribute("aria-pressed")).toBe("true");
+    expect(getByRole("button", { name: "2x1" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("the run line does not come back for a run that did not start here", async () => {
+    const { container, getByRole, session } = renderSection();
+    act(() => session().run());
+    await waitFor(() => expect(session().state.phase.name).toBe("done"));
+    fireEvent.click(getByRole("button", { name: "4x4" }));
+    await waitFor(() => expect(container.querySelector(".mesh-run-status")!.textContent).toContain("Ran the cat on 4x4"));
+    act(() => session().setMesh("1x1"));
+    await waitFor(() => expect(session().state.phase.name).toBe("done"));
+    expect(container.querySelector(".mesh-run-status")).toBeNull();
+    act(() => session().setMesh("4x4"));
+    expect(container.querySelector(".mesh-run-status")).toBeNull();
+  });
+
   it("choosing the shared mesh while a local view is open closes the local view", () => {
     const { container, getByRole } = renderSection();
     fireEvent.click(getByRole("button", { name: "2x1" }));
