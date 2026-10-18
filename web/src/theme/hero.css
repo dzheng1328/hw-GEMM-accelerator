@@ -64,3 +64,66 @@
   stroke: var(--kind-control);
   stroke-width: 1;
 }
+
+.hero-stage {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.hero-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.hero-mesh {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.hero-mesh button,
+.hero-run {
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.hero-mesh button[aria-pressed="true"],
+.hero-run {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hero-run {
+  font-weight: 600;
+}
+
+.hero-run:disabled,
+.hero-run[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hero-mesh button:focus-visible,
+.hero-run:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hero-status {
+  flex: 1 1 18rem;
+  min-width: 0;
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
