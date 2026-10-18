@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { meshLinks } from "../trace/links";
 import { FLIT_GO, FLIT_OPERAND, FLIT_RESULT, FLIT_RESULT8 } from "../trace/trace";
-import { FLIT_LEGEND, PITCH, TILE, cameraFor, controllerCenter, glow, linkGeometry, tileCenter } from "./sceneLayout";
+import { FLIT_LEGEND, PITCH, SETTLE_FROM, SETTLE_MS, TILE, cameraFor, controllerCenter, glow, linkGeometry, settleAzimuth, tileCenter } from "./sceneLayout";
 import { themeBlocks } from "../../theme/themeBlocks.testlib";
 
 describe("tileCenter", () => {
@@ -84,5 +84,16 @@ describe("FLIT_LEGEND", () => {
       expect(dark, token).toContain(`${token}:`);
       expect(light, token).toContain(`${token}:`);
     }
+  });
+});
+
+describe("settleAzimuth", () => {
+  it("starts off to one side, eases to centre, and then stays there", () => {
+    expect(settleAzimuth(0)).toBeCloseTo(SETTLE_FROM, 6);
+    expect(settleAzimuth(SETTLE_MS)).toBe(0);
+    expect(settleAzimuth(SETTLE_MS * 5)).toBe(0);
+    expect(settleAzimuth(-50)).toBeCloseTo(SETTLE_FROM, 6);
+    const samples = [0, 200, 400, 600, 800, 1000, 1200].map(settleAzimuth);
+    for (let i = 1; i < samples.length; i++) expect(samples[i]!).toBeLessThanOrEqual(samples[i - 1]!);
   });
 });

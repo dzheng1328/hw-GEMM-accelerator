@@ -68,3 +68,12 @@ export const FLIT_LEGEND: { type: number; label: string; token: string }[] = [
   { type: FLIT_RESULT, label: "RESULT: a raw accumulator cell coming back", token: "--cat-attention" },
   { type: FLIT_RESULT8, label: "RESULT8: a requantized row coming back", token: "--cat-vpu" },
 ];
+
+export const SETTLE_MS = 1200;
+export const SETTLE_FROM = 0.35;
+
+/** The camera's sideways angle (radians) this long after the stage appears: it eases from SETTLE_FROM to 0, then stays. */
+export function settleAzimuth(elapsedMs: number): number {
+  const t = Math.min(1, Math.max(0, elapsedMs / SETTLE_MS));
+  return SETTLE_FROM * (1 - t) ** 3;
+}
