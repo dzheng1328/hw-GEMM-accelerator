@@ -203,7 +203,8 @@ test("the skip link is the first tab stop, jumps to main, and leaves the heading
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   await page.keyboard.press("Enter");
-  expect(new URL(page.url()).hash).toBe("#main");
+  // the fragment navigation is applied a moment after the key press, later on a busy runner
+  await expect(page).toHaveURL(/#main$/);
   const barBox = (await bar(page).boundingBox())!;
   const h1 = (await page.locator("h1").boundingBox())!;
   expect(h1.y, "the h1 is not hidden under the bar").toBeGreaterThanOrEqual(barBox.y + barBox.height - 1);
