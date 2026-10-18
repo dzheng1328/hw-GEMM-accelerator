@@ -157,6 +157,19 @@ test.describe("with reduced motion", () => {
     await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });
     await expect(page.locator(".hero-run")).toHaveText("Replay");
   });
+
+  test("the Run button keeps one width whatever its label, so the controls never re-wrap", async ({ page }) => {
+    await page.goto("/");
+    const button = page.locator(".hero-run");
+    const width = async () => (await button.boundingBox())!.width;
+    await expect(button).toHaveText("Run the chip");
+    const idle = await width();
+    await button.click();
+    await expect(button).toHaveText("Running...");
+    expect(Math.abs((await width()) - idle)).toBeLessThanOrEqual(0.5);
+    await expect(button).toHaveText("Replay", { timeout: 90_000 });
+    expect(Math.abs((await width()) - idle)).toBeLessThanOrEqual(0.5);
+  });
 });
 
 test.describe("without WebGL", () => {
