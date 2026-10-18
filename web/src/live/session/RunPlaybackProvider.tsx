@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, type ReactNode } from "react";
 import { formatInt } from "../../format";
 import type { Scheduler } from "../../replay/useClock";
 import { usePlayback, type Playback } from "../playback/usePlayback";
@@ -51,7 +51,8 @@ export function RunPlaybackProvider({ run, golden, reduced, scheduler, className
   const playback = usePlayback(total, scheduler, 0);
   const { play, seek } = playback;
 
-  useEffect(() => {
+  // a layout effect, so a run appears already at the start (or, with reduced motion, at its end) and never flashes the wrong state
+  useLayoutEffect(() => {
     // no run: rest at the start. Reduced motion shows the end of a run paused; it can also be switched on during a run.
     if (!run) seek(0);
     else if (reduced) seek(total);

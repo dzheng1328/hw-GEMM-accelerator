@@ -397,3 +397,8 @@ input[type="radio"] {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+.live-idle {
+  display: grid;
+  gap: var(--space-3);
+}

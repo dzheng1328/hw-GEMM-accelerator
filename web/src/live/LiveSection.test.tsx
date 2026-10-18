@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeepContext } from "../components/deepContext";
 import { fakeScheduler } from "../replay/fakeScheduler";
-import { LiveSection, type LiveSectionProps } from "./LiveSection";
+import { LiveSection } from "./LiveSection";
+import { LiveSessionProvider, type LiveSessionProviderProps } from "./session/LiveSessionProvider";
 import { manifest } from "./sim/manifest";
 import { SimError, SupersededError } from "./sim/client";
 import type { LiveRun } from "./sim/engine";
@@ -20,7 +21,7 @@ const examples = () =>
 const Scene = () => <div data-testid="scene" />;
 
 type RunImpl = (mesh: MeshKey, pixels: Uint8Array) => Promise<LiveRun>;
-function setup(opts: { run?: RunImpl; props?: Partial<LiveSectionProps>; reduced?: boolean; deep?: boolean } = {}) {
+function setup(opts: { run?: RunImpl; props?: Partial<LiveSessionProviderProps>; reduced?: boolean; deep?: boolean } = {}) {
   if (opts.reduced) {
     vi.stubGlobal("matchMedia", (q: string) => ({ matches: q.includes("reduce"), addEventListener() {}, removeEventListener() {} }));
   }
@@ -28,19 +29,24 @@ function setup(opts: { run?: RunImpl; props?: Partial<LiveSectionProps>; reduced
   const run = vi.fn(impl);
   const close = vi.fn();
   const scheduler = fakeScheduler();
-  const props: LiveSectionProps = {
+  const props: Omit<LiveSessionProviderProps, "children"> = {
     createClient: () => ({ run: run as never, close }),
     loadScene: async () => Scene,
     loadExamples: async () => examples(),
     decodeImage: async () => ({ rgba: new Uint8ClampedArray(64 * 64 * 4).fill(200), width: 64, height: 64 }),
     webgl: () => true,
     supported: () => true,
+    saveData: () => false,
     scheduler,
+    // these tests press Run themselves; the arrival auto-run has its own tests in session/
+    autoRun: false,
     ...opts.props,
   };
   const ui = render(
     <DeepContext.Provider value={opts.deep ?? false}>
-      <LiveSection {...props} />
+      <LiveSessionProvider {...props}>
+        <LiveSection />
+      </LiveSessionProvider>
     </DeepContext.Provider>,
   );
   return { run, close, scheduler, ...ui };
@@ -148,27 +154,41 @@ describe("LiveSection", () => {
     expect(container.querySelector(".live-result")!.textContent).toContain("only 2.1% fewer");
   });
 
-  it("clears the result when the mesh or the image changes", async () => {
-    const { container } = setup();
+  it("re-runs on the new mesh when the mesh changes after a run, and clears the result when the image changes", async () => {
+    const { container, run } = setup();
     await ready();
     await runAndWait(container);
     fireEvent.click(screen.getByRole("radio", { name: "4x4 (16 tiles)" }));
     expect(container.querySelector(".live-verdict")).toBeNull();
-    fireEvent.click(runButton());
     await waitFor(() => expect(container.querySelector(".live-result")?.getAttribute("data-mesh")).toBe("4x4"));
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1]![0]).toBe("4x4");
     fireEvent.click(screen.getByRole("button", { name: "Example: dog" }));
     expect(container.querySelector(".live-verdict")).toBeNull();
+    expect(container.querySelector(".live-result")).toBeNull();
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("only selects the mesh when nothing has run yet", async () => {
+    const { run } = setup();
+    await ready();
+    fireEvent.click(screen.getByRole("radio", { name: "4x4 (16 tiles)" }));
+    expect((screen.getByRole("radio", { name: "4x4 (16 tiles)" }) as HTMLInputElement).checked).toBe(true);
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("never shows a result for a run the visitor has moved on from", async () => {
-    let resolve!: (run: LiveRun) => void;
-    const { container } = setup({ run: () => new Promise<LiveRun>((r) => (resolve = r)) });
+    const resolvers: ((run: LiveRun) => void)[] = [];
+    const { container } = setup({ run: () => new Promise<LiveRun>((r) => resolvers.push(r)) });
     await ready();
     fireEvent.click(runButton());
     fireEvent.click(screen.getByRole("radio", { name: "1x1 (1 tile)" }));
-    await act(async () => resolve(makeRun("2x2")));
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    await act(async () => resolvers[0]!(makeRun("2x2")));
     expect(container.querySelector(".live-verdict")).toBeNull();
     expect(container.querySelector(".live-result")).toBeNull();
+    await act(async () => resolvers[1]!(makeRun("1x1")));
+    expect(container.querySelector(".live-result")?.getAttribute("data-mesh")).toBe("1x1");
   });
 
   it("ignores a superseded run's rejection, and shows the newer run's result", async () => {
@@ -180,7 +200,7 @@ describe("LiveSection", () => {
     await ready();
     fireEvent.click(runButton());
     fireEvent.click(screen.getByRole("radio", { name: "4x4 (16 tiles)" }));
-    fireEvent.click(runButton());
+    await waitFor(() => expect(resolvers).toHaveLength(2));
     await act(async () => rejectors[0]!(new SupersededError("replaced")));
     expect(container.querySelector(".live-error")).toBeNull();
     await act(async () => resolvers[1]!(makeRun("4x4")));
@@ -264,6 +284,33 @@ describe("LiveSection", () => {
     await runAndWait(container);
     unmount();
     expect(close).toHaveBeenCalled();
+  });
+  it("shows the idle board and an empty result column before any run, and no result", async () => {
+    const { container } = setup();
+    await ready();
+    expect(container.querySelectorAll(".board-tile")).toHaveLength(4);
+    expect(container.querySelector(".live-idle")).not.toBeNull();
+    expect(container.querySelector(".live-result")).toBeNull();
+    expect(container.querySelectorAll(".live-layers li")).toHaveLength(6);
+    expect(container.querySelector(".live-layers [aria-current]")).toBeNull();
+    expect(container.querySelectorAll(".live-logits li")).toHaveLength(10);
+    expect(container.querySelector(".live-verdict")).toBeNull();
+    expect(container.querySelector(".live-controls")).toBeNull();
+  });
+
+  it("keeps the same stage element from idle through a run", async () => {
+    const { container } = setup();
+    await ready();
+    const stage = container.querySelector(".live-scene");
+    await runAndWait(container);
+    expect(container.querySelector(".live-scene")).toBe(stage);
+  });
+
+  it("starts loading its examples when it is near the viewport", async () => {
+    const loadExamples = vi.fn(async () => examples());
+    setup({ props: { loadExamples } });
+    await ready();
+    expect(loadExamples).toHaveBeenCalledOnce();
   });
 });
 
