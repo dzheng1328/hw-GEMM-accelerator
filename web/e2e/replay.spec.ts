@@ -15,11 +15,17 @@ const HERO_CYCLES = grouped(gen("summary.json").lm.meshes["2x2_t256"].cycles);
 const noHorizontalScroll = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
+/** The replay's data loads when its section nears the viewport, and the live hero above it pushes it down: scroll it into view first. */
+async function openReplay(page: Page, path = "/") {
+  await page.goto(path);
+  await page.locator("#replay").scrollIntoViewIfNeeded();
+}
+
 test.describe("with reduced motion the replay starts at the end", () => {
   test.use({ reducedMotion: "reduce" });
 
   test("shows all eight stories, the final counter and a Replay button", async ({ page }) => {
-    await page.goto("/");
+    await openReplay(page);
     await expect(page.locator(".lane")).toHaveCount(8);
     await expect(page.locator(".counter-value")).toHaveText(grouped(stepSum));
     await expect(page.getByRole("button", { name: "Replay" })).toBeVisible();
@@ -28,7 +34,7 @@ test.describe("with reduced motion the replay starts at the end", () => {
   });
 
   test("the deep drawer shows the head grid, and a head can be selected", async ({ page }) => {
-    await page.goto("/?deep=1");
+    await openReplay(page, "/?deep=1");
     await expect(page.locator(".head-cell")).toHaveCount(CELLS);
     const second = page.locator(".head-cell").nth(1);
     await second.click();
@@ -39,7 +45,7 @@ test.describe("with reduced motion the replay starts at the end", () => {
   test("no horizontal scroll at 1280, 390 and 360 px with everything loaded", async ({ page }) => {
     for (const width of [1280, 390, 360]) {
       await page.setViewportSize({ width, height: 800 });
-      await page.goto("/?deep=1");
+      await openReplay(page, "/?deep=1");
       await expect(page.locator(".head-cell")).toHaveCount(CELLS);
       expect(await noHorizontalScroll(page), `${width}px`).toBe(true);
     }
@@ -47,7 +53,7 @@ test.describe("with reduced motion the replay starts at the end", () => {
 });
 
 test("autoplay starts by itself once the section is in view, and can be paused", async ({ page }) => {
-  await page.goto("/");
+  await openReplay(page);
   await expect(page.locator(".lane")).toHaveCount(8);
   await page.locator(".controls").scrollIntoViewIfNeeded();
   await expect.poll(() => page.locator(".counter-value").textContent(), { timeout: 5000 }).not.toBe("0");
@@ -64,13 +70,14 @@ test("the page paints before the data arrives", async ({ page }) => {
   });
   await page.goto("/");
   await expect(page.locator(".tile-value").getByText(HERO_CYCLES, { exact: true })).toBeVisible();
+  await page.locator("#replay").scrollIntoViewIfNeeded();
   await expect(page.getByText("Loading the recorded run...")).toBeVisible();
   await expect(page.locator(".lane")).toHaveCount(8, { timeout: 15_000 });
 });
 
 test("the page keeps working when the data fails to load", async ({ page }) => {
   await page.route(/lm-attention/, (route) => route.abort());
-  await page.goto("/");
+  await openReplay(page);
   await expect(page.getByRole("alert")).toContainText("could not be loaded");
   await expect(page.locator(".tile-value").getByText(HERO_CYCLES, { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Deep mode" })).toBeVisible();

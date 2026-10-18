@@ -12,13 +12,14 @@ export function layerAtCycle(spans: LayerSpan[], cycle: number): number {
 
 export interface LayerStripProps {
   layers: LayerRange[];
-  spans: LayerSpan[];
+  /** null before any run: the layers are shown equally wide and none is current */
+  spans: LayerSpan[] | null;
   cycle: number;
   total: number;
 }
 
 export function LayerStrip({ layers, spans, cycle, total }: LayerStripProps) {
-  const current = layerAtCycle(spans, cycle);
+  const current = spans ? layerAtCycle(spans, cycle) : -1;
   return (
     <div className="live-layer-block">
       <ol className="live-layers" aria-label="Network layers, widths proportional to their cycles">
@@ -27,7 +28,7 @@ export function LayerStrip({ layers, spans, cycle, total }: LayerStripProps) {
             key={layer.name}
             className={i === current ? "current" : undefined}
             aria-current={i === current ? "step" : undefined}
-            style={{ flexGrow: Math.max(1, spans[i]!.end - spans[i]!.start) }}
+            style={{ flexGrow: spans ? Math.max(1, spans[i]!.end - spans[i]!.start) : 1 }}
           >
             {layer.name}
           </li>

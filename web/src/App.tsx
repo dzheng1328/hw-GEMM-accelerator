@@ -12,6 +12,8 @@ import { useInitialSection } from "./components/useInitialSection";
 import { useTheme } from "./components/useTheme";
 import { SECTION_IDS } from "./content/sections";
 import { LiveSection } from "./live/LiveSection";
+import { LiveSessionProvider } from "./live/session/LiveSessionProvider";
+import { RunAnnouncer } from "./live/session/RunPlaybackProvider";
 import { PerformanceSection } from "./performance/PerformanceSection";
 import { ReplaySection } from "./replay/ReplaySection";
 import { BuiltSection } from "./timeline/BuiltSection";
@@ -32,20 +34,23 @@ export default function App() {
 
   return (
     <DeepContext.Provider value={deep}>
-      <a className="skip-link" href="#main">
-        Skip to content
-      </a>
-      <TopBar active={active} deep={deep} onDeepChange={changeDeep} theme={theme} onThemeToggle={toggleTheme} />
-      <main id="main" tabIndex={-1}>
-        <HeroBand />
-        <ReplaySection />
-        <LiveSection />
-        <PerformanceSection />
-        <ArchitectureSection />
-        <VerificationSection />
-        <BuiltSection />
-      </main>
-      <SiteFooter />
+      <LiveSessionProvider>
+        <a className="skip-link" href="#main">
+          Skip to content
+        </a>
+        <TopBar active={active} deep={deep} onDeepChange={changeDeep} theme={theme} onThemeToggle={toggleTheme} />
+        <main id="main" tabIndex={-1}>
+          <HeroBand />
+          <ReplaySection />
+          <LiveSection />
+          <PerformanceSection />
+          <ArchitectureSection />
+          <VerificationSection />
+          <BuiltSection />
+          <RunAnnouncer />
+        </main>
+        <SiteFooter />
+      </LiveSessionProvider>
     </DeepContext.Provider>
   );
 }

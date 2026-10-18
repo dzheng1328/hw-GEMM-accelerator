@@ -7,7 +7,7 @@ import { ImagePicker } from "./ImagePicker";
 import { LayerStrip, layerAtCycle } from "./LayerStrip";
 import { Logits } from "./Logits";
 import { MeshChoice } from "./MeshChoice";
-import { firstDifference, sameLogits, Verdict } from "./Verdict";
+import { firstDifference, isVerified, sameLogits, Verdict } from "./Verdict";
 import { makeRun } from "./testRun.testlib";
 
 afterEach(cleanup);
@@ -74,6 +74,14 @@ describe("LayerStrip", () => {
     expect(Array.from(items).map((li) => li.textContent)).toEqual(["conv1", "conv2", "conv3", "conv4", "conv5", "fc"]);
     expect(Array.from(items).map((li) => (li as HTMLElement).style.flexGrow)).toEqual(["10", "20", "30", "10", "20", "10"]);
     expect(Array.from(items).filter((li) => li.getAttribute("aria-current") === "step").map((li) => li.textContent)).toEqual(["conv3"]);
+  });
+
+  it("with no spans (nothing has run) shows the layers equally wide and none current", () => {
+    const { container } = render(<LayerStrip layers={layers} spans={null} cycle={0} total={139981} />);
+    const items = container.querySelectorAll("li");
+    expect(items).toHaveLength(6);
+    expect(Array.from(items).every((li) => (li as HTMLElement).style.flexGrow === "1")).toBe(true);
+    expect(container.querySelector("[aria-current]")).toBeNull();
   });
 
   it("shows the cycle counter", () => {
@@ -198,6 +206,16 @@ describe("Verdict", () => {
     expect(v.getAttribute("role")).toBe("alert");
     expect(v.textContent).toContain("output cell 2");
     expect(v.textContent).not.toContain("Verified");
+  });
+
+  it("isVerified is true only when the chip equals the reference and, for an example, the golden", () => {
+    const run = makeRun();
+    expect(isVerified(run, null)).toBe(true);
+    expect(isVerified(run, Array.from(run.logits))).toBe(true);
+    const wrong = Array.from(run.logits);
+    wrong[0] = 1;
+    expect(isVerified(run, wrong)).toBe(false);
+    expect(isVerified(makeRun("2x2", { mismatch: true }), null)).toBe(false);
   });
 
   it("does not trust the engine's match flag: it compares the arrays itself", () => {

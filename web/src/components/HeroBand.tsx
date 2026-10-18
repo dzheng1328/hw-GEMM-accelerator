@@ -1,6 +1,7 @@
+import { HeroStage } from "./HeroStage";
 import { HeroStrip } from "./HeroStrip";
 
-/** The top of the page. `.hero-display` is the slot sub-project B fills with the live chip. */
+/** The top of the page: the live chip, then the four numbers it proves. */
 export function HeroBand() {
   return (
     <div className="hero-band">
@@ -11,6 +12,7 @@ export function HeroBand() {
           in RTL.
         </p>
         <div className="hero-display">
+          <HeroStage />
           <HeroStrip />
         </div>
       </div>

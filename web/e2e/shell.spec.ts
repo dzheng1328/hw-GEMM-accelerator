@@ -72,6 +72,8 @@ test("a jump right after load still lands where it should while the replay data 
     await route.continue();
   });
   await page.goto("/");
+  // the live hero pushes the replay below the fold, so bring it near first: that is what starts its data load
+  await page.locator("#replay").scrollIntoViewIfNeeded();
   await link(page, "performance").click();
   const headingTop = () => page.locator("#performance h2").evaluate((el) => el.getBoundingClientRect().top);
   const landed = await headingTop();
@@ -201,7 +203,8 @@ test("the skip link is the first tab stop, jumps to main, and leaves the heading
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   await page.keyboard.press("Enter");
-  expect(new URL(page.url()).hash).toBe("#main");
+  // the fragment navigation is applied a moment after the key press, later on a busy runner
+  await expect(page).toHaveURL(/#main$/);
   const barBox = (await bar(page).boundingBox())!;
   const h1 = (await page.locator("h1").boundingBox())!;
   expect(h1.y, "the h1 is not hidden under the bar").toBeGreaterThanOrEqual(barBox.y + barBox.height - 1);
@@ -237,6 +240,8 @@ test("the upload button and the radio buttons use the page's own look, not the b
 
 test("a keyboard focus ring on a section link is drawn inside the link, where the scrolling strip cannot clip it", async ({ page }) => {
   await page.goto("/");
+  // Tab only once the bar exists: pressing it during the first render lands focus on the wrong element on a busy runner
+  await expect(link(page, "replay")).toBeVisible();
   for (let i = 0; i < 3; i++) await page.keyboard.press("Tab");
   await expect(link(page, "replay")).toBeFocused();
   const ring = await page.evaluate(() => {

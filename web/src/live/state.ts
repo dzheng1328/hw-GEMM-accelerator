@@ -17,6 +17,8 @@ export interface LiveState {
   token: number;
   /** a problem with the last upload, shown beside the picker */
   notice: string | null;
+  /** true once any run has started; a mesh change re-runs only after that */
+  hasRun: boolean;
 }
 
 /** The first test image of the "cat" class: a good first run, and the one the spike measured. */
@@ -28,6 +30,7 @@ export const initialState: LiveState = {
   phase: { name: "idle" },
   token: 0,
   notice: null,
+  hasRun: false,
 };
 
 export type Action =
@@ -54,7 +57,7 @@ export function reducer(state: LiveState, action: Action): LiveState {
     case "uploadFailed":
       return { ...state, notice: action.message };
     case "start":
-      return { ...state, phase: { name: "running", stage: "starting" }, token: state.token + 1, notice: null };
+      return { ...state, phase: { name: "running", stage: "starting" }, token: state.token + 1, notice: null, hasRun: true };
     case "stage":
       if (action.token !== state.token || state.phase.name !== "running") return state;
       return { ...state, phase: { name: "running", stage: action.stage } };

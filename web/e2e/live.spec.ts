@@ -5,6 +5,14 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.setTimeout(120_000);
 
+// These specs press Run themselves, so they opt out of the arrival auto-run the way a data-saver visitor does.
+// hero.spec.ts covers the auto-run.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "connection", { value: { saveData: true }, configurable: true });
+  });
+});
+
 const ART = join(import.meta.dirname, "..", "src", "live", "sim", "artifacts");
 const DIST = join(import.meta.dirname, "..", "dist");
 const cycles = JSON.parse(readFileSync(join(ART, "manifest.json"), "utf8")).meshes as Record<string, { cycles: number }>;
@@ -172,15 +180,27 @@ test("a file that is not an image is explained, and the section still works", as
   await expect(verdict(page)).toHaveAttribute("data-state", "match", { timeout: 60_000 });
 });
 
-test("pressing Run on one mesh and then switching mesh never shows the first mesh's result", async ({ page }) => {
+test("running on one mesh and then switching mesh re-runs on the new one and never shows the first mesh's result", async ({ page }) => {
   await openLive(page);
   await live(page).getByRole("radio", { name: "4x4 (16 tiles)" }).check();
   await runChip(page);
   await live(page).getByRole("radio", { name: "1x1 (1 tile)" }).check();
-  await runButton(page).click();
   await expect(verdict(page)).toHaveAttribute("data-state", "match", { timeout: 90_000 });
   await expect(live(page).locator(".live-result")).toHaveAttribute("data-mesh", "1x1");
   await expect(live(page).locator(".live-cycle-total")).toHaveText(grouped(cycles["1x1"]!.cycles));
+});
+
+test("the Live section shows the idle board before any run, and the same stage draws the run", async ({ page }) => {
+  await openLive(page);
+  const stage = live(page).locator(".live-scene");
+  await expect(stage.locator("canvas[data-scene-ready='true']")).toBeVisible();
+  await expect(live(page).locator(".live-result")).toHaveCount(0);
+  const before = await stage.boundingBox();
+  await runChip(page);
+  await expect(verdict(page)).toBeVisible({ timeout: 60_000 });
+  const after = await stage.boundingBox();
+  expect(Math.abs(after!.height - before!.height)).toBeLessThanOrEqual(1);
+  expect(Math.abs(after!.width - before!.width)).toBeLessThanOrEqual(1);
 });
 
 test("a chip fault is reported, and the next run on a fresh module succeeds", async ({ page }) => {

@@ -159,3 +159,47 @@ describe("usePlayback", () => {
     expect(result.current.cycle).toBe(1016);
   });
 });
+
+describe("usePlayback when nobody is watching", () => {
+  function slowSetup(slow: boolean) {
+    const scheduler = fakeScheduler();
+    const hook = renderHook(({ slow }) => usePlayback(TOTAL, scheduler, 0, slow), { initialProps: { slow } });
+    return { scheduler, ...hook };
+  }
+
+  it("keeps exact time but commits React state only about twice a second", () => {
+    const { result, scheduler } = slowSetup(true);
+    act(() => result.current.play());
+    for (let i = 0; i < 25; i++) act(() => scheduler.advance(16));
+    expect(result.current.cycle).toBe(0);
+    expect(result.current.windowRef.current.to).toBe(400);
+    act(() => scheduler.advance(100));
+    expect(result.current.cycle).toBe(500);
+  });
+
+  it("commits the end of the run at once", () => {
+    const { result, scheduler } = slowSetup(true);
+    act(() => result.current.play());
+    act(() => scheduler.advance(30_000));
+    expect(result.current).toMatchObject({ cycle: TOTAL, playing: false, atEnd: true });
+  });
+
+  it("catches up on the very next frame once someone is watching again", () => {
+    const { result, scheduler, rerender } = slowSetup(true);
+    act(() => result.current.play());
+    act(() => scheduler.advance(200));
+    expect(result.current.cycle).toBe(0);
+    rerender({ slow: false });
+    act(() => scheduler.advance(16));
+    expect(result.current.cycle).toBe(216);
+  });
+
+  it("commits every frame when it is watched, as before", () => {
+    const { result, scheduler } = slowSetup(false);
+    act(() => result.current.play());
+    act(() => scheduler.advance(16));
+    expect(result.current.cycle).toBe(16);
+    act(() => scheduler.advance(16));
+    expect(result.current.cycle).toBe(32);
+  });
+});

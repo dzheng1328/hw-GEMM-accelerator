@@ -1,132 +1,28 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Section } from "../components/Section";
 import summary from "../data/generated/summary.json";
 import { formatInt, formatPercent } from "../format";
-import { useInView, useLazyData, usePrefersReducedMotion } from "../replay/hooks";
-import type { Scheduler } from "../replay/useClock";
-import { centerCropResize } from "./reference/pack";
-import { createWorkerClient, SimError, SupersededError, type SimClient } from "./sim/client";
+import { useInView } from "../replay/hooks";
+import { useLiveSession } from "./session/context";
+import { STAGE_TEXT, UNSUPPORTED } from "./session/messages";
 import { manifest } from "./sim/manifest";
 import { MESH_KEYS } from "./sim/types";
-import { initialState, reducer } from "./state";
-import { decodeImageFile, type DecodedImage } from "./view/decodeImage";
-import { ErrorBoundary } from "./view/ErrorBoundary";
 import { ImagePicker } from "./view/ImagePicker";
-import { loadExamples as defaultLoadExamples, type LoadedExample } from "./view/loadExamples";
-import { loadScene as defaultLoadScene, type SceneComponent } from "./view/loadScene";
+import { LiveStage } from "./view/LiveStage";
 import { MeshChoice } from "./view/MeshChoice";
-import { RunView } from "./view/RunView";
-import { webglAvailable } from "./view/webgl";
 
-export interface SimLike {
-  run: SimClient["run"];
-  close(): void;
-}
-
-export interface LiveSectionProps {
-  createClient?: () => SimLike;
-  loadScene?: () => Promise<SceneComponent>;
-  loadExamples?: () => Promise<LoadedExample[]>;
-  decodeImage?: (file: File) => Promise<DecodedImage>;
-  webgl?: () => boolean;
-  /** whether this browser can run Web Workers and WebAssembly */
-  supported?: () => boolean;
-  scheduler?: Scheduler;
-}
-
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-
-const UNSUPPORTED = "This browser cannot run Web Workers or WebAssembly, so the chip cannot run here.";
-
-function simulationSupported(): boolean {
-  return typeof Worker !== "undefined" && typeof WebAssembly !== "undefined";
-}
-
-function defaultCreateClient(): SimLike {
-  if (!simulationSupported()) throw new SimError(UNSUPPORTED, false);
-  return createWorkerClient();
-}
-
-const STAGE_TEXT = {
-  starting: "Starting...",
-  loading: "Loading the chip (about 1 MB the first time)...",
-  simulating: "Simulating the chip...",
-  checking: "Checking against the reference...",
-} as const;
-
-export function LiveSection({
-  createClient = defaultCreateClient,
-  loadScene = defaultLoadScene,
-  loadExamples = defaultLoadExamples,
-  decodeImage = decodeImageFile,
-  webgl = webglAvailable,
-  supported = simulationSupported,
-  scheduler,
-}: LiveSectionProps) {
+export function LiveSection() {
   const rootRef = useRef<HTMLDivElement>(null);
   const near = useInView(rootRef, "100% 0px");
-  const reduced = usePrefersReducedMotion();
-  const [hasWebgl] = useState(webgl);
-  const [canRun] = useState(supported);
-  const examples = useLazyData(loadExamples, near);
-  const scene = useLazyData(loadScene, near && hasWebgl);
-  const [state, dispatch] = useReducer(reducer, initialState);
-  const { mesh, source, phase, token, notice } = state;
-
-  const tokenRef = useRef(0);
+  const session = useLiveSession();
+  const { wantAssets, examples, pixels, canRun, state } = session;
+  const { mesh, source, phase, notice } = state;
   useEffect(() => {
-    tokenRef.current = token;
-  }, [token]);
-  const clientRef = useRef<SimLike | null>(null);
-  useEffect(() => () => clientRef.current?.close(), []);
-  const uploadSeq = useRef(0);
+    if (near) wantAssets();
+  }, [near, wantAssets]);
 
   const loaded = examples.data;
-  const pixels = source.kind === "upload" ? source.pixels : loaded?.[source.index]?.pixels;
-  const golden = source.kind === "example" ? (loaded?.[source.index]?.logits ?? null) : null;
   const running = phase.name === "running";
-
-  const onRun = useCallback(async () => {
-    if (!pixels || !canRun || running) return;
-    const mine = tokenRef.current + 1;
-    dispatch({ type: "start" });
-    try {
-      clientRef.current ??= createClient();
-      const run = await clientRef.current.run(mesh, pixels, (stage) => dispatch({ type: "stage", token: mine, stage }));
-      dispatch({ type: "done", token: mine, run });
-    } catch (error) {
-      if (error instanceof SupersededError) return;
-      if (error instanceof SimError && !error.fault) {
-        // the worker may be gone (a failed load or a crash); the next run starts a fresh one
-        clientRef.current?.close();
-        clientRef.current = null;
-      }
-      dispatch({
-        type: "failed",
-        token: mine,
-        message: error instanceof Error ? error.message : "The run failed.",
-        fault: error instanceof SimError && error.fault,
-      });
-    }
-  }, [pixels, mesh, createClient, canRun, running]);
-
-  const onUpload = useCallback(
-    async (file: File) => {
-      const mine = ++uploadSeq.current;
-      try {
-        if (file.size === 0) throw new Error("That file is empty.");
-        if (file.size > MAX_UPLOAD_BYTES) throw new Error("That file is larger than 25 MB.");
-        const decoded = await decodeImage(file);
-        if (mine !== uploadSeq.current) return;
-        dispatch({ type: "upload", name: file.name, pixels: centerCropResize(decoded.rgba, decoded.width, decoded.height) });
-      } catch (error) {
-        if (mine !== uploadSeq.current) return;
-        dispatch({ type: "uploadFailed", message: error instanceof Error ? error.message : "That file could not be used." });
-      }
-    },
-    [decodeImage],
-  );
-
   const accuracy = formatPercent(summary.cifar.int8Accuracy, 0);
   const images = summary.cifar.images;
   const classList = manifest.classNames.join(", ");
@@ -148,11 +44,8 @@ export function LiveSection({
           loading={examples.status === "idle" || examples.status === "loading"}
           selected={source.kind === "example" ? source.index : null}
           uploadName={source.kind === "upload" ? source.name : null}
-          onExample={(index) => {
-            uploadSeq.current++;
-            dispatch({ type: "selectExample", index });
-          }}
-          onUpload={onUpload}
+          onExample={session.selectExample}
+          onUpload={(file) => void session.upload(file)}
         />
         {examples.status === "error" ? (
           <p className="live-notice" role="status">
@@ -165,13 +58,13 @@ export function LiveSection({
           </p>
         ) : null}
         <div className="live-actions">
-          <MeshChoice value={mesh} onChange={(m) => dispatch({ type: "selectMesh", mesh: m })} />
+          <MeshChoice value={mesh} onChange={session.setMesh} />
           <button
             type="button"
             className="live-run"
             disabled={!pixels || !canRun}
             aria-disabled={running || undefined}
-            onClick={() => void onRun()}
+            onClick={() => session.run()}
           >
             {running ? "Running..." : "Run on the chip"}
           </button>
@@ -191,27 +84,7 @@ export function LiveSection({
             {phase.message}
           </p>
         ) : null}
-        {phase.name === "done" ? (
-          <ErrorBoundary
-            key={token}
-            fallback={
-              <p className="live-error" role="alert">
-                This run's result could not be shown. Press Run to try again.
-              </p>
-            }
-          >
-            <RunView
-            run={phase.run}
-            golden={golden}
-            classNames={manifest.classNames}
-            Scene={scene.data ?? null}
-            sceneStatus={scene.status}
-            webgl={hasWebgl}
-            reduced={reduced}
-            scheduler={scheduler}
-          />
-          </ErrorBoundary>
-        ) : null}
+        <LiveStage />
         <p className="live-limits">
           The classifier knows ten CIFAR-10 classes ({classList}) and scores about {accuracy} (measured on {images} test images, each 32x32).
           A photograph, or anything that is not one of those ten, still gets one of the ten answers, so read all ten bars and not only the

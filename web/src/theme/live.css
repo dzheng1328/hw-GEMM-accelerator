@@ -179,20 +179,8 @@
 }
 
 .live-scene {
-  position: relative;
   aspect-ratio: 4 / 3;
   min-height: 16rem;
-  overflow: hidden;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.live-scene canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  touch-action: pan-y;
 }
 
 .live-fallback {
@@ -408,4 +396,9 @@ input[type="radio"] {
 .live-upload input::file-selector-button:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+.live-idle {
+  display: grid;
+  gap: var(--space-3);
 }

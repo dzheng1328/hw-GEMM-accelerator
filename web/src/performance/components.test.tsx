@@ -123,6 +123,29 @@ describe("MeshBarChart", () => {
     expect(container.querySelectorAll(".bar-label")).toHaveLength(5);
   });
 
+  it("without onSelect draws no buttons", () => {
+    const { container } = render(<MeshBarChart {...props} selected="2x2" />);
+    expect(container.querySelectorAll(".bar-hits button")).toHaveLength(0);
+  });
+
+  it("with onSelect puts a button over each bar's slot, marks the selected one, and reports a choice", () => {
+    const onSelect = vi.fn();
+    const { container, getByRole } = render(<MeshBarChart {...props} selected="2x2" onSelect={onSelect} />);
+    const buttons = [...container.querySelectorAll<HTMLButtonElement>(".bar-hits button")];
+    expect(buttons).toHaveLength(5);
+    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(cifar.map((m) => `Select ${m.mesh} - Speedup over 1x1`));
+    expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["false", "false", "true", "false", "false"]);
+    expect(buttons.every((b) => b.style.width.endsWith("%") && b.style.left.endsWith("%"))).toBe(true);
+    fireEvent.click(getByRole("button", { name: "Select 4x4 - Speedup over 1x1" }));
+    expect(onSelect).toHaveBeenCalledWith("4x4");
+  });
+
+  it("keeps the chart a single image for assistive technology, with the buttons outside it", () => {
+    const { container } = render(<MeshBarChart {...props} selected="2x2" onSelect={() => {}} />);
+    expect(container.querySelector("svg")!.getAttribute("role")).toBe("img");
+    expect(container.querySelector("svg")!.querySelector("button")).toBeNull();
+  });
+
   it("draws cycles per image against a constant floor", () => {
     const floor = cyclesBars(cifar, performance.floorFlitsPerImage);
     const { container } = render(

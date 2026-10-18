@@ -50,6 +50,12 @@ describe("App", () => {
     expect(container.querySelectorAll("section#verification .ladder")).toHaveLength(2);
   });
 
+  it("announces the run once: from one live region at the end of main, none in the hero or the Live section", () => {
+    const { container } = render(<App />);
+    expect(container.querySelector("main")!.lastElementChild!.getAttribute("aria-live")).toBe("polite");
+    expect(container.querySelectorAll(".hero-band [aria-live], #live [aria-live]")).toHaveLength(0);
+  });
+
   it("has one h1", () => {
     const { container } = render(<App />);
     expect(container.querySelectorAll("h1")).toHaveLength(1);

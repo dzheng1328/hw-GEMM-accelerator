@@ -148,3 +148,10 @@ describe("theme tokens", () => {
     }
   }
 });
+
+describe("the scene tile token", () => {
+  it("is defined in both themes, and is not as dark as the border so tiles show on the board", () => {
+    for (const theme of ["dark", "light"] as const) expect(themes[theme]["scene-tile"], theme).toMatch(/^#[0-9a-fA-F]{6}$/);
+    expect(luminance(themes.dark["scene-tile"]!)).toBeGreaterThan(luminance(themes.dark["border"]!) * 2);
+  });
+});

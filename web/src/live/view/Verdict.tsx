@@ -13,6 +13,11 @@ export function firstDifference(a: ArrayLike<number>, b: ArrayLike<number>): num
   return -1;
 }
 
+/** Whether the chip equals the TypeScript reference and, for a built-in example, the Python golden. */
+export function isVerified(run: LiveRun, golden: number[] | null): boolean {
+  return firstDifference(run.logits, run.reference) === -1 && (golden === null || firstDifference(run.logits, golden) === -1);
+}
+
 export interface VerdictProps {
   run: LiveRun;
   /** the Python golden logits, for a built-in example; null for an upload */

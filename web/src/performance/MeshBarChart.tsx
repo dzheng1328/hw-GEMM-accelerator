@@ -16,9 +16,11 @@ export interface MeshBarChartProps {
   max: number;
   format(value: number): string;
   referenceLabel: string;
+  /** when given, a transparent button over each bar's slot chooses that mesh */
+  onSelect?(mesh: string): void;
 }
 
-export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, max, format, referenceLabel }: MeshBarChartProps) {
+export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, max, format, referenceLabel, onSelect }: MeshBarChartProps) {
   const n = bars.length;
   const slot = (W - PAD_L - PAD_R) / n;
   const barWidth = slot * 0.55;
@@ -32,30 +34,46 @@ export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, 
   return (
     <figure className="chart-figure">
       <h3>{title}</h3>
-      <svg className="bar-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
-        {bars.map((b, i) => (
-          <rect
-            key={b.mesh}
-            className={b.mesh === selected ? "bar bar-selected" : "bar"}
-            data-mesh={b.mesh}
-            x={cx(i) - barWidth / 2}
-            y={y(b.value)}
-            width={barWidth}
-            height={H - PAD_B - y(b.value)}
-          />
-        ))}
-        <polyline className="ref-line" points={bars.map((b, i) => `${cx(i).toFixed(1)},${y(b.reference).toFixed(1)}`).join(" ")} />
-        {bars.map((b, i) => (
-          <g key={b.mesh}>
-            <text className="bar-label" x={cx(i)} y={y(b.value) - 4}>
-              {format(b.value)}
-            </text>
-            <text className="bar-mesh" x={cx(i)} y={H - 8}>
-              {b.mesh}
-            </text>
-          </g>
-        ))}
-      </svg>
+      <div className="bar-chart-wrap">
+        <svg className="bar-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+          {bars.map((b, i) => (
+            <rect
+              key={b.mesh}
+              className={b.mesh === selected ? "bar bar-selected" : "bar"}
+              data-mesh={b.mesh}
+              x={cx(i) - barWidth / 2}
+              y={y(b.value)}
+              width={barWidth}
+              height={H - PAD_B - y(b.value)}
+            />
+          ))}
+          <polyline className="ref-line" points={bars.map((b, i) => `${cx(i).toFixed(1)},${y(b.reference).toFixed(1)}`).join(" ")} />
+          {bars.map((b, i) => (
+            <g key={b.mesh}>
+              <text className="bar-label" x={cx(i)} y={y(b.value) - 4}>
+                {format(b.value)}
+              </text>
+              <text className="bar-mesh" x={cx(i)} y={H - 8}>
+                {b.mesh}
+              </text>
+            </g>
+          ))}
+        </svg>
+        {onSelect ? (
+          <div className="bar-hits">
+            {bars.map((b, i) => (
+              <button
+                key={b.mesh}
+                type="button"
+                aria-pressed={b.mesh === selected}
+                aria-label={`Select ${b.mesh} - ${title}`}
+                style={{ left: `${((PAD_L + slot * i) / W) * 100}%`, width: `${(slot / W) * 100}%` }}
+                onClick={() => onSelect(b.mesh)}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
       <figcaption className="counter-note">Dashed line: {referenceLabel}.</figcaption>
     </figure>
   );

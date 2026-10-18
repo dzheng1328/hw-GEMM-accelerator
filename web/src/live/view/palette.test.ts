@@ -5,8 +5,8 @@ import { readPalette, usePalette } from "./palette";
 import { FLIT_LEGEND } from "./sceneLayout";
 
 const VALUES: Record<string, Record<string, string>> = {
-  dark: { "--accent": "#4cc3ff", "--surface": "#111922", "--border": "#243040", "--kind-control": "#ff9f43" },
-  light: { "--accent": "#0a6aa1", "--surface": "#ffffff", "--border": "#c5d0db", "--kind-control": "#a84a00" },
+  dark: { "--accent": "#4cc3ff", "--surface": "#111922", "--border": "#243040", "--scene-tile": "#4a5d73", "--kind-control": "#ff9f43" },
+  light: { "--accent": "#0a6aa1", "--surface": "#ffffff", "--border": "#c5d0db", "--scene-tile": "#c5d0db", "--kind-control": "#a84a00" },
 };
 for (const l of FLIT_LEGEND) {
   VALUES.dark![l.token] = "#111111";
@@ -27,11 +27,11 @@ afterEach(() => {
 });
 
 describe("scene palette", () => {
-  it("reads the accent, the board, the tile edge, the controller and one color per flit type from the tokens", () => {
+  it("reads the accent, the board, the tile, the controller and one color per flit type from the tokens", () => {
     const palette = readPalette();
     expect(palette.accent).toBe("#4cc3ff");
     expect(palette.board).toBe("#111922");
-    expect(palette.tile).toBe("#243040");
+    expect(palette.tile).toBe("#4a5d73");
     expect(palette.controller).toBe("#ff9f43");
     expect(palette.flit).toEqual(FLIT_LEGEND.map(() => "#111111"));
   });

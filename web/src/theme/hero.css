@@ -1,0 +1,139 @@
+/* The stage is drawn by both the hero (.hero-stage-view) and the Live section (.live-scene). */
+.hero-stage-view,
+.live-scene {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+}
+
+.hero-stage-view {
+  /* an explicit width: with only a max-height, the aspect ratio would shrink the box instead of capping its height */
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  max-height: 55svh;
+  box-shadow: 0 0 40px var(--glow);
+}
+
+@media (max-width: 720px) {
+  .hero-stage-view {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+.stage-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.stage-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-y;
+}
+
+.mesh-board {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 0.25s ease;
+}
+
+[data-ready="true"] > .mesh-board {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mesh-board {
+    transition: none;
+  }
+}
+
+.board-tile,
+.board-link,
+.board-controller {
+  fill: var(--scene-tile);
+}
+
+.board-controller {
+  stroke: var(--kind-control);
+  stroke-width: 1;
+}
+
+.hero-stage {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.hero-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+}
+
+.hero-mesh {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.hero-mesh button,
+.hero-run {
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.hero-mesh button[aria-pressed="true"],
+.hero-run {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hero-run {
+  font-weight: 600;
+  /* wide enough for its longest label ("Run the chip"), so the controls wrap the same way whichever label it shows */
+  box-sizing: content-box;
+  min-width: 12ch;
+  text-align: center;
+}
+
+.hero-run:disabled,
+.hero-run[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hero-mesh button:focus-visible,
+.hero-run:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hero-status {
+  flex: 1 1 18rem;
+  min-width: 0;
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* the longest messages wrap to two lines on a phone: keep the room, so the numbers below never move as the text changes */
+@media (max-width: 560px) {
+  .hero-status {
+    min-height: 3em;
+    min-height: 2lh;
+  }
+}
