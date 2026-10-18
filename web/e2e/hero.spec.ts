@@ -57,14 +57,35 @@ test("the numbers below the stage do not move while the status text changes", as
   await page.goto("/");
   const tile = page.locator(".tile").first();
   await expect(tile).toBeVisible();
-  // the web fonts swap in after first paint and re-wrap the text above; that is not what this test is about
-  await page.evaluate(() => document.fonts.ready);
-  const top = async () => (await tile.boundingBox())!.y + (await page.evaluate(() => window.scrollY));
-  const first = await top();
+  // the web fonts swap in after first paint and re-wrap the text above; that is not what this test is about.
+  // document.fonts.ready can resolve before a font has even been requested, so load every face explicitly
+  await page.evaluate(async () => {
+    await Promise.all([...document.fonts].map((face) => face.load()));
+  });
+  const geometry = () =>
+    page.evaluate(() => {
+      const top = (selector: string) => {
+        const el = document.querySelector(selector);
+        return el ? Math.round((el.getBoundingClientRect().top + window.scrollY) * 10) / 10 : null;
+      };
+      return {
+        tile: top(".tile"),
+        stage: top(".hero-stage-view"),
+        readout: top(".hero-readout"),
+        status: top(".hero-status"),
+        statusHeight: document.querySelector(".hero-status")?.getBoundingClientRect().height,
+        statusText: document.querySelector(".hero-status")?.textContent,
+        tagline: document.querySelector(".tagline")?.getBoundingClientRect().height,
+        scrollY: window.scrollY,
+      };
+    });
+  const first = await geometry();
   await expect(status(page)).toHaveText(/cycle \d/, { timeout: 90_000 });
-  expect(Math.abs((await top()) - first)).toBeLessThanOrEqual(1);
+  const playing = await geometry();
+  expect(Math.abs(playing.tile! - first.tile!), JSON.stringify({ first, playing })).toBeLessThanOrEqual(1);
   await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });
-  expect(Math.abs((await top()) - first)).toBeLessThanOrEqual(1);
+  const done = await geometry();
+  expect(Math.abs(done.tile! - first.tile!), JSON.stringify({ first, done })).toBeLessThanOrEqual(1);
 });
 
 test("a mesh pill re-runs the same image on that mesh, and the whole page follows", async ({ page }) => {
