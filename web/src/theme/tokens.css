@@ -6,6 +6,7 @@
   --text: #e6edf3;
   --muted: #9fb0c0;
   --border: #243040;
+  --scene-tile: #4a5d73;
   --accent: #4cc3ff;
   --ring: #7fd5ff;
   --glow: rgba(76, 195, 255, 0.35);
@@ -52,6 +53,7 @@
   --text: #14202b;
   --muted: #4a5b6b;
   --border: #c5d0db;
+  --scene-tile: #c5d0db;
   --accent: #0a6aa1;
   --ring: #0a6aa1;
   --glow: rgba(10, 106, 161, 0.22);

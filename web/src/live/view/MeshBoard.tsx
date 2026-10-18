@@ -54,7 +54,6 @@ export function MeshBoard({ w, h }: { w: number; h: number }) {
 
   return (
     <svg className="mesh-board" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-      <rect className="board-bg" x={0} y={0} width={width} height={height} />
       {links.map((b, i) => rect(b, "board-link", `l${i}`))}
       {rect(controllerBox, "board-controller", "c")}
       {tiles.map((b, i) => rect(b, "board-tile", `t${i}`))}

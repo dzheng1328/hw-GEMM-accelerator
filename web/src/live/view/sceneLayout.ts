@@ -69,6 +69,15 @@ export const FLIT_LEGEND: { type: number; label: string; token: string }[] = [
   { type: FLIT_RESULT8, label: "RESULT8: a requantized row coming back", token: "--cat-vpu" },
 ];
 
+/** The widest stage shape the camera will zoom in for; past it the board would run off the top and bottom. */
+export const MAX_FIT = 1.5;
+
+/** How much closer the camera goes for a stage this wide (width over height): `cameraFor` frames a 4:3 stage, so a wider one has room to spare. */
+export function fitFor(aspect: number): number {
+  if (!(aspect > 0)) return 1;
+  return Math.min(MAX_FIT, Math.max(1, aspect / (4 / 3)));
+}
+
 export const SETTLE_MS = 1200;
 export const SETTLE_FROM = 0.35;
 

@@ -14,7 +14,7 @@ export function readPalette(): Palette {
   const get = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   return {
     board: get("--surface", "#121922"),
-    tile: get("--border", "#2a3644"),
+    tile: get("--scene-tile", "#4a5d73"),
     accent: get("--accent", "#4cc3ff"),
     controller: get("--kind-control", "#ff9f43"),
     flit: FLIT_LEGEND.map((l) => get(l.token, "#4cc3ff")),

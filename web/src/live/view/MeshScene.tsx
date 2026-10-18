@@ -5,7 +5,7 @@ import type { CycleWindow } from "../playback/usePlayback";
 import { newSummary, summarize, type Trace } from "../trace/trace";
 import { usePalette } from "./palette";
 import { paintIdle, paintRun, type SceneMaterials } from "./scenePaint";
-import { SETTLE_MS, TILE, cameraFor, controllerCenter, linkGeometry, settleAzimuth, tileCenter } from "./sceneLayout";
+import { SETTLE_MS, TILE, cameraFor, controllerCenter, fitFor, linkGeometry, settleAzimuth, tileCenter } from "./sceneLayout";
 
 export interface MeshSceneProps {
   w: number;
@@ -31,6 +31,8 @@ const BOARD_X = -0.85;
 /** Drag sideways to swing the camera a little around the board; vertical swipes still scroll the page. */
 function Rig({ distance, height, settle }: { distance: number; height: number; settle: boolean }) {
   const { camera, gl, invalidate } = useThree();
+  const aspect = useThree((state) => state.size.width / Math.max(1, state.size.height));
+  const fit = fitFor(aspect);
   const azimuth = useRef(0);
   const dragged = useRef(false);
   const settled = useRef(!settle);
@@ -70,7 +72,7 @@ function Rig({ distance, height, settle }: { distance: number; height: number; s
   // a different mesh needs a different camera distance, and a demand-driven canvas only redraws when asked
   useEffect(() => {
     invalidate();
-  }, [invalidate, distance, height]);
+  }, [invalidate, distance, height, fit]);
   useFrame(() => {
     if (!settled.current && !dragged.current) {
       born.current ??= performance.now();
@@ -80,7 +82,7 @@ function Rig({ distance, height, settle }: { distance: number; height: number; s
       else invalidate();
     }
     const a = azimuth.current;
-    camera.position.set(BOARD_X + Math.sin(a) * distance, height, Math.cos(a) * distance);
+    camera.position.set(BOARD_X + (Math.sin(a) * distance) / fit, height / fit, (Math.cos(a) * distance) / fit);
     camera.lookAt(BOARD_X, 0, 0);
   });
   return null;

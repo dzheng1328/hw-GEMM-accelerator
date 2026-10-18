@@ -409,7 +409,7 @@
 }
 
 .bar-hits button:hover {
-  background: var(--glow);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .bar-hits button:focus-visible {

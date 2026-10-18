@@ -53,6 +53,18 @@ test("the stage keeps its size when the 3D scene replaces the board and when the
   expect(Math.abs(last!.width - first!.width)).toBeLessThanOrEqual(1);
 });
 
+test("the numbers below the stage do not move while the status text changes", async ({ page }) => {
+  await page.goto("/");
+  const tile = page.locator(".tile").first();
+  await expect(tile).toBeVisible();
+  const top = async () => (await tile.boundingBox())!.y + (await page.evaluate(() => window.scrollY));
+  const first = await top();
+  await expect(status(page)).toHaveText(/cycle \d/, { timeout: 90_000 });
+  expect(Math.abs((await top()) - first)).toBeLessThanOrEqual(1);
+  await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });
+  expect(Math.abs((await top()) - first)).toBeLessThanOrEqual(1);
+});
+
 test("a mesh pill re-runs the same image on that mesh, and the whole page follows", async ({ page }) => {
   await page.goto("/");
   await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });

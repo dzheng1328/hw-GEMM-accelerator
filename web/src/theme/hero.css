@@ -9,6 +9,8 @@
 }
 
 .hero-stage-view {
+  /* an explicit width: with only a max-height, the aspect ratio would shrink the box instead of capping its height */
+  width: 100%;
   aspect-ratio: 2 / 1;
   max-height: 55svh;
   box-shadow: 0 0 40px var(--glow);
@@ -50,14 +52,10 @@
   }
 }
 
-.board-bg {
-  fill: var(--surface);
-}
-
 .board-tile,
 .board-link,
 .board-controller {
-  fill: var(--border);
+  fill: var(--scene-tile);
 }
 
 .board-controller {
@@ -126,4 +124,11 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
+}
+
+/* the longest messages wrap to two lines on a phone: keep the room, so the numbers below never move as the text changes */
+@media (max-width: 560px) {
+  .hero-status {
+    min-height: 3em;
+  }
 }
