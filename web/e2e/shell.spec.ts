@@ -72,6 +72,8 @@ test("a jump right after load still lands where it should while the replay data 
     await route.continue();
   });
   await page.goto("/");
+  // the live hero pushes the replay below the fold, so bring it near first: that is what starts its data load
+  await page.locator("#replay").scrollIntoViewIfNeeded();
   await link(page, "performance").click();
   const headingTop = () => page.locator("#performance h2").evaluate((el) => el.getBoundingClientRect().top);
   const landed = await headingTop();

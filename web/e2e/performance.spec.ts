@@ -18,17 +18,25 @@ test("the page has six sections, with the live demo second, the performance sect
   expect(ids).toEqual(["replay", "live", "performance", "architecture", "verification", "built"]);
 });
 
-test("the performance section starts on 4x4 and redraws when another mesh is chosen", async ({ page }) => {
+test("the performance section starts on the shared 2x2 and redraws when another mesh is chosen", async ({ page }) => {
   await page.goto("/");
   const section = page.locator("#performance");
-  await expect(section.getByRole("button", { name: "4x4" })).toHaveAttribute("aria-pressed", "true");
-  await expect(section.locator(".mesh-tile")).toHaveCount(16);
-  await expect(section.locator(".port-text")).toContainText(pct1(performance.cifar.meshes[4].cornerBusy));
+  await expect(section.getByRole("button", { name: "2x2", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(section.locator(".mesh-tile")).toHaveCount(4);
+  await expect(section.locator(".port-text")).toContainText(pct1(performance.cifar.meshes[2].cornerBusy));
 
-  await section.getByRole("button", { name: "1x1" }).click();
+  await section.getByRole("button", { name: "1x1", exact: true }).click();
   await expect(section.locator(".mesh-tile")).toHaveCount(1);
   await expect(section.locator(".port-text")).toContainText(pct1(performance.cifar.meshes[0].cornerBusy));
   await expect(section.locator(".mesh-stats")).toContainText(grouped(performance.cifar.meshes[0].cyclesPerUnit));
+});
+
+test("a mesh the chip is not built for can be looked at here without touching the hero", async ({ page }) => {
+  await page.goto("/");
+  const section = page.locator("#performance");
+  await section.getByRole("button", { name: "3x3", exact: true }).click();
+  await expect(section.locator(".mesh-tile")).toHaveCount(9);
+  await expect(page.locator(".hero-mesh").getByRole("button", { name: "2x2", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("the two workloads and their findings are visible without any click", async ({ page }) => {
