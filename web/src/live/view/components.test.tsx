@@ -7,7 +7,7 @@ import { ImagePicker } from "./ImagePicker";
 import { LayerStrip, layerAtCycle } from "./LayerStrip";
 import { Logits } from "./Logits";
 import { MeshChoice } from "./MeshChoice";
-import { firstDifference, sameLogits, Verdict } from "./Verdict";
+import { firstDifference, isVerified, sameLogits, Verdict } from "./Verdict";
 import { makeRun } from "./testRun.testlib";
 
 afterEach(cleanup);
@@ -198,6 +198,16 @@ describe("Verdict", () => {
     expect(v.getAttribute("role")).toBe("alert");
     expect(v.textContent).toContain("output cell 2");
     expect(v.textContent).not.toContain("Verified");
+  });
+
+  it("isVerified is true only when the chip equals the reference and, for an example, the golden", () => {
+    const run = makeRun();
+    expect(isVerified(run, null)).toBe(true);
+    expect(isVerified(run, Array.from(run.logits))).toBe(true);
+    const wrong = Array.from(run.logits);
+    wrong[0] = 1;
+    expect(isVerified(run, wrong)).toBe(false);
+    expect(isVerified(makeRun("2x2", { mismatch: true }), null)).toBe(false);
   });
 
   it("does not trust the engine's match flag: it compares the arrays itself", () => {
