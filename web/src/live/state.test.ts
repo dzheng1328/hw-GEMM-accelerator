@@ -67,6 +67,26 @@ describe("reducer", () => {
     expect(next.source).toBe(done.source);
   });
 
+  it("has not run anything at first", () => {
+    expect(initialState.hasRun).toBe(false);
+  });
+
+  it("start sets hasRun and nothing clears it", () => {
+    const s = started();
+    expect(s.hasRun).toBe(true);
+    const done = reducer(s, { type: "done", token: s.token, run });
+    expect(done.hasRun).toBe(true);
+    expect(reducer(done, { type: "selectMesh", mesh: "4x4" }).hasRun).toBe(true);
+    expect(reducer(done, { type: "selectExample", index: 0 }).hasRun).toBe(true);
+    expect(reducer(done, { type: "upload", name: "me.png", pixels: new Uint8Array(3072) }).hasRun).toBe(true);
+    expect(reducer(s, { type: "failed", token: s.token, message: "x", fault: false }).hasRun).toBe(true);
+  });
+
+  it("selecting things before any run leaves hasRun false", () => {
+    expect(reducer(initialState, { type: "selectMesh", mesh: "4x4" }).hasRun).toBe(false);
+    expect(reducer(initialState, { type: "selectExample", index: 0 }).hasRun).toBe(false);
+  });
+
   it("start clears a notice", () => {
     const s = reducer(initialState, { type: "uploadFailed", message: "x" });
     expect(started(s).notice).toBeNull();
