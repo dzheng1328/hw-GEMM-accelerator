@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useLiveSession } from "../live/session/context";
+import { MESH_KEYS, type MeshKey } from "../live/sim/types";
 import { Section } from "../components/Section";
 import { formatInt, formatPercent, formatRatio } from "../format";
 import { CifarCard } from "./CifarCard";
@@ -10,11 +12,31 @@ import { MeshDiagram } from "./MeshDiagram";
 import { MeshSelector } from "./MeshSelector";
 import { PortBars } from "./PortBars";
 
-const DEFAULT_MESH = "4x4";
+const isBuilt = (mesh: string): mesh is MeshKey => (MESH_KEYS as readonly string[]).includes(mesh);
 
 export function PerformanceSection() {
   const { cifar, lm, floorFlitsPerImage } = performance;
-  const [selected, setSelected] = useState(DEFAULT_MESH);
+  const session = useLiveSession();
+  const shared = session.state.mesh;
+  /** a mesh the chip has no build for (2x1, 3x3) can be looked at here, but it is not shared and never runs */
+  const [local, setLocal] = useState<{ mesh: string; shared: MeshKey } | null>(null);
+  const selected = local && local.shared === shared ? local.mesh : shared;
+  /** the mesh a run was started for from this section, so the line below the selector can talk about it */
+  const [startedFor, setStartedFor] = useState<MeshKey | null>(null);
+  const select = (next: string) => {
+    if (!isBuilt(next)) {
+      setLocal({ mesh: next, shared });
+      return;
+    }
+    setLocal(null);
+    setStartedFor(next !== shared && session.state.hasRun ? next : null);
+    session.setMesh(next);
+  };
+  const phase = session.state.phase;
+  const showRun = startedFor === shared && selected === shared && (phase.name === "running" || phase.name === "done");
+  const watch = () =>
+    document.querySelector(".hero-band")?.scrollIntoView({ block: "start", behavior: session.reduced ? "instant" : "smooth" });
+
   const mesh = findMesh(cifar.meshes, selected);
   const floor = formatInt(floorFlitsPerImage);
 
@@ -25,7 +47,17 @@ export function PerformanceSection() {
       headline="Adding tiles stopped helping at 2x2: one injection port caps CIFAR-10, and the story model stops for a different reason."
       drawer={{ summary: "Go deeper", body: <CounterTable /> }}
     >
-      <MeshSelector meshes={cifar.meshes.map((m) => m.mesh)} selected={selected} onSelect={setSelected} />
+      <MeshSelector meshes={cifar.meshes.map((m) => m.mesh)} selected={selected} onSelect={select} />
+      {showRun ? (
+        <p className="mesh-run-status">
+          {phase.name === "done"
+            ? `Ran ${session.imageLabel} on ${shared}: ${formatInt(phase.run.cycles)} cycles. `
+            : `Running ${session.imageLabel} on ${shared}... `}
+          <button type="button" className="link-button" onClick={watch}>
+            Watch it
+          </button>
+        </p>
+      ) : null}
       <div className="mesh-panel">
         <MeshDiagram mesh={mesh} />
         <div className="mesh-side">
@@ -54,6 +86,7 @@ export function PerformanceSection() {
           max={16}
           format={formatRatio}
           referenceLabel="linear in the tile count"
+          onSelect={select}
         />
         <MeshBarChart
           title="Cycles per CIFAR-10 image"
@@ -62,6 +95,7 @@ export function PerformanceSection() {
           max={350000}
           format={formatInt}
           referenceLabel={`the ${floor}-flit injection floor`}
+          onSelect={select}
         />
       </div>
       <PortBars
