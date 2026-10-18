@@ -130,5 +130,6 @@
 @media (max-width: 560px) {
   .hero-status {
     min-height: 3em;
+    min-height: 2lh;
   }
 }
