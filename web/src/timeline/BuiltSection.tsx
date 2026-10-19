@@ -1,31 +1,59 @@
-import { PHASES, TIMELINE } from "../content/timeline";
+import { useContext, useRef, useState } from "react";
+import { DeepContext } from "../components/deepContext";
 import { Section } from "../components/Section";
-import { TimelineList } from "./TimelineList";
-import type { Phase } from "./types";
+import { TIMELINE } from "../content/timeline";
+import type { DecisionsFile } from "./decisionTypes";
+import { loadDecisions } from "./loadDecisions";
+import { defaultNodeId, railNodes, resolveSelected, stepTarget } from "./rail";
+import { TimelinePanel } from "./TimelinePanel";
+import { TimelineRail } from "./TimelineRail";
+import { useDecisions } from "./useDecisions";
 
-const PHASE_ORDER: Phase[] = [1, 2, 3, 4];
+export interface BuiltSectionProps {
+  loadData?: () => Promise<DecisionsFile>;
+}
 
-export function BuiltSection() {
+export function BuiltSection({ loadData = loadDecisions }: BuiltSectionProps) {
+  const deep = useContext(DeepContext);
+  const [showAll, setShowAll] = useState(false);
+  const [selected, setSelected] = useState(() => defaultNodeId(TIMELINE));
+  const ref = useRef<HTMLDivElement>(null);
+  const { status, records } = useDecisions(ref, loadData);
+
+  const all = deep || showAll;
+  const nodes = railNodes(TIMELINE, all);
+  const id = resolveSelected(nodes, TIMELINE, selected);
+  const node = TIMELINE.find((n) => n.id === id)!;
+  const prev = stepTarget(nodes, id, -1);
+  const next = stepTarget(nodes, id, 1);
+
   return (
     <Section
       id="built"
       title="How it was built"
       headline={`${TIMELINE.length} milestones across four phases, from one systolic array to a chip that writes stories.`}
-      drawer={{
-        summary: "Go deeper",
-        body: (
-          <div>
-            {PHASE_ORDER.map((phase) => (
-              <div key={phase}>
-                <h3 className="phase-heading">{PHASES[phase]}</h3>
-                <TimelineList nodes={TIMELINE.filter((n) => n.phase === phase)} className="timeline timeline-all" />
-              </div>
-            ))}
-          </div>
-        ),
-      }}
     >
-      <TimelineList nodes={TIMELINE.filter((n) => n.headline)} className="timeline timeline-skim" />
+      <div className="tl" ref={ref}>
+        <TimelineRail
+          nodes={nodes}
+          selectedId={id}
+          onSelect={setSelected}
+          total={TIMELINE.length}
+          onShowAll={all ? undefined : () => setShowAll(true)}
+        />
+        <TimelinePanel
+          node={node}
+          status={status}
+          record={records?.[id]}
+          deep={deep}
+          hasPrev={prev !== null}
+          hasNext={next !== null}
+          onStep={(delta) => {
+            const target = delta === -1 ? prev : next;
+            if (target) setSelected(target);
+          }}
+        />
+      </div>
     </Section>
   );
 }
