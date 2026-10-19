@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { findEntry, parseEntries } from "../../scripts/decisions";
 import { formatInt, formatRatio } from "../format";
 import type { PerformanceData } from "../performance/types";
 import { PHASES, TIMELINE } from "./timeline";
@@ -11,19 +12,9 @@ const performance = JSON.parse(
   readFileSync(join(root, "web", "src", "data", "generated", "performance.json"), "utf8"),
 ) as PerformanceData;
 
-// A heading looks like "### 2026-09-24 -- Title", or with an em dash in the older entries.
-const HEADING = /^### (\d{4}-\d{2}-\d{2}) (?:\u2014|--) (.*)$/;
-const entries = decisions
-  .split("\n### ")
-  .slice(1)
-  .map((chunk) => {
-    const [head = "", ...rest] = chunk.split("\n");
-    const m = HEADING.exec(`### ${head}`);
-    return { date: m?.[1] ?? "", title: m?.[2] ?? "", text: rest.join("\n") };
-  });
-
-const entryFor = (n: { decision: { date: string; title: string } }) =>
-  entries.find((e) => e.date === n.decision.date && e.title.startsWith(n.decision.title));
+// the same parser the generator uses, so the test and decisions.json cannot disagree about what an entry is
+const entries = parseEntries(decisions);
+const entryFor = (n: { decision: { date: string; title: string } }) => findEntry(entries, n.decision);
 
 const NUMBER = /\d[\d,]*(?:\.\d+)?/g;
 const numbersIn = (s: string) => (s.match(NUMBER) ?? []).map((t) => t.replace(/,$/, ""));
