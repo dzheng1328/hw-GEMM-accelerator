@@ -200,6 +200,9 @@ test("reduced motion turns smooth scrolling and transitions off", async ({ page 
 
 test("the skip link is the first tab stop, jumps to main, and leaves the heading clear of the bar", async ({ page }) => {
   await page.goto("/");
+  // the page is client-rendered: on a busy runner the load event can fire before React has put the skip link in the page,
+  // and a Tab pressed before that goes nowhere
+  await page.getByRole("link", { name: "Skip to content" }).waitFor({ state: "attached" });
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   await page.keyboard.press("Enter");

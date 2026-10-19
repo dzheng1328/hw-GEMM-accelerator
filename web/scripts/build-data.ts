@@ -1,6 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { TIMELINE } from "../src/content/timeline";
+import { buildDecisions } from "./decisions";
 import { OUT_DIR, REPO_ROOT, readPerf } from "./paths";
 import { buildPerformance } from "./performance";
 import { cifarSchema, lmRunsSchema, lmTraceSchema, lmVocabSchema, parseInput, scalingSchema } from "./schema";
@@ -12,11 +14,12 @@ export const GENERATED_FILES = [
   "lm-attention.json",
   "lm-vocab.json",
   "performance.json",
+  "decisions.json",
 ] as const;
 export type GeneratedName = (typeof GENERATED_FILES)[number];
 
-const stamp = (sources: string[]) => ({
-  sources: sources.map((s) => `docs/perf/${s}`),
+const stamp = (sources: string[], dir = "docs/perf") => ({
+  sources: sources.map((s) => `${dir}/${s}`),
   regenerate: "npm run build:data (in web/)",
   note: "generated, do not edit by hand",
 });
@@ -114,6 +117,11 @@ export function buildAll(root: string = REPO_ROOT) {
 
   const performance = buildPerformance({ trace, lm, cifar, scaling });
 
+  const decisions = {
+    _generated: stamp(["decisions.md"], "docs"),
+    records: buildDecisions(readFileSync(join(root, "docs", "decisions.md"), "utf8"), TIMELINE),
+  };
+
   return {
     "summary.json": summary,
     "lm-steps.json": lmSteps,
@@ -121,6 +129,7 @@ export function buildAll(root: string = REPO_ROOT) {
     "lm-attention.json": lmAttention,
     "lm-vocab.json": lmVocab,
     "performance.json": performance,
+    "decisions.json": decisions,
   } satisfies Record<GeneratedName, unknown>;
 }
 

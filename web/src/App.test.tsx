@@ -9,17 +9,21 @@ vi.mock("./replay/loadReplayData", () => ({ loadReplayData: () => new Promise(()
 vi.mock("./live/view/loadExamples", () => ({ loadExamples: () => new Promise(() => {}) }));
 vi.mock("./live/view/loadScene", () => ({ loadScene: () => new Promise(() => {}) }));
 vi.mock("./live/view/webgl", () => ({ webglAvailable: () => true }));
+vi.mock("./timeline/loadDecisions", () => ({ loadDecisions: () => new Promise(() => {}) }));
 
 beforeEach(() => window.history.replaceState(null, "", "/"));
 afterEach(cleanup);
 
 describe("App", () => {
-  it("renders the six titled sections, each with a closed drawer", () => {
+  it("renders the six titled sections, each with a closed drawer except the timeline, which has a rail instead", () => {
     const { container } = render(<App />);
     for (const id of ["replay", "live", "performance", "architecture", "verification", "built"]) {
       expect(container.querySelector(`section#${id} h2`)?.textContent?.length, id).toBeGreaterThan(0);
+      if (id === "built") continue;
       expect(container.querySelector(`section#${id} details`)?.hasAttribute("open"), id).toBe(false);
     }
+    expect(container.querySelector("section#built details")).toBeNull();
+    expect(container.querySelector("section#built .rail")).not.toBeNull();
   });
 
   it("shows the hero strip above the sections", () => {
@@ -27,11 +31,11 @@ describe("App", () => {
     expect(container.querySelectorAll(".tile")).toHaveLength(4);
   });
 
-  it("Deep mode opens all six drawers", () => {
+  it("Deep mode opens all five drawers", () => {
     const { container, getByRole } = render(<App />);
     fireEvent.click(getByRole("button", { name: /deep mode/i }));
     expect(Array.from(container.querySelectorAll("details")).every((d) => d.open)).toBe(true);
-    expect(container.querySelectorAll("details")).toHaveLength(6);
+    expect(container.querySelectorAll("details")).toHaveLength(5);
   });
 
   it("puts the sections in order: the live demo second, built last", () => {

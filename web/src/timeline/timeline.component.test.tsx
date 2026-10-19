@@ -1,73 +1,148 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { DeepContext } from "../components/deepContext";
-import { PHASES, REPO_URL, TIMELINE } from "../content/timeline";
-import { formatDate } from "../format";
+import { TIMELINE } from "../content/timeline";
+import decisions from "../data/generated/decisions.json";
 import { BuiltSection } from "./BuiltSection";
-import { TimelineList } from "./TimelineList";
+import type { DecisionsFile } from "./decisionTypes";
 
 afterEach(cleanup);
 
-describe("TimelineList", () => {
-  const nodes = TIMELINE.filter((n) => n.id === "milestone-4-1" || n.id === "vector-unit");
+const FILE = decisions as unknown as DecisionsFile;
+const load = async () => FILE;
+const HEADLINE = TIMELINE.filter((n) => n.headline);
+const dots = (container: HTMLElement) => [...container.querySelectorAll<HTMLButtonElement>("button[data-node]")];
+const selectedId = (container: HTMLElement) => dots(container).find((d) => d.getAttribute("aria-pressed") === "true")?.dataset.node;
+const title = (container: HTMLElement) => container.querySelector(".tl-title")!.textContent;
 
-  it("renders an ordered list with one item per node, oldest first", () => {
-    const { container } = render(<TimelineList nodes={nodes} className="timeline" />);
-    expect(container.querySelector("ol")).not.toBeNull();
-    expect(container.querySelectorAll("li")).toHaveLength(2);
-    expect(container.querySelectorAll(".t-title")[0]!.textContent).toBe("Efficiency fixes, measured");
-  });
-
-  it("shows the date in a time element, the summary and the metric", () => {
-    const { container } = render(<TimelineList nodes={nodes} className="timeline" />);
-    const first = container.querySelector("li")!;
-    const time = first.querySelector("time")!;
-    expect(time.getAttribute("datetime")).toBe("2026-09-25");
-    expect(time.textContent).toBe(formatDate("2026-09-25"));
-    expect(first.querySelector(".t-summary")!.textContent).toContain("1.45x to 4.05x");
-    expect(first.querySelector(".t-metric")!.textContent).toContain("529 cycles");
-    expect(first.querySelector(".t-metric")!.textContent).toContain("365 cycles");
-  });
-
-  it("omits the metric chip for a node without one", () => {
-    const { container } = render(<TimelineList nodes={nodes} className="timeline" />);
-    expect(container.querySelectorAll("li")[1]!.querySelector(".t-metric")).toBeNull();
-  });
-
-  it("links every PR to the repository", () => {
-    const { container } = render(<TimelineList nodes={nodes} className="timeline" />);
-    const links = [...container.querySelectorAll("li")[0]!.querySelectorAll("a")];
-    expect(links.map((a) => a.getAttribute("href"))).toEqual([65, 66, 67].map((n) => `${REPO_URL}/pull/${n}`));
-    expect(links.every((a) => a.getAttribute("rel")?.includes("noopener"))).toBe(true);
-  });
-});
+async function renderBuilt(deep = false) {
+  const view = render(
+    <DeepContext.Provider value={deep}>
+      <BuiltSection loadData={load} />
+    </DeepContext.Provider>,
+  );
+  await screen.findByText(/^Decision/, { selector: ".tl-skim .tl-label" });
+  return view;
+}
 
 describe("BuiltSection", () => {
-  it("shows only the headline nodes in the skim list", () => {
-    const { container } = render(<BuiltSection />);
-    const headline = TIMELINE.filter((n) => n.headline);
-    expect(container.querySelectorAll(".timeline-skim li")).toHaveLength(headline.length);
+  it("has the section's id and title, and no drawer", async () => {
+    const { container } = await renderBuilt();
+    expect(container.querySelector("section#built h2")!.textContent).toBe("How it was built");
+    expect(container.querySelector("section#built > .band-inner > details")).toBeNull();
   });
 
-  it("puts every node in the drawer, grouped under the four phase headings", () => {
-    const { container } = render(<BuiltSection />);
-    expect(container.querySelectorAll(".timeline-all li")).toHaveLength(TIMELINE.length);
-    const headings = [...container.querySelectorAll(".phase-heading")].map((h) => h.textContent);
-    expect(headings).toEqual([PHASES[1], PHASES[2], PHASES[3], PHASES[4]]);
+  it("opens on the last headline milestone with only the headline milestones on the rail", async () => {
+    const { container } = await renderBuilt();
+    expect(dots(container)).toHaveLength(HEADLINE.length);
+    expect(selectedId(container)).toBe(HEADLINE[HEADLINE.length - 1]!.id);
+    expect(title(container)).toBe(HEADLINE[HEADLINE.length - 1]!.title);
   });
 
-  it("opens the drawer in Deep mode", () => {
+  it("shows the milestone's decision record in the panel once it has loaded", async () => {
+    const { container } = await renderBuilt();
+    expect(container.querySelector(".tl-skim")!.textContent).toContain("Decision");
+    expect(container.querySelector("details.tl-record")).not.toBeNull();
+  });
+
+  it("shows the facts and a loading line before the records arrive", () => {
+    const { container } = render(<BuiltSection loadData={() => new Promise(() => {})} />);
+    expect(container.querySelector(".tl-msg")!.textContent).toContain("Loading the decision record");
+    expect(title(container)).toBe(HEADLINE[HEADLINE.length - 1]!.title);
+  });
+
+  it("shows the failure line and keeps the facts when the records cannot be loaded", async () => {
     const { container } = render(
-      <DeepContext.Provider value={true}>
-        <BuiltSection />
+      <BuiltSection
+        loadData={async () => {
+          throw new Error("blocked");
+        }}
+      />,
+    );
+    await screen.findByText(/could not be shown here/);
+    expect(title(container)).toBe(HEADLINE[HEADLINE.length - 1]!.title);
+  });
+
+  it("selects another milestone from the rail and shows that milestone's own record", async () => {
+    const { container } = await renderBuilt();
+    fireEvent.click(dots(container)[0]!);
+    expect(selectedId(container)).toBe(HEADLINE[0]!.id);
+    expect(title(container)).toBe(HEADLINE[0]!.title);
+    const heading = FILE.records[HEADLINE[0]!.id]!.heading;
+    fireEvent.click(container.querySelector("details.tl-record > summary")!);
+    expect(container.querySelector(".tl-source")!.textContent).toContain(heading.split(" - ")[0]);
+  });
+
+  it("never shows another milestone's record while the records are still loading", async () => {
+    let resolve: (file: DecisionsFile) => void = () => {};
+    const slow = () => new Promise<DecisionsFile>((r) => (resolve = r));
+    const { container } = render(<BuiltSection loadData={slow} />);
+    fireEvent.click(dots(container)[1]!);
+    fireEvent.click(dots(container)[2]!);
+    expect(title(container)).toBe(HEADLINE[2]!.title);
+    expect(container.querySelector(".tl-skim")).toBeNull();
+    await act(async () => resolve(FILE));
+    expect(title(container)).toBe(HEADLINE[2]!.title);
+    expect(container.querySelector(".tl-skim")).not.toBeNull();
+  });
+
+  it("steps with Previous and Next, and stops at the ends", async () => {
+    const { container } = await renderBuilt();
+    const next = screen.getByRole("button", { name: "Next milestone" }) as HTMLButtonElement;
+    const prev = screen.getByRole("button", { name: "Previous milestone" }) as HTMLButtonElement;
+    expect(next.disabled).toBe(true);
+    fireEvent.click(prev);
+    expect(selectedId(container)).toBe(HEADLINE[HEADLINE.length - 2]!.id);
+    expect(next.disabled).toBe(false);
+    fireEvent.click(dots(container)[0]!);
+    expect(prev.disabled).toBe(true);
+  });
+
+  it("shows all 22 milestones from the Show all chip and keeps the selection", async () => {
+    const { container } = await renderBuilt();
+    const before = selectedId(container);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 22" }));
+    expect(dots(container)).toHaveLength(TIMELINE.length);
+    expect(selectedId(container)).toBe(before);
+    expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull();
+  });
+
+  it("shows all 22 and opens the full record in Deep mode", async () => {
+    const { container } = await renderBuilt(true);
+    expect(dots(container)).toHaveLength(TIMELINE.length);
+    expect(container.querySelector("details.tl-record")!.hasAttribute("open")).toBe(true);
+    expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull();
+  });
+
+  it("moves the selection to the nearest visible milestone when Deep mode goes off while a Deep-only one is chosen", async () => {
+    const view = await renderBuilt(true);
+    const minor = TIMELINE.find((n) => !n.headline)!;
+    fireEvent.click(dots(view.container).find((d) => d.dataset.node === minor.id)!);
+    expect(selectedId(view.container)).toBe(minor.id);
+    view.rerender(
+      <DeepContext.Provider value={false}>
+        <BuiltSection loadData={load} />
       </DeepContext.Provider>,
     );
-    expect(container.querySelector("details")!.open).toBe(true);
+    expect(dots(view.container)).toHaveLength(HEADLINE.length);
+    const earlier = [...TIMELINE.slice(0, TIMELINE.indexOf(minor))].reverse().find((n) => n.headline);
+    expect(selectedId(view.container)).toBe(earlier?.id ?? HEADLINE[0]!.id);
   });
 
-  it("has the section's id and a title", () => {
-    const { container } = render(<BuiltSection />);
-    expect(container.querySelector("section#built h2")!.textContent).toBe("How it was built");
+  it("keeps a selection that was moved when Deep mode went off: Show all does not bring the hidden one back", async () => {
+    const view = await renderBuilt(true);
+    const minor = TIMELINE.find((n) => !n.headline)!;
+    fireEvent.click(dots(view.container).find((d) => d.dataset.node === minor.id)!);
+    view.rerender(
+      <DeepContext.Provider value={false}>
+        <BuiltSection loadData={load} />
+      </DeepContext.Provider>,
+    );
+    const moved = selectedId(view.container);
+    expect(moved).not.toBe(minor.id);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 22" }));
+    expect(selectedId(view.container)).toBe(moved);
   });
 });
+

@@ -19,6 +19,16 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-19 -- Portfolio timeline: a rail over a decision panel, with the records generated from this file
+
+**Context:** the "How it was built" section was two long vertical lists with no way to see why a milestone went the way it did, although every milestone already cites an entry in this file.
+**Options considered:**
+(1) Keep the lists and expand each row in place.
+(2) A horizontal rail with a detail panel, with hand-written skim text and a link to GitHub for the record.
+(3) A horizontal rail with a detail panel whose text is generated from this file at build time.
+**Decision:** (3). A shared parser (`web/scripts/decisions.ts`) splits the 22 cited entries into labeled sections, `npm run build:data` writes them to `web/src/data/generated/decisions.json` (freshness-tested), and the panel shows Decision and Result in the skim layer and the whole record in Deep mode.
+**Why:** this file stays the single source of truth, so the page cannot drift from it, and the record a visitor reads is the record the project actually kept. The cost is a parser and a small renderer for the syntax the entries use, both tested against the real entries.
+
 ### 2026-10-16 -- Portfolio architecture and trust: a clickable block diagram, tested content, the limits in the skim layer, and a wider CI filter
 
 **Context:** The last two placeholders on the portfolio page needed content: what the chip is made of, and why its numbers can be believed.
