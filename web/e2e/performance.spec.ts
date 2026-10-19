@@ -47,19 +47,19 @@ test("the two workloads and their findings are visible without any click", async
   await expect(section.locator(".port-row")).toHaveCount(2);
 });
 
-test("the timeline shows the headline nodes, and Deep mode shows all of them", async ({ page }) => {
+test("the timeline rail shows the headline milestones, and Deep mode shows all of them", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("#built .timeline-skim li")).toHaveCount(TIMELINE.filter((n) => n.headline).length);
+  await expect(page.locator("#built .rail button[data-node]")).toHaveCount(TIMELINE.filter((n) => n.headline).length);
   await page.goto("/?deep=1");
-  await expect(page.locator("#built .timeline-all li")).toHaveCount(TIMELINE.length);
-  await expect(page.locator("#built .phase-heading")).toHaveCount(4);
+  await expect(page.locator("#built .rail button[data-node]")).toHaveCount(TIMELINE.length);
+  await expect(page.locator("#built .rail-band")).toHaveCount(4);
 });
 
 test("no horizontal scroll at 1280, 390 and 360 px with every drawer open", async ({ page }) => {
   for (const width of [1280, 390, 360]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto("/?deep=1");
-    await expect(page.locator("#built .timeline-all li").first()).toBeVisible();
+    await expect(page.locator("#built .tl-panel")).toBeVisible();
     await expect(page.locator("#performance .data-table").first()).toBeVisible();
     expect(await noHorizontalScroll(page), `${width}px`).toBe(true);
   }

@@ -1,14 +1,14 @@
 /* The timeline: a rail of milestones over a detail panel. Colors come from the tokens only. */
 .tl {
-  /* the panel never changes height from one milestone to the next; Task 11 measures these two values */
-  --tl-panel-min: 30rem;
+  /* the panel never changes height from one milestone to the next: tallest content measured 653 px (desktop) and 940 px (phone) */
+  --tl-panel-min: 42rem;
   display: grid;
   gap: var(--space-4);
 }
 
 @media (max-width: 720px) {
   .tl {
-    --tl-panel-min: 44rem;
+    --tl-panel-min: 60rem;
   }
 }
 
