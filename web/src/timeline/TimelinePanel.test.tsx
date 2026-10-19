@@ -150,22 +150,93 @@ describe("TimelinePanel full record", () => {
   });
 });
 
+describe("TimelinePanel full record state", () => {
+  const other = TIMELINE.find((n) => n.id !== node.id)!;
+  const summaryOf = (container: HTMLElement) => container.querySelector("details > summary")!;
+  const detailsOf = (container: HTMLElement) => container.querySelector("details")!;
+
+  it("closes again when another milestone is chosen, so stepping never changes the panel height", () => {
+    const { container, rerender } = render(<TimelinePanel {...props()} />);
+    fireEvent.click(summaryOf(container));
+    expect(detailsOf(container).open).toBe(true);
+    rerender(<TimelinePanel {...props({ node: other })} />);
+    expect(detailsOf(container).open).toBe(false);
+  });
+
+  it("can be closed in Deep mode, where it starts open, and starts open again when Deep mode comes back", () => {
+    const { container, rerender } = render(<TimelinePanel {...props({ deep: true })} />);
+    expect(detailsOf(container).open).toBe(true);
+    fireEvent.click(summaryOf(container));
+    expect(detailsOf(container).open).toBe(false);
+    fireEvent.click(summaryOf(container));
+    expect(detailsOf(container).open).toBe(true);
+    fireEvent.click(summaryOf(container));
+    rerender(<TimelinePanel {...props({ deep: false })} />);
+    expect(detailsOf(container).open).toBe(false);
+    rerender(<TimelinePanel {...props({ deep: true })} />);
+    expect(detailsOf(container).open).toBe(true);
+  });
+
+  it("follows the browser when it opens the element itself, as find-in-page does, so the next click closes it", () => {
+    const { container } = render(<TimelinePanel {...props()} />);
+    const details = detailsOf(container);
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    fireEvent.click(summaryOf(container));
+    expect(details.open).toBe(false);
+  });
+
+  it("stops offering to read on once the browser has opened the record", () => {
+    class Resize {
+      constructor(private callback: () => void) {}
+      observe() {
+        this.callback();
+      }
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", Resize);
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 600 });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 140 });
+    const { container } = render(<TimelinePanel {...props()} />);
+    expect(screen.getAllByRole("button", { name: "Read the full record" })).toHaveLength(2);
+    const details = detailsOf(container);
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+    expect(screen.queryAllByRole("button", { name: "Read the full record" })).toHaveLength(0);
+  });
+});
+
 describe("TimelinePanel without a record", () => {
-  it("says it is loading while the records are on their way, and keeps the facts", () => {
+  const ENTRIES = `${REPO_URL}/blob/main/docs/decisions.md`;
+
+  it("says it is loading while the records are on their way, keeps the facts, and already links to the file", () => {
     for (const status of ["idle", "loading"] as const) {
       const { container, unmount } = render(<TimelinePanel {...props({ status, record: undefined })} />);
       expect(container.querySelector(".tl-msg")!.textContent).toContain("Loading the decision record");
       expect(container.querySelector(".tl-title")!.textContent).toBe(node.title);
       expect(container.querySelector("details")).toBeNull();
+      // a fetch that stalls never turns into the failure line, so the way out is there from the start
+      expect(container.querySelector(".tl-msg a")!.getAttribute("href")).toBe(ENTRIES);
       unmount();
     }
   });
 
-  it("says it could not be shown, with a link to the entry, after a failure or for a missing record", () => {
+  it("says it could not be shown, with a link to the file, after a failure or for a missing record", () => {
     for (const status of ["error", "ready"] as const) {
       const { container, unmount } = render(<TimelinePanel {...props({ status, record: undefined })} />);
       expect(container.querySelector(".tl-msg")!.textContent).toContain("could not be shown here");
-      expect(container.querySelector(".tl-msg a")!.getAttribute("href")).toBe(`${REPO_URL}/blob/main/docs/decisions.md`);
+      expect(container.querySelector(".tl-msg a")!.getAttribute("href")).toBe(ENTRIES);
+      unmount();
+    }
+  });
+
+  it("names the entry by its date and does not claim the link opens that entry", () => {
+    for (const status of ["loading", "error"] as const) {
+      const { container, unmount } = render(<TimelinePanel {...props({ status, record: undefined })} />);
+      const message = container.querySelector(".tl-msg")!.textContent!;
+      expect(message).toContain(node.decision.date);
+      expect(message).not.toContain("Read the entry");
+      expect(container.querySelector(".tl-msg a")!.textContent).toBe("docs/decisions.md on GitHub");
       unmount();
     }
   });

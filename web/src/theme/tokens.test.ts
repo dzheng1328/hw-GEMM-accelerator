@@ -77,6 +77,16 @@ describe("theme tokens", () => {
     }
   }
 
+  for (const theme of ["dark", "light"] as const) {
+    for (const behind of ["bg", "band", "surface", "border"]) {
+      // the minor milestone marks are drawn in --muted on the rail line (--border) and on the page
+      it(`${theme}: the muted rail marks reach 3:1 against ${behind}`, () => {
+        const t = themes[theme];
+        expect(contrast(t.muted!, t[behind]!)).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+
   it("defines the glow and the backdrop grid in both themes", () => {
     for (const block of [blocks.dark, blocks.light]) {
       expect(block).toMatch(/--glow:\s*rgba\(/);

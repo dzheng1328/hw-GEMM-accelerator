@@ -39,18 +39,18 @@ function SkimBlock({ section, onReadOn }: { section: DecisionSection; onReadOn: 
   );
 }
 
-function Fallback({ status }: { status: LazyStatus }) {
-  if (status === "error" || status === "ready") {
-    return (
-      <p className="tl-msg">
-        The decision record could not be shown here.{" "}
-        <a href={DECISIONS_URL} target="_blank" rel="noopener noreferrer">
-          Read the entry on GitHub
-        </a>
-      </p>
-    );
-  }
-  return <p className="tl-msg">Loading the decision record...</p>;
+/** Shown instead of the record: while it loads (a fetch that stalls never fails) and when it cannot be shown. */
+function Fallback({ status, date }: { status: LazyStatus; date: string }) {
+  const failed = status === "error" || status === "ready";
+  return (
+    <p className="tl-msg">
+      {failed ? "The decision record could not be shown here." : "Loading the decision record..."} It is the {date} entry in{" "}
+      <a href={DECISIONS_URL} target="_blank" rel="noopener noreferrer">
+        docs/decisions.md on GitHub
+      </a>
+      .
+    </p>
+  );
 }
 
 export interface TimelinePanelProps {
@@ -64,7 +64,15 @@ export interface TimelinePanelProps {
 }
 
 export function TimelinePanel({ node, status, record, deep, hasPrev, hasNext, onStep }: TimelinePanelProps) {
-  const [userOpen, setUserOpen] = useState(false);
+  // the visitor's own choice for the full record (null: follow Deep mode); it ends when the milestone or Deep mode changes,
+  // so stepping through milestones never changes the panel height and Deep mode always starts with the record open
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const [choiceFor, setChoiceFor] = useState(`${node.id}|${deep}`);
+  if (choiceFor !== `${node.id}|${deep}`) {
+    setChoiceFor(`${node.id}|${deep}`);
+    setChoice(null);
+  }
+  const open = choice ?? deep;
   const skim = record ? skimSections(record.sections) : [];
 
   return (
@@ -95,19 +103,26 @@ export function TimelinePanel({ node, status, record, deep, hasPrev, hasNext, on
           {record ? (
             skim.map((section) => (
               // once the full record is open, there is nothing left to read on to
-              <SkimBlock key={`${node.id}-${section.label}`} section={section} onReadOn={deep || userOpen ? null : () => setUserOpen(true)} />
+              <SkimBlock key={`${node.id}-${section.label}`} section={section} onReadOn={open ? null : () => setChoice(true)} />
             ))
           ) : (
-            <Fallback status={status} />
+            <Fallback status={status} date={node.decision.date} />
           )}
         </div>
       </div>
       {record ? (
-        <details className="tl-record" open={deep || userOpen}>
+        <details
+          className="tl-record"
+          open={open}
+          // the browser can open the element itself (find-in-page does), and the state must follow or the next click does nothing
+          onToggle={(event) => {
+            if (event.currentTarget.open !== open) setChoice(event.currentTarget.open);
+          }}
+        >
           <summary
             onClick={(event) => {
               event.preventDefault();
-              if (!deep) setUserOpen((open) => !open);
+              setChoice(!open);
             }}
           >
             Context and options
