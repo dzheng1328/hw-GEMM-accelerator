@@ -9,6 +9,8 @@ const cycles = JSON.parse(readFileSync(join(ART, "manifest.json"), "utf8")).mesh
 const grouped = (n: number) => n.toLocaleString("en-US");
 
 const status = (page: Page) => page.locator(".hero-status");
+// the chip diagram's strip reuses the Run button look and class, so the hero's button is found inside the hero
+const heroRun = (page: Page) => page.locator(".hero-stage .hero-run");
 const mesh = (page: Page, name: string) => page.locator(".hero-mesh").getByRole("button", { name, exact: true });
 const DONE = /Predicted: cat - checked against the reference/;
 
@@ -26,7 +28,7 @@ test("on arrival the hero runs the cat on 2x2 by itself, once, with no errors", 
   await page.goto("/");
   await expect(page.locator(".hero-stage-view canvas[data-scene-ready='true']")).toBeVisible({ timeout: 60_000 });
   await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });
-  await expect(page.locator(".hero-run")).toHaveText("Replay");
+  await expect(heroRun(page)).toHaveText("Replay");
   await expect(mesh(page, "2x2")).toHaveAttribute("aria-pressed", "true");
   expect(programRequests).toHaveLength(1);
   expect(errors).toEqual([]);
@@ -153,14 +155,14 @@ test.describe("with reduced motion", () => {
     await expect(status(page)).toHaveText("Press Run to watch the chip classify an image.");
     await page.waitForLoadState("networkidle");
     expect(heavy).toEqual([]);
-    await page.getByRole("button", { name: "Run the chip" }).click();
+    await heroRun(page).click();
     await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });
-    await expect(page.locator(".hero-run")).toHaveText("Replay");
+    await expect(heroRun(page)).toHaveText("Replay");
   });
 
   test("the Run button keeps one width whatever its label, so the controls never re-wrap", async ({ page }) => {
     await page.goto("/");
-    const button = page.locator(".hero-run");
+    const button = heroRun(page);
     const width = async () => (await button.boundingBox())!.width;
     await expect(button).toHaveText("Run the chip");
     const idle = await width();
@@ -180,7 +182,7 @@ test.describe("without WebGL", () => {
     await page.goto("/");
     await expect(page.locator(".hero-stage-view .board-tile")).toHaveCount(4);
     await expect(page.locator(".hero-stage-view canvas")).toHaveCount(0);
-    await page.getByRole("button", { name: "Run the chip" }).click();
+    await heroRun(page).click();
     await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });
   });
 });
