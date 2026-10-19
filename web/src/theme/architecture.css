@@ -20,6 +20,29 @@
   margin: 0 auto var(--space-2);
 }
 
+.arch-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  max-width: 26rem;
+  margin: 0 auto var(--space-3);
+  /* the blocks sit 10 of 400 units in from the diagram's edge; the strip and legend line up with them */
+  padding-inline: 2.5%;
+}
+
+.arch-run-status {
+  flex: 1 1 12rem;
+  min-width: 0;
+  text-wrap: balance;
+  min-height: 2.8em;
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 .arch-link {
   stroke: var(--muted);
   stroke-width: 1.5;
@@ -75,12 +98,34 @@
   pointer-events: none;
 }
 
+/* the live counter under the label; text color, not muted, so it keeps the label's contrast on the tint */
+.arch-live {
+  fill: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* working right now: an accent edge and a glow; the selected block keeps its thicker edge */
+.arch-lit .arch-bg {
+  stroke: var(--accent);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 5px var(--glow));
+}
+
+.arch-selected.arch-lit .arch-bg {
+  stroke-width: 3;
+}
+
 .arch-legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-4);
-  margin: 0;
-  padding: 0;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 0 2.5%;
   list-style: none;
   font-size: 0.85rem;
 }
@@ -167,6 +212,28 @@
   font-family: var(--font-text);
   font-size: 0.8rem;
   font-weight: 400;
+}
+
+/* the run's own numbers, apart from the fixed facts above them */
+.arch-live-row {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.arch-live-row h4 {
+  margin: 0 0 var(--space-1);
+  color: var(--accent);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.arch-live-row p {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .arch-stepper-nav {

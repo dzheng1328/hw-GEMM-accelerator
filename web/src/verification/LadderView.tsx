@@ -1,12 +1,13 @@
+import { proofAttrs, type ProofKey } from "../content/proof";
 import { REPO_URL } from "../content/timeline";
 import { ladderEvidence } from "./evidence";
 import type { Ladder } from "./types";
 
 const DOWN = "▼";
 
-export function LadderView({ ladder }: { ladder: Ladder }) {
+export function LadderView({ ladder, proofKey }: { ladder: Ladder; proofKey?: ProofKey }) {
   return (
-    <figure className="ladder">
+    <figure className="ladder" {...(proofKey ? { ...proofAttrs(proofKey), "aria-label": ladder.title } : {})}>
       <h3>{ladder.title}</h3>
       <ol className="rungs">
         {ladder.rungs.map((rung, i) => (

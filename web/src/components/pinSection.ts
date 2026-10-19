@@ -16,7 +16,13 @@ export const browserPinEnv: PinEnv = {
   landingTop: (target) => px(getComputedStyle(target).scrollMarginTop),
   observeResize: (target, callback) => {
     if (typeof ResizeObserver === "undefined") return () => {};
-    const observer = new ResizeObserver(callback);
+    // an observer reports the element's size once as soon as it is observed; that is not a layout change, and acting on it
+    // would cut short the smooth scroll that has only just begun
+    let first = true;
+    const observer = new ResizeObserver(() => {
+      if (first) first = false;
+      else callback();
+    });
     observer.observe(target);
     return () => observer.disconnect();
   },
@@ -41,12 +47,20 @@ let release: (() => void) | null = null;
  * after load and grows its section by up to 3000 px, which would leave the visitor short of the section they were sent to.
  * For a few seconds every layout change of `observed` puts `target` back at its landing offset. Any scroll, touch, key or
  * click by the visitor ends it, and so does the time running out. A new pin releases the previous one.
+ * `behavior` is how a correction scrolls: instant for a shared link, "auto" (the page's own setting) after a click, so a
+ * smooth scroll that late content cut short carries on gliding to the corrected place.
  */
-export function pinSection(target: Element, observed: Element, env: PinEnv = browserPinEnv, windowMs: number = PIN_WINDOW_MS): void {
+export function pinSection(
+  target: Element,
+  observed: Element,
+  env: PinEnv = browserPinEnv,
+  windowMs: number = PIN_WINDOW_MS,
+  behavior: ScrollBehavior = "instant",
+): void {
   release?.();
   const check = () => {
     const drift = target.getBoundingClientRect().top - env.landingTop(target);
-    if (Math.abs(drift) > 1) env.scrollBy({ top: drift, behavior: "instant" });
+    if (Math.abs(drift) > 1) env.scrollBy({ top: drift, behavior });
   };
   const offResize = env.observeResize(observed, check);
   const offInput = env.onUserInput(() => stop());

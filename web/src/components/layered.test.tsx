@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DeepContext } from "./deepContext";
+import { OPEN_DRAWER_EVENT } from "./drawerEvents";
 import { DeepToggle } from "./DeepToggle";
 import { Section } from "./Section";
 import { useDeepMode } from "./useDeepMode";
@@ -92,6 +93,14 @@ describe("layered sections", () => {
   it("treats ?deep=0 as off", () => {
     window.history.replaceState(null, "", "/?deep=0");
     const { container } = render(<Harness />);
+    expect(states(container)).toEqual([false, false]);
+  });
+  it("opens when a proof jump asks, and the visitor can still close it", () => {
+    const { container } = render(<Harness />);
+    const first = container.querySelector("details")!;
+    fireEvent(first, new CustomEvent(OPEN_DRAWER_EVENT));
+    expect(states(container)).toEqual([true, false]);
+    fireEvent.click(first.querySelector("summary")!);
     expect(states(container)).toEqual([false, false]);
   });
 });

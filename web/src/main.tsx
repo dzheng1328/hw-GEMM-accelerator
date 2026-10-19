@@ -11,6 +11,7 @@ import "./theme/live.css";
 import "./theme/hero.css";
 import "./theme/architecture.css";
 import "./theme/panels.css";
+import "./theme/proof.css";
 import App from "./App";
 
 const root = document.getElementById("root");

@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { PROOF_IDS } from "./content/proof";
 import { SECTIONS, kicker } from "./content/sections";
 
 vi.mock("./replay/loadReplayData", () => ({ loadReplayData: () => new Promise(() => {}) }));
@@ -48,6 +49,26 @@ describe("App", () => {
     const { container } = render(<App />);
     expect(container.querySelectorAll("section#architecture .arch-block")).toHaveLength(12);
     expect(container.querySelectorAll("section#verification .ladder")).toHaveLength(2);
+  });
+
+  it("has every proof target the hero tiles link to, in the right place", () => {
+    const { container } = render(<App />);
+    for (const id of PROOF_IDS) {
+      const target = container.querySelector(`#${id}`);
+      expect(target, id).not.toBeNull();
+      expect(target!.getAttribute("tabindex"), id).toBe("-1");
+      expect(target!.hasAttribute("data-proof"), id).toBe(true);
+      // focus lands here, so a screen reader needs a name to say where it landed
+      expect(target!.getAttribute("aria-label")?.length, `${id} accessible name`).toBeGreaterThan(5);
+    }
+    expect(container.querySelector("#proof-stories")!.closest("section")!.id).toBe("verification");
+    expect(container.querySelector("#proof-stories h3")!.textContent).toBe("The story model on the chip");
+    expect(container.querySelector("#proof-cycles")!.closest("section")!.id).toBe("performance");
+    expect(container.querySelector("#proof-cycles")!.closest("details.drawer")).not.toBeNull();
+    expect(container.querySelector("#proof-cycles caption")!.textContent).toContain("Story model, 256 steps");
+    expect(container.querySelector("#proof-cifar")!.closest("section")!.id).toBe("performance");
+    expect(container.querySelector("#proof-scaling h3")!.textContent).toBe("Speedup over 1x1");
+    expect(container.querySelectorAll("#proof-scaling rect.bar[data-mesh='2x2'], #proof-scaling rect.bar[data-mesh='4x4']")).toHaveLength(2);
   });
 
   it("announces the run once: from one live region at the end of main, none in the hero or the Live section", () => {

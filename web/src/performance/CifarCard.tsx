@@ -1,3 +1,4 @@
+import { proofAttrs } from "../content/proof";
 import { formatInt, formatPercent } from "../format";
 import { performance } from "./data";
 import { findMesh } from "./derive";
@@ -12,7 +13,7 @@ export function CifarCard() {
     ["Cycles per image, 1x1", formatInt(findMesh(meshes, "1x1").cyclesPerUnit)],
   ];
   return (
-    <dl className="stat-grid" aria-label="CIFAR-10 on the chip">
+    <dl className="stat-grid" aria-label="CIFAR-10 on the chip" {...proofAttrs("cifar")}>
       {stats.map(([term, value]) => (
         <div key={term}>
           <dt>{term}</dt>

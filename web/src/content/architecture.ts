@@ -1,6 +1,6 @@
 import type { Block, Stage } from "../architecture/types";
 
-export const VIEWBOX = { w: 400, h: 518 };
+export const VIEWBOX = { w: 400, h: 602 };
 
 /** The block selected when the page loads: the corner ties this section to "Where the cycles go". */
 export const DEFAULT_BLOCK = "corner";
@@ -23,7 +23,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-09-28", title: "Command processor: read-ahead fetch" }, contains: "2181 cells" },
     },
     links: ["dma_gather", "vpu"],
-    box: { x: 10, y: 10, w: 180, h: 44 },
+    box: { x: 10, y: 10, w: 180, h: 56 },
   },
   {
     id: "vpu",
@@ -42,7 +42,7 @@ export const BLOCKS: Block[] = [
       source: { perf: "lm.vpuCycles", format: "int" },
     },
     links: ["memory"],
-    box: { x: 210, y: 10, w: 180, h: 44 },
+    box: { x: 210, y: 10, w: 180, h: 56 },
   },
   {
     id: "dma_gather",
@@ -58,7 +58,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-09-29", title: "The DMA hands off at its last slot" }, contains: "0.045" },
     },
     links: ["memory", "flit_pack"],
-    box: { x: 10, y: 84, w: 180, h: 44 },
+    box: { x: 10, y: 96, w: 180, h: 56 },
   },
   {
     id: "memory",
@@ -74,7 +74,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-10-14", title: "4.3f: the command processor runs" }, contains: "The A memory is 64K words" },
     },
     links: ["writeback"],
-    box: { x: 210, y: 84, w: 180, h: 44 },
+    box: { x: 210, y: 96, w: 180, h: 56 },
   },
   {
     id: "flit_pack",
@@ -90,7 +90,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-09-27", title: "DMA front end" }, contains: "65 consecutive cycles" },
     },
     links: ["corner"],
-    box: { x: 10, y: 158, w: 180, h: 44 },
+    box: { x: 10, y: 182, w: 180, h: 56 },
   },
   {
     id: "writeback",
@@ -106,7 +106,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-09-28", title: "Command processor: read-ahead fetch" }, contains: "3709 cells (1074 flip-flops)" },
     },
     links: [],
-    box: { x: 210, y: 158, w: 180, h: 44 },
+    box: { x: 210, y: 182, w: 180, h: 56 },
   },
   {
     id: "corner",
@@ -125,7 +125,7 @@ export const BLOCKS: Block[] = [
       source: { perf: "cifar.meshes.2.cornerBusy", format: "percent1" },
     },
     links: ["noc", "writeback"],
-    box: { x: 10, y: 232, w: 180, h: 44 },
+    box: { x: 10, y: 268, w: 180, h: 56 },
   },
   {
     id: "noc",
@@ -145,7 +145,7 @@ export const BLOCKS: Block[] = [
       source: { perf: "cifar.meshes.4.links.east", format: "percent1" },
     },
     links: ["gemm_tile", "requant"],
-    box: { x: 10, y: 306, w: 380, h: 44 },
+    box: { x: 10, y: 354, w: 380, h: 56 },
   },
   {
     id: "gemm_tile",
@@ -165,7 +165,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-09-08", title: "Real area win from the SRAM macro" }, contains: "501,749.68" },
     },
     links: ["pe_array", "requant"],
-    box: { x: 10, y: 380, w: 180, h: 44 },
+    box: { x: 10, y: 440, w: 180, h: 56 },
   },
   {
     id: "requant",
@@ -181,7 +181,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-09-25", title: "Requantize on-chip in the result path" }, contains: "1.9x-3.3x" },
     },
     links: [],
-    box: { x: 210, y: 380, w: 180, h: 44 },
+    box: { x: 210, y: 440, w: 180, h: 56 },
   },
   {
     id: "pe_array",
@@ -200,7 +200,7 @@ export const BLOCKS: Block[] = [
       source: { decision: { date: "2026-08-29", title: "Re-run OpenLane P&R on the pipelined" }, contains: "0.4510" },
     },
     links: [],
-    box: { x: 10, y: 454, w: 180, h: 44 },
+    box: { x: 10, y: 526, w: 180, h: 56 },
   },
   {
     id: "perf",
@@ -216,7 +216,7 @@ export const BLOCKS: Block[] = [
       source: { perf: "lm.meshes.1.port.shares.stall", format: "percent1" },
     },
     links: [],
-    box: { x: 210, y: 454, w: 180, h: 44 },
+    box: { x: 210, y: 526, w: 180, h: 56 },
   },
 ];
 

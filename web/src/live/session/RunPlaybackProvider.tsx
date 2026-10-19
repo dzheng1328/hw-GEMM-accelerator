@@ -7,6 +7,7 @@ import type { LiveRun } from "../sim/engine";
 import { meshEntry } from "../sim/manifest";
 import type { MeshEntry } from "../sim/types";
 import { layerSpans, type LayerSpan } from "../trace/layers";
+import { Activity } from "../trace/activity";
 import { Trace } from "../trace/trace";
 import { layerAtCycle } from "../view/LayerStrip";
 
@@ -17,6 +18,8 @@ export interface RunPlayback {
   trace: Trace | null;
   /** null when the layers could not be mapped */
   spans: LayerSpan[] | null;
+  /** cumulative block activity at any cycle; null when the trace could not be decoded */
+  activity: Activity | null;
   playback: Playback;
   /** null when there are no spans */
   layerIndex: number | null;
@@ -99,6 +102,8 @@ export function RunPlaybackProvider({ run, golden, reduced, scheduler, className
     }
   }, [trace, entry]);
 
+  const activity = useMemo(() => (trace ? new Activity(trace) : null), [trace]);
+
   let value: RunPlayback | null = null;
   if (run && entry) {
     const layerIndex = spans ? layerAtCycle(spans, playback.cycle) : null;
@@ -107,6 +112,7 @@ export function RunPlaybackProvider({ run, golden, reduced, scheduler, className
       entry,
       trace,
       spans,
+      activity,
       playback,
       layerIndex,
       layerName: layerIndex !== null ? entry.layers[layerIndex]!.name : "the network",

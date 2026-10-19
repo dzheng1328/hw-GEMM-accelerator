@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeepContext } from "../components/deepContext";
 import { BLOCKS, DEFAULT_BLOCK, STAGES, VIEWBOX, VOP_NOTE } from "../content/architecture";
 import { REPO_URL } from "../content/timeline";
+import { TestSession } from "../live/session/testSession.testlib";
 import { BlockDetail } from "./BlockDetail";
 import { ArchitectureSection } from "./ArchitectureSection";
 import { BlockDiagram } from "./BlockDiagram";
@@ -76,6 +77,41 @@ describe("BlockDiagram", () => {
     const labels = [...container.querySelectorAll(".arch-label")].map((n) => n.textContent);
     expect(labels).toEqual(BLOCKS.map((b) => b.label));
   });
+
+  it("draws a counter line in every block: a dash with no run, the block's text with one", () => {
+    const idle = diagram();
+    expect([...idle.container.querySelectorAll(".arch-live")].map((n) => n.textContent)).toEqual(BLOCKS.map(() => "-"));
+    idle.unmount();
+    const live = Object.fromEntries(BLOCKS.map((b) => [b.id, { lit: b.id === "noc", text: `${b.id} text`, detail: "" }]));
+    const { container } = render(<BlockDiagram blocks={BLOCKS} viewBox={VIEWBOX} selected="corner" onSelect={() => {}} live={live} />);
+    expect([...container.querySelectorAll(".arch-live")].map((n) => n.textContent)).toEqual(BLOCKS.map((b) => `${b.id} text`));
+  });
+
+  it("marks exactly the lit blocks, and a lit block can also be the selected one", () => {
+    const live = Object.fromEntries(BLOCKS.map((b) => [b.id, { lit: b.id === "noc" || b.id === "corner", text: "", detail: "" }]));
+    const { container } = render(<BlockDiagram blocks={BLOCKS} viewBox={VIEWBOX} selected="corner" onSelect={() => {}} live={live} />);
+    const lit = [...container.querySelectorAll(".arch-lit")].map((g) => g.getAttribute("data-block"));
+    expect(lit.sort()).toEqual(["corner", "noc"]);
+    expect(container.querySelector(".arch-block[data-block='corner']")!.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("keeps each block's accessible name free of the counters, so the live numbers are never announced", () => {
+    const live = Object.fromEntries(BLOCKS.map((b) => [b.id, { lit: true, text: "12,345 busy", detail: "" }]));
+    const { getByRole } = render(<BlockDiagram blocks={BLOCKS} viewBox={VIEWBOX} selected="corner" onSelect={() => {}} live={live} />);
+    expect(getByRole("button", { name: /^Vector unit/ }).getAttribute("aria-label")).toBe("Vector unit, compute");
+  });
+
+  it("puts the counter line inside the box, below the label", () => {
+    const { container } = diagram();
+    for (const g of container.querySelectorAll(".arch-block")) {
+      const block = findBlock(BLOCKS, g.getAttribute("data-block")!);
+      const label = Number(g.querySelector(".arch-label")!.getAttribute("y"));
+      const counter = Number(g.querySelector(".arch-live")!.getAttribute("y"));
+      expect(label).toBeGreaterThan(block.box.y);
+      expect(counter).toBeGreaterThan(label);
+      expect(counter).toBeLessThan(block.box.y + block.box.h);
+    }
+  });
 });
 
 describe("BlockDetail", () => {
@@ -109,9 +145,32 @@ describe("BlockDetail", () => {
     expect(decision.container.textContent).toContain("2026-09-28");
   });
 
-  it("is a polite live region, so a screen reader hears the new selection", () => {
+  it("keeps the selection's own content in a polite live region, so a screen reader hears a new selection", () => {
     const { container } = render(<BlockDetail block={findBlock(BLOCKS, "noc")} />);
-    expect(container.querySelector(".arch-detail")!.getAttribute("aria-live")).toBe("polite");
+    const region = container.querySelector(".arch-detail > [aria-live='polite']")!;
+    expect(region.querySelector(".arch-detail-title")!.textContent).toBe("Network on chip");
+    expect(region.querySelector(".arch-number")).not.toBeNull();
+  });
+
+  it("shows no run row without a run", () => {
+    const { container } = render(<BlockDetail block={findBlock(BLOCKS, "noc")} />);
+    expect(container.querySelector(".arch-live-row")).toBeNull();
+  });
+
+  it("adds an In this run row outside the live region, so the changing numbers are never announced", () => {
+    const live = { lit: true, text: "1 transfers", detail: "1 flit transfers have crossed mesh links so far." };
+    const { container } = render(<BlockDetail block={findBlock(BLOCKS, "noc")} live={live} />);
+    const row = container.querySelector(".arch-live-row")!;
+    expect(row.querySelector("h4")!.textContent).toBe("In this run");
+    expect(row.textContent).toContain(live.detail);
+    expect(row.closest("[aria-live]")).toBeNull();
+    expect(container.querySelector("[aria-live='polite']")!.contains(row)).toBe(false);
+  });
+
+  it("says the vector unit is not used in this run", () => {
+    const live = { lit: false, text: "not used", detail: "Not used in this run. The story model uses it: 15,108,284 busy cycles on every mesh." };
+    const { container } = render(<BlockDetail block={findBlock(BLOCKS, "vpu")} live={live} />);
+    expect(container.querySelector(".arch-live-row")!.textContent).toContain("Not used in this run");
   });
 });
 
@@ -199,7 +258,7 @@ describe("BlockTable semantics", () => {
 
 describe("ArchitectureSection", () => {
   it("starts on the injection port, with its number in the panel", () => {
-    const { container } = render(<ArchitectureSection />);
+    const { container } = render(<TestSession><ArchitectureSection /></TestSession>);
     const pressed = container.querySelector(".arch-block[aria-pressed='true']")!;
     expect(pressed.getAttribute("data-block")).toBe(DEFAULT_BLOCK);
     const corner = findBlock(BLOCKS, DEFAULT_BLOCK);
@@ -208,7 +267,7 @@ describe("ArchitectureSection", () => {
   });
 
   it("updates the panel when another block is chosen", () => {
-    const { container, getByRole } = render(<ArchitectureSection />);
+    const { container, getByRole } = render(<TestSession><ArchitectureSection /></TestSession>);
     fireEvent.click(getByRole("button", { name: /^Vector unit/ }));
     expect(container.querySelector(".arch-detail-title")!.textContent).toBe("Vector unit");
     expect(container.querySelector(".arch-block[aria-pressed='true']")!.getAttribute("data-block")).toBe("vpu");
@@ -217,7 +276,9 @@ describe("ArchitectureSection", () => {
   it("shares one selection between the stepper and the diagram", () => {
     const { container, getByRole } = render(
       <DeepContext.Provider value={true}>
-        <ArchitectureSection />
+        <TestSession>
+          <ArchitectureSection />
+        </TestSession>
       </DeepContext.Provider>,
     );
     fireEvent.click(getByRole("button", { name: "Next" }));
@@ -228,17 +289,31 @@ describe("ArchitectureSection", () => {
   });
 
   it("keeps the legend, the title and a closed drawer by default, and opens the drawer in Deep mode", () => {
-    const closed = render(<ArchitectureSection />);
+    const closed = render(<TestSession><ArchitectureSection /></TestSession>);
     expect(closed.container.querySelector("section#architecture h2")!.textContent).toBe("The chip");
     expect(closed.container.querySelectorAll(".arch-legend li")).toHaveLength(4);
     expect(closed.container.querySelector("details")!.hasAttribute("open")).toBe(false);
     cleanup();
     const deep = render(
       <DeepContext.Provider value={true}>
-        <ArchitectureSection />
+        <TestSession>
+          <ArchitectureSection />
+        </TestSession>
       </DeepContext.Provider>,
     );
     expect(deep.container.querySelector("details")!.open).toBe(true);
     expect(deep.container.querySelectorAll("details .data-table tbody tr")).toHaveLength(BLOCKS.length);
+  });
+
+  it("shows the strip under the diagram, with dashes in the blocks while no run exists", () => {
+    const { container, getByText } = render(
+      <TestSession>
+        <ArchitectureSection />
+      </TestSession>,
+    );
+    expect(getByText("Run the chip to see this light up.")).toBeTruthy();
+    expect([...container.querySelectorAll(".arch-live")].every((n) => n.textContent === "-")).toBe(true);
+    expect(container.querySelector(".arch-live-row")).toBeNull();
+    expect(container.querySelectorAll(".arch-lit")).toHaveLength(0);
   });
 });

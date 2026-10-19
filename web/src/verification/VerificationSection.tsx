@@ -29,7 +29,7 @@ export function VerificationSection() {
     >
       <div className="ladder-grid">
         {LADDERS.map((ladder) => (
-          <LadderView key={ladder.id} ladder={ladder} />
+          <LadderView key={ladder.id} ladder={ladder} proofKey={ladder.id === "lm" ? "stories" : undefined} />
         ))}
       </div>
       <p className="claim">{CLAIM.text}</p>

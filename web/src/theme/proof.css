@@ -1,0 +1,41 @@
+/* A proof target the hero tiles link to: land below the sticky bar, and ring briefly on arrival. */
+main [data-proof] {
+  scroll-margin-top: calc(var(--bar-h) + 16px);
+}
+
+.proof-flash {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-panel);
+  box-shadow: 0 0 28px var(--glow);
+}
+
+/* an SVG shape takes a stroke, not an outline */
+rect.proof-flash {
+  outline: none;
+  box-shadow: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .proof-flash {
+    animation: proof-pulse 1.8s ease-out;
+  }
+}
+
+@keyframes proof-pulse {
+  0% {
+    outline-color: transparent;
+    box-shadow: 0 0 0 transparent;
+  }
+  20% {
+    outline-color: var(--accent);
+    box-shadow: 0 0 40px var(--glow);
+  }
+  100% {
+    outline-color: var(--accent);
+    box-shadow: 0 0 28px var(--glow);
+  }
+}

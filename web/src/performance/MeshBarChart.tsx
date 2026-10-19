@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { proofAttrs, type ProofKey } from "../content/proof";
 import type { Bar } from "./derive";
 
 const W = 320;
@@ -18,9 +19,11 @@ export interface MeshBarChartProps {
   referenceLabel: string;
   /** when given, a transparent button over each bar's slot chooses that mesh */
   onSelect?(mesh: string): void;
+  /** marks the figure as the target of a hero tile link */
+  proofKey?: ProofKey;
 }
 
-export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, max, format, referenceLabel, onSelect }: MeshBarChartProps) {
+export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, max, format, referenceLabel, onSelect, proofKey }: MeshBarChartProps) {
   const n = bars.length;
   const slot = (W - PAD_L - PAD_R) / n;
   const barWidth = slot * 0.55;
@@ -32,7 +35,7 @@ export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, 
     `Reference, ${referenceLabel}: ${bars.map((b) => format(b.reference)).join(", ")}.`;
 
   return (
-    <figure className="chart-figure">
+    <figure className="chart-figure" {...(proofKey ? { ...proofAttrs(proofKey), "aria-label": title } : {})}>
       <h3>{title}</h3>
       <div className="bar-chart-wrap">
         <svg className="bar-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>

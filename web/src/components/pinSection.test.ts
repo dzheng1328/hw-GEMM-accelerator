@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PIN_WINDOW_MS, pinSection, type PinEnv } from "./pinSection";
+import { PIN_WINDOW_MS, browserPinEnv, pinSection, type PinEnv } from "./pinSection";
 
 function fakeEnv(landing = 72) {
   let onResize: () => void = () => {};
@@ -48,6 +48,16 @@ describe("pinSection", () => {
     expect(f.scrollBy).toHaveBeenCalledWith({ top: 444, behavior: "instant" });
   });
 
+  it("corrects with the behavior it was given, so a glide that content cut short can go on gliding", () => {
+    const top = { value: 72 };
+    const f = fakeEnv(72);
+    pinSection(targetAt(top), main, f.env, undefined, "auto");
+    stopLast = f.input;
+    top.value = 516;
+    f.resize();
+    expect(f.scrollBy).toHaveBeenCalledWith({ top: 444, behavior: "auto" });
+  });
+
   it("leaves the page alone when the target is already at its landing offset, give or take a pixel", () => {
     const top = { value: 72 };
     const f = fakeEnv(72);
@@ -84,5 +94,31 @@ describe("pinSection", () => {
     stopLast = second.input;
     expect(first.off.resize).toHaveBeenCalledTimes(1);
     expect(second.off.resize).not.toHaveBeenCalled();
+  });
+});
+
+describe("browserPinEnv.observeResize", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("ignores the observer's first report, so a smooth scroll that has only just begun is not cut short", () => {
+    let report: () => void = () => {};
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          report = callback;
+        }
+        observe() {
+          report(); // a real observer reports the element's size once, as soon as it is observed
+        }
+        disconnect() {}
+      },
+    );
+    const seen = vi.fn();
+    const stop = browserPinEnv.observeResize(document.createElement("main"), seen);
+    expect(seen).not.toHaveBeenCalled();
+    report();
+    expect(seen).toHaveBeenCalledTimes(1);
+    stop();
   });
 });

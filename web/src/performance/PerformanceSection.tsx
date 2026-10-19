@@ -91,6 +91,7 @@ export function PerformanceSection() {
           format={formatRatio}
           referenceLabel="linear in the tile count"
           onSelect={select}
+          proofKey="scaling"
         />
         <MeshBarChart
           title="Cycles per CIFAR-10 image"
