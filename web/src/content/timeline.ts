@@ -38,7 +38,7 @@ export const TIMELINE: TimelineNode[] = [
     phase: 2,
     title: "A 2D-mesh network on chip",
     summary: "A router, two tiles over registered links and a 2x2 mesh, with GO and RESULT flits so a tile's whole life cycle rides the network.",
-    headline: false,
+    headline: true,
     decision: { date: "2026-07-19", title: "2x2 mesh (" },
     prs: [16, 18, 20, 21],
   },
