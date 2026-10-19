@@ -74,6 +74,30 @@ body {
   font-size: 0.9rem;
 }
 
+a.tile {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.tile:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 18px var(--glow);
+}
+
+a.tile:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tile-proof {
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+a.tile:hover .tile-proof {
+  text-decoration: underline;
+}
+
 .placeholder {
   margin: 0;
   color: var(--muted);

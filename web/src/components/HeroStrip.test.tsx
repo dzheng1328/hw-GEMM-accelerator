@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import summary from "../data/generated/summary.json";
 import { formatInt, formatPercent, formatRatio } from "../format";
 import { HeroStrip } from "./HeroStrip";
@@ -29,5 +29,24 @@ describe("HeroStrip", () => {
   it("names the 4x4 scaling from the data in the scaling claim", () => {
     const { container } = render(<HeroStrip />);
     expect(container.textContent).toContain(formatRatio(summary.lm.scalingVsOneByOne["4x4"]));
+  });
+
+  it("makes each tile a link to its proof, in order", () => {
+    const { container } = render(<HeroStrip />);
+    const tiles = [...container.querySelectorAll("a.tile")];
+    expect(tiles.map((tile) => tile.getAttribute("href"))).toEqual(["#proof-stories", "#proof-cycles", "#proof-cifar", "#proof-scaling"]);
+    for (const tile of tiles) expect(tile.querySelector(".tile-proof")?.textContent).toBe("See the proof");
+  });
+
+  it("scrolls to the target when a tile is clicked", () => {
+    document.body.insertAdjacentHTML("beforeend", '<main id="main"><div id="proof-cifar" tabindex="-1" data-proof></div></main>');
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView as never;
+    const { container } = render(<HeroStrip />);
+    fireEvent.click(container.querySelector('a.tile[href="#proof-cifar"]')!);
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(window.location.hash).toBe("#proof-cifar");
+    document.getElementById("main")!.remove();
+    window.history.replaceState(null, "", "/");
   });
 });
