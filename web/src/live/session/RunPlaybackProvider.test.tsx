@@ -40,6 +40,18 @@ describe("RunPlaybackProvider", () => {
     expect(text()).toBe("none");
   });
 
+  it("builds the activity index with the trace, and offers none without a trace", () => {
+    render(provider(makeRun(), { reduced: true }));
+    expect(latest!.activity).not.toBeNull();
+    expect(latest!.activity!.countsAt(latest!.run.cycles).busy).toBe(latest!.run.cycles); // makeRun marks node 0 busy every cycle
+    cleanup();
+    const broken = makeRun();
+    broken.trace = new Uint8Array(3); // not whole records
+    render(provider(broken, { reduced: true }));
+    expect(latest!.trace).toBeNull();
+    expect(latest!.activity).toBeNull();
+  });
+
   it("starts playing a new run from cycle 0 and names the layer", () => {
     const scheduler = fakeScheduler();
     render(provider(makeRun(), { scheduler }));
