@@ -129,4 +129,20 @@ describe("BuiltSection", () => {
     const earlier = [...TIMELINE.slice(0, TIMELINE.indexOf(minor))].reverse().find((n) => n.headline);
     expect(selectedId(view.container)).toBe(earlier?.id ?? HEADLINE[0]!.id);
   });
+
+  it("keeps a selection that was moved when Deep mode went off: Show all does not bring the hidden one back", async () => {
+    const view = await renderBuilt(true);
+    const minor = TIMELINE.find((n) => !n.headline)!;
+    fireEvent.click(dots(view.container).find((d) => d.dataset.node === minor.id)!);
+    view.rerender(
+      <DeepContext.Provider value={false}>
+        <BuiltSection loadData={load} />
+      </DeepContext.Provider>,
+    );
+    const moved = selectedId(view.container);
+    expect(moved).not.toBe(minor.id);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 22" }));
+    expect(selectedId(view.container)).toBe(moved);
+  });
 });
+

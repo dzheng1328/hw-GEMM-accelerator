@@ -101,6 +101,33 @@ describe("TimelinePanel skim layer", () => {
   });
 });
 
+describe("TimelinePanel Read the full record button", () => {
+  function clipEverything() {
+    class Resize {
+      constructor(private callback: () => void) {}
+      observe() {
+        this.callback();
+      }
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", Resize);
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 600 });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 140 });
+  }
+
+  it("is not offered when the full record is already open, in Deep mode or after the visitor opened it", () => {
+    clipEverything();
+    const deep = render(<TimelinePanel {...props({ deep: true })} />);
+    expect(deep.container.querySelectorAll(".tl-clip.is-clipped")).toHaveLength(2);
+    expect(screen.queryAllByRole("button", { name: "Read the full record" })).toHaveLength(0);
+    deep.unmount();
+    render(<TimelinePanel {...props()} />);
+    expect(screen.getAllByRole("button", { name: "Read the full record" })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "Read the full record" })[0]!);
+    expect(screen.queryAllByRole("button", { name: "Read the full record" })).toHaveLength(0);
+  });
+});
+
 describe("TimelinePanel full record", () => {
   it("is closed by default and the visitor can open and close it", () => {
     const { container } = render(<TimelinePanel {...props()} />);

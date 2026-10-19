@@ -21,7 +21,7 @@ function SectionTitle({ section }: { section: DecisionSection }) {
 }
 
 /** One skim section, cut off at a fixed height with a fade; the whole text is always in the full record below. */
-function SkimBlock({ section, onReadOn }: { section: DecisionSection; onReadOn(): void }) {
+function SkimBlock({ section, onReadOn }: { section: DecisionSection; onReadOn: (() => void) | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const clipped = useClipped(ref);
   return (
@@ -30,7 +30,7 @@ function SkimBlock({ section, onReadOn }: { section: DecisionSection; onReadOn()
       <div ref={ref} className={`tl-clip${clipped ? " is-clipped" : ""}`}>
         <MiniMarkdown source={section.body} />
       </div>
-      {clipped ? (
+      {clipped && onReadOn ? (
         <button type="button" className="tl-more" onClick={onReadOn}>
           Read the full record
         </button>
@@ -93,7 +93,10 @@ export function TimelinePanel({ node, status, record, deep, hasPrev, hasNext, on
         </div>
         <div className="tl-skims">
           {record ? (
-            skim.map((section) => <SkimBlock key={`${node.id}-${section.label}`} section={section} onReadOn={() => setUserOpen(true)} />)
+            skim.map((section) => (
+              // once the full record is open, there is nothing left to read on to
+              <SkimBlock key={`${node.id}-${section.label}`} section={section} onReadOn={deep || userOpen ? null : () => setUserOpen(true)} />
+            ))
           ) : (
             <Fallback status={status} />
           )}

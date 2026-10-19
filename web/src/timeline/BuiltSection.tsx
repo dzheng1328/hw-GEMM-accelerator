@@ -23,6 +23,8 @@ export function BuiltSection({ loadData = loadDecisions }: BuiltSectionProps) {
   const all = deep || showAll;
   const nodes = railNodes(TIMELINE, all);
   const id = resolveSelected(nodes, TIMELINE, selected);
+  // a selection the rail cannot show (Deep mode went off) is replaced by the one on screen, so it does not come back later
+  if (id !== selected) setSelected(id);
   const node = TIMELINE.find((n) => n.id === id)!;
   const prev = stepTarget(nodes, id, -1);
   const next = stepTarget(nodes, id, 1);
