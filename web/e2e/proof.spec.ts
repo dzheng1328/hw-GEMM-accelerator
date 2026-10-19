@@ -111,6 +111,23 @@ test("a shared proof link lands on its target, rings it, and opens the drawer it
   await expectBelowBar(page, PROOF.cifar.id);
 });
 
+test("the pin of an earlier shared link does not pull the page back after the visitor moves to another link", async ({ page }) => {
+  await page.goto(`/#${PROOF.cycles.id}`);
+  await expect(page.locator("#performance details.drawer")).toHaveAttribute("open", "");
+  await expectBelowBar(page, PROOF.cycles.id);
+  // another link, within the first pin's four seconds: only a hash change on the open page
+  await page.goto(`/#${PROOF.cifar.id}`);
+  await expectBelowBar(page, PROOF.cifar.id);
+  // a layout change below both targets makes the old pin check where its own target is
+  await page.evaluate(() => {
+    const filler = document.createElement("div");
+    filler.style.height = "40px";
+    document.getElementById("main")!.append(filler);
+  });
+  await page.waitForTimeout(400);
+  await expectBelowBar(page, PROOF.cifar.id);
+});
+
 test("Deep mode and a proof link together land on the target", async ({ page }) => {
   await page.goto(`/?deep=1#${PROOF.cycles.id}`);
   await expectBelowBar(page, PROOF.cycles.id);

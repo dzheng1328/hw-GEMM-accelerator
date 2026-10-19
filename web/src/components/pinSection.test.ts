@@ -122,3 +122,28 @@ describe("browserPinEnv.observeResize", () => {
     stop();
   });
 });
+
+describe("browserPinEnv.onUserInput", () => {
+  it("also ends on a navigation to another hash or through history, so an old pin cannot pull the page back", () => {
+    for (const name of ["hashchange", "popstate"]) {
+      const callback = vi.fn();
+      const off = browserPinEnv.onUserInput(callback);
+      window.dispatchEvent(new Event(name));
+      expect(callback, name).toHaveBeenCalledTimes(1);
+      off();
+      window.dispatchEvent(new Event(name));
+      expect(callback, `${name} after off`).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("still ends on the visitor's own input", () => {
+    for (const name of ["wheel", "touchstart", "keydown", "pointerdown"]) {
+      const callback = vi.fn();
+      const off = browserPinEnv.onUserInput(callback);
+      window.dispatchEvent(new Event(name));
+      expect(callback, name).toHaveBeenCalledTimes(1);
+      off();
+    }
+  });
+});
+

@@ -27,7 +27,8 @@ export const browserPinEnv: PinEnv = {
     return () => observer.disconnect();
   },
   onUserInput: (callback) => {
-    const events = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    // a move to another hash or through history ends a pin too: the old target is no longer where the visitor is going
+    const events = ["wheel", "touchstart", "keydown", "pointerdown", "hashchange", "popstate"] as const;
     for (const name of events) window.addEventListener(name, callback, { passive: true });
     return () => {
       for (const name of events) window.removeEventListener(name, callback);
@@ -45,8 +46,8 @@ let release: (() => void) | null = null;
 /**
  * When the page opens on a section (a shared link), content above it is still arriving: the replay data lands a moment
  * after load and grows its section by up to 3000 px, which would leave the visitor short of the section they were sent to.
- * For a few seconds every layout change of `observed` puts `target` back at its landing offset. Any scroll, touch, key or
- * click by the visitor ends it, and so does the time running out. A new pin releases the previous one.
+ * For a few seconds every layout change of `observed` puts `target` back at its landing offset. Any scroll, touch, key, click or
+ * navigation by the visitor ends it, and so does the time running out. A new pin releases the previous one.
  * `behavior` is how a correction scrolls: instant for a shared link, "auto" (the page's own setting) after a click, so a
  * smooth scroll that late content cut short carries on gliding to the corrected place.
  */
