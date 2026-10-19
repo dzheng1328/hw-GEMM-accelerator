@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { TIMELINE } from "../src/content/timeline";
 import { GENERATED_FILES, buildAll, serialize } from "./build-data";
 import { readPerf } from "./paths";
+import { decisionsFileSchema } from "./schema";
 
 type Built = ReturnType<typeof buildAll>;
 let built: Built;
@@ -82,5 +84,20 @@ describe("lm-vocab.json", () => {
     expect(v.bos).toBe(rawVocab.bos);
     expect(v.eos).toBe(rawVocab.eos);
     expect(v._generated.regenerate).toContain("npm run build:data");
+  });
+});
+
+describe("decisions.json", () => {
+  it("has one record per timeline node and says where it came from", () => {
+    const file = built["decisions.json"];
+    expect(Object.keys(file.records).sort()).toEqual(TIMELINE.map((n) => n.id).sort());
+    expect(file._generated.sources).toEqual(["docs/decisions.md"]);
+    expect(file._generated.regenerate).toContain("npm run build:data");
+  });
+
+  it("matches its schema and carries no em dash", () => {
+    const file = built["decisions.json"];
+    expect(() => decisionsFileSchema.parse(file)).not.toThrow();
+    expect(JSON.stringify(file)).not.toContain("\u2014");
   });
 });

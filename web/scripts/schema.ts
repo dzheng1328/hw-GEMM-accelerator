@@ -129,3 +129,20 @@ export function parseInput<S extends z.ZodType>(name: string, schema: S, raw: un
   );
   throw new Error(`docs/perf/${name} does not match the expected shape:\n${lines.join("\n")}`);
 }
+
+export const decisionsFileSchema = z.object({
+  _generated: z.object({ sources: z.array(z.string()), regenerate: z.string(), note: z.string() }),
+  records: z.record(
+    z.string(),
+    z.object({
+      heading: z.string().min(1),
+      sections: z.array(
+        z.object({
+          label: z.string().nullable(),
+          note: z.string().optional(),
+          body: z.string().min(1),
+        }),
+      ),
+    }),
+  ),
+});
