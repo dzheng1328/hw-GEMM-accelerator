@@ -35,7 +35,7 @@ export const MeshBarChart = memo(function MeshBarChart({ title, bars, selected, 
     `Reference, ${referenceLabel}: ${bars.map((b) => format(b.reference)).join(", ")}.`;
 
   return (
-    <figure className="chart-figure" {...(proofKey ? proofAttrs(proofKey) : {})}>
+    <figure className="chart-figure" {...(proofKey ? { ...proofAttrs(proofKey), "aria-label": title } : {})}>
       <h3>{title}</h3>
       <div className="bar-chart-wrap">
         <svg className="bar-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>

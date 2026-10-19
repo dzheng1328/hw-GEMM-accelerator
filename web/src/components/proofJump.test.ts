@@ -46,7 +46,7 @@ describe("jumpToProof", () => {
   it("scrolls the target to the top, pins it, focuses it and rings it", () => {
     expect(jumpToProof("proof-cifar")).toBe(true);
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "auto" });
-    expect(pinSection).toHaveBeenCalledWith(el("proof-cifar"), el("main"));
+    expect(pinSection).toHaveBeenCalledWith(el("proof-cifar"), el("main"), undefined, undefined, "auto");
     expect(document.activeElement).toBe(el("proof-cifar"));
     expect(flashed()).toEqual([el("proof-cifar")]);
   });
@@ -54,6 +54,7 @@ describe("jumpToProof", () => {
   it("lands at once when asked to (a shared link on load)", () => {
     jumpToProof("proof-cifar", { instant: true });
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "instant" });
+    expect(pinSection).toHaveBeenCalledWith(el("proof-cifar"), el("main"), undefined, undefined, "instant");
   });
 
   it("removes the ring after FLASH_MS", () => {

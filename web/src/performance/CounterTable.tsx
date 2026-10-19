@@ -87,7 +87,7 @@ export function CounterTable() {
         </table>
       </div>
 
-      <div className="table-scroll" {...proofAttrs("cycles")}>
+      <div className="table-scroll" role="group" aria-label="Story model cycles by mesh" {...proofAttrs("cycles")}>
         <table className="data-table">
           <caption>Story model, 256 steps at temperature 1.0</caption>
           <thead>

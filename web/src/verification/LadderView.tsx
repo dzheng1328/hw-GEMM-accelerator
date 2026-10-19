@@ -7,7 +7,7 @@ const DOWN = "▼";
 
 export function LadderView({ ladder, proofKey }: { ladder: Ladder; proofKey?: ProofKey }) {
   return (
-    <figure className="ladder" {...(proofKey ? proofAttrs(proofKey) : {})}>
+    <figure className="ladder" {...(proofKey ? { ...proofAttrs(proofKey), "aria-label": ladder.title } : {})}>
       <h3>{ladder.title}</h3>
       <ol className="rungs">
         {ladder.rungs.map((rung, i) => (

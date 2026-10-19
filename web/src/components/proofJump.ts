@@ -45,7 +45,7 @@ export function jumpToProof(id: string, { instant = false, push = false }: JumpO
   if (push && window.location.hash !== `#${id}`) window.history.pushState(null, "", `#${id}`);
   target.scrollIntoView({ block: "start", behavior: instant ? "instant" : "auto" });
   const main = document.getElementById("main");
-  if (main) pinSection(target, main);
+  if (main) pinSection(target, main, undefined, undefined, instant ? "instant" : "auto");
   target.focus({ preventScroll: true });
   flash(spec.flash ? [...target.querySelectorAll(spec.flash)] : [target]);
   return true;

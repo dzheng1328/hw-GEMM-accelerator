@@ -1,15 +1,23 @@
 import { formatInt, formatPercent } from "../format";
+import { PACE_SECONDS } from "../live/playback/usePlayback";
 import type { Counts } from "../live/trace/activity";
 import { performance } from "../performance/data";
 
-/** A block is lit when it was active in the last LIT_WINDOW cycles. */
+/** A block is lit when it was active in the last LIT_WINDOW cycles (more on a fast or long run, see litWindow). */
 export const LIT_WINDOW = 64;
 /** At these speeds the point is single transfers, so a block is lit only for the cycle it works in, as in the 3D scene. */
 export const SLOW_LIT_WINDOW = 1;
 export const SLOW_SPEED = 0.05;
 
-export function litWindow(speed: number): number {
-  return speed <= SLOW_SPEED ? SLOW_LIT_WINDOW : LIT_WINDOW;
+const FRAME_HZ = 60;
+
+/**
+ * The window never falls short of the cycles one frame advances (7,000 cycles a second at 1x on a 2x2 run is about 117
+ * a frame, 16x about 1,900), or a burst that falls between two commits is never drawn and a bursty block strobes.
+ */
+export function litWindow(speed: number, total: number): number {
+  if (speed <= SLOW_SPEED) return SLOW_LIT_WINDOW;
+  return Math.max(LIT_WINDOW, Math.ceil(((total / PACE_SECONDS) * speed) / FRAME_HZ));
 }
 
 export interface BlockLive {

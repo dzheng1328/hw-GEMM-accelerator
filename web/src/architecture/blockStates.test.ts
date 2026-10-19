@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BLOCKS } from "../content/architecture";
 import type { Counts } from "../live/trace/activity";
+import { PACE_SECONDS } from "../live/playback/usePlayback";
 import { performance } from "../performance/data";
 import { LIT_WINDOW, SLOW_LIT_WINDOW, blockStates, litWindow, type BlockStateInput } from "./blockStates";
 
@@ -21,12 +22,19 @@ const input = (now: Partial<Counts>, before: Partial<Counts> = {}, over: Partial
 });
 
 describe("litWindow", () => {
-  it("is 64 cycles at normal speeds and one cycle at the slowest two", () => {
-    expect(litWindow(1)).toBe(LIT_WINDOW);
-    expect(litWindow(0.25)).toBe(LIT_WINDOW);
-    expect(litWindow(16)).toBe(LIT_WINDOW);
-    expect(litWindow(0.05)).toBe(SLOW_LIT_WINDOW);
-    expect(litWindow(0.01)).toBe(SLOW_LIT_WINDOW);
+  it("is 64 cycles on a short run and one cycle at the slowest two speeds", () => {
+    expect(litWindow(1, 1000)).toBe(LIT_WINDOW);
+    expect(litWindow(0.25, 5000)).toBe(LIT_WINDOW);
+    expect(litWindow(0.05, 1_000_000)).toBe(SLOW_LIT_WINDOW);
+    expect(litWindow(0.01, 1_000_000)).toBe(SLOW_LIT_WINDOW);
+  });
+
+  it("is never shorter than the cycles one frame advances, so a burst between two commits is still seen", () => {
+    const total = 139_981; // the 2x2 CIFAR-10 run: 7,000 cycles per second at 1x, about 117 per frame
+    expect(litWindow(1, total)).toBe(Math.ceil(total / PACE_SECONDS / 60));
+    expect(litWindow(1, total)).toBeGreaterThan(LIT_WINDOW);
+    expect(litWindow(16, total)).toBe(Math.ceil((total / PACE_SECONDS / 60) * 16));
+    expect(litWindow(4, total)).toBeGreaterThanOrEqual(litWindow(1, total));
   });
 });
 

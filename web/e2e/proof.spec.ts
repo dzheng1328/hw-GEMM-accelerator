@@ -59,6 +59,30 @@ test("the cycles tile opens the Performance drawer first", async ({ page }) => {
   await expectBelowBar(page, PROOF.cycles.id);
 });
 
+test("with motion allowed a tile click glides to its proof instead of jumping", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/");
+  // content still arriving moves the page, and the pin then corrects at once: click after the page has settled
+  await page.waitForLoadState("networkidle");
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const frames: number[] = [];
+    (window as unknown as { __frames: number[] }).__frames = frames;
+    const sample = () => {
+      frames.push(Math.round(window.scrollY));
+      if (frames.length < 150) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await tile(page, PROOF.cifar.id).click();
+  // the helper below passes while the page is still gliding past, so let the sampled frames finish first
+  await page.waitForFunction(() => (window as unknown as { __frames: number[] }).__frames.length >= 150);
+  await expectBelowBar(page, PROOF.cifar.id);
+  const frames = await page.evaluate(() => (window as unknown as { __frames: number[] }).__frames);
+  // a jump passes through two or three positions; a glide passes through dozens
+  expect(new Set(frames).size, `scrollY by frame: ${frames.join(" ")}`).toBeGreaterThan(12);
+});
+
 test("the keyboard works: Enter on a focused tile does the same jump", async ({ page }) => {
   await page.goto("/");
   await tile(page, PROOF.cifar.id).focus();

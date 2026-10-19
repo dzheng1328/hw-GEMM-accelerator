@@ -48,6 +48,16 @@ describe("useBlockLive", () => {
     expect(live!.perf!.lit).toBe(true); // the run is playing
   });
 
+  it("shows program address 0 before the first cycle, even though the recorded first cycle is at address 1", () => {
+    const run = makeRun();
+    run.trace[2] = 1; // the real trace's first record already has the program address at 1
+    render(provider(run, fakeScheduler(), true));
+    act(() => playback!.playback.seek(0));
+    expect(live!.cmd_seq!.text).toMatch(/^pc 0\//);
+    act(() => playback!.playback.seek(1));
+    expect(live!.cmd_seq!.text).toMatch(/^pc 1\//);
+  });
+
   it("lights the tile and counts as the run plays, and never lights the vector unit", () => {
     const scheduler = fakeScheduler();
     render(provider(makeRun(), scheduler));

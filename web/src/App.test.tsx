@@ -58,6 +58,8 @@ describe("App", () => {
       expect(target, id).not.toBeNull();
       expect(target!.getAttribute("tabindex"), id).toBe("-1");
       expect(target!.hasAttribute("data-proof"), id).toBe(true);
+      // focus lands here, so a screen reader needs a name to say where it landed
+      expect(target!.getAttribute("aria-label")?.length, `${id} accessible name`).toBeGreaterThan(5);
     }
     expect(container.querySelector("#proof-stories")!.closest("section")!.id).toBe("verification");
     expect(container.querySelector("#proof-stories h3")!.textContent).toBe("The story model on the chip");
