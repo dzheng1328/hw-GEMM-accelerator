@@ -76,6 +76,41 @@ describe("BlockDiagram", () => {
     const labels = [...container.querySelectorAll(".arch-label")].map((n) => n.textContent);
     expect(labels).toEqual(BLOCKS.map((b) => b.label));
   });
+
+  it("draws a counter line in every block: a dash with no run, the block's text with one", () => {
+    const idle = diagram();
+    expect([...idle.container.querySelectorAll(".arch-live")].map((n) => n.textContent)).toEqual(BLOCKS.map(() => "-"));
+    idle.unmount();
+    const live = Object.fromEntries(BLOCKS.map((b) => [b.id, { lit: b.id === "noc", text: `${b.id} text`, detail: "" }]));
+    const { container } = render(<BlockDiagram blocks={BLOCKS} viewBox={VIEWBOX} selected="corner" onSelect={() => {}} live={live} />);
+    expect([...container.querySelectorAll(".arch-live")].map((n) => n.textContent)).toEqual(BLOCKS.map((b) => `${b.id} text`));
+  });
+
+  it("marks exactly the lit blocks, and a lit block can also be the selected one", () => {
+    const live = Object.fromEntries(BLOCKS.map((b) => [b.id, { lit: b.id === "noc" || b.id === "corner", text: "", detail: "" }]));
+    const { container } = render(<BlockDiagram blocks={BLOCKS} viewBox={VIEWBOX} selected="corner" onSelect={() => {}} live={live} />);
+    const lit = [...container.querySelectorAll(".arch-lit")].map((g) => g.getAttribute("data-block"));
+    expect(lit.sort()).toEqual(["corner", "noc"]);
+    expect(container.querySelector(".arch-block[data-block='corner']")!.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("keeps each block's accessible name free of the counters, so the live numbers are never announced", () => {
+    const live = Object.fromEntries(BLOCKS.map((b) => [b.id, { lit: true, text: "12,345 busy", detail: "" }]));
+    const { getByRole } = render(<BlockDiagram blocks={BLOCKS} viewBox={VIEWBOX} selected="corner" onSelect={() => {}} live={live} />);
+    expect(getByRole("button", { name: /^Vector unit/ }).getAttribute("aria-label")).toBe("Vector unit, compute");
+  });
+
+  it("puts the counter line inside the box, below the label", () => {
+    const { container } = diagram();
+    for (const g of container.querySelectorAll(".arch-block")) {
+      const block = findBlock(BLOCKS, g.getAttribute("data-block")!);
+      const label = Number(g.querySelector(".arch-label")!.getAttribute("y"));
+      const counter = Number(g.querySelector(".arch-live")!.getAttribute("y"));
+      expect(label).toBeGreaterThan(block.box.y);
+      expect(counter).toBeGreaterThan(label);
+      expect(counter).toBeLessThan(block.box.y + block.box.h);
+    }
+  });
 });
 
 describe("BlockDetail", () => {

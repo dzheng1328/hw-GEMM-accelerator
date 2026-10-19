@@ -1,4 +1,5 @@
 import { memo } from "react";
+import type { BlockLive } from "./blockStates";
 import { edges, findBlock, linkSegment } from "./layout";
 import { KIND_LABEL, type Block } from "./types";
 
@@ -10,11 +11,14 @@ export const BlockDiagram = memo(function BlockDiagram({
   viewBox,
   selected,
   onSelect,
+  live = null,
 }: {
   blocks: Block[];
   viewBox: { w: number; h: number };
   selected: string;
   onSelect(id: string): void;
+  /** what each block is doing at the shared run's current cycle; null when there is no run */
+  live?: Record<string, BlockLive> | null;
 }) {
   const pairs = edges(blocks);
   const label =
@@ -31,10 +35,11 @@ export const BlockDiagram = memo(function BlockDiagram({
       {blocks.map((block) => {
         const { x, y, w, h } = block.box;
         const isSelected = block.id === selected;
+        const state = live?.[block.id];
         return (
           <g
             key={block.id}
-            className={`arch-block kind-${block.kind}${isSelected ? " arch-selected" : ""}`}
+            className={`arch-block kind-${block.kind}${isSelected ? " arch-selected" : ""}${state?.lit ? " arch-lit" : ""}`}
             role="button"
             tabIndex={0}
             aria-pressed={isSelected}
@@ -50,8 +55,11 @@ export const BlockDiagram = memo(function BlockDiagram({
           >
             <rect className="arch-bg" x={x} y={y} width={w} height={h} rx={8} />
             <rect className="arch-tint" x={x} y={y} width={w} height={h} rx={8} fillOpacity={TINT} />
-            <text className="arch-label" x={x + w / 2} y={y + h / 2 + 5}>
+            <text className="arch-label" x={x + w / 2} y={y + 24}>
               {block.label}
+            </text>
+            <text className="arch-live" x={x + w / 2} y={y + h - 11}>
+              {state ? state.text : "-"}
             </text>
           </g>
         );

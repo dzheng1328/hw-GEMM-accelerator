@@ -75,6 +75,27 @@
   pointer-events: none;
 }
 
+/* the live counter under the label; text color, not muted, so it keeps the label's contrast on the tint */
+.arch-live {
+  fill: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* working right now: an accent edge and a glow; the selected block keeps its thicker edge */
+.arch-lit .arch-bg {
+  stroke: var(--accent);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 5px var(--glow));
+}
+
+.arch-selected.arch-lit .arch-bg {
+  stroke-width: 3;
+}
+
 .arch-legend {
   display: flex;
   flex-wrap: wrap;
