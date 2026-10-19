@@ -65,14 +65,40 @@ describe("layered sections", () => {
     expect(window.location.search).toBe("");
   });
 
-  it("ignores summary clicks while Deep mode is on", () => {
+  it("lets a drawer be closed while Deep mode is on, and Deep mode starts every drawer open again", () => {
     const { container, getByRole } = render(<Harness />);
     const toggle = getByRole("button", { name: /deep mode/i });
     fireEvent.click(toggle);
-    fireEvent.click(container.querySelectorAll("summary")[1]!);
+    const second = container.querySelectorAll("summary")[1]!;
+    fireEvent.click(second);
+    expect(states(container)).toEqual([true, false]);
+    fireEvent.click(second);
     expect(states(container)).toEqual([true, true]);
+    fireEvent.click(second);
     fireEvent.click(toggle);
     expect(states(container)).toEqual([false, false]);
+    fireEvent.click(toggle);
+    expect(states(container)).toEqual([true, true]);
+  });
+
+  it("follows the browser when it opens the element itself, as find-in-page does, so the next click closes it", () => {
+    const { container } = render(<Harness />);
+    const first = container.querySelector("details")!;
+    first.open = true;
+    fireEvent(first, new Event("toggle"));
+    fireEvent.click(first.querySelector("summary")!);
+    expect(first.open).toBe(false);
+  });
+
+  it("follows the browser in Deep mode too", () => {
+    const { container, getByRole } = render(<Harness />);
+    fireEvent.click(getByRole("button", { name: /deep mode/i }));
+    const first = container.querySelector("details")!;
+    first.open = false;
+    fireEvent(first, new Event("toggle"));
+    expect(states(container)).toEqual([false, true]);
+    fireEvent.click(first.querySelector("summary")!);
+    expect(first.open).toBe(true);
   });
 
   it("starts in Deep mode when the URL says ?deep=1", () => {
@@ -102,6 +128,16 @@ describe("layered sections", () => {
     expect(states(container)).toEqual([true, false]);
     fireEvent.click(first.querySelector("summary")!);
     expect(states(container)).toEqual([false, false]);
+  });
+
+  it("opens for a proof jump in Deep mode after the visitor closed it", () => {
+    const { container, getByRole } = render(<Harness />);
+    fireEvent.click(getByRole("button", { name: /deep mode/i }));
+    const first = container.querySelector("details")!;
+    fireEvent.click(first.querySelector("summary")!);
+    expect(first.open).toBe(false);
+    fireEvent(first, new CustomEvent(OPEN_DRAWER_EVENT));
+    expect(first.open).toBe(true);
   });
 });
 

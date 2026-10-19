@@ -47,6 +47,22 @@ test("Deep mode opens every drawer, shares through the URL, and closes them agai
   expect(await open()).toBe(5);
 });
 
+test("a drawer can be closed in Deep mode, and one the browser opened still closes on the next click", async ({ page }) => {
+  await page.goto("/?deep=1");
+  const drawer = page.locator("details.drawer").first();
+  await expect(drawer).toHaveAttribute("open", "");
+  await drawer.locator("summary").click();
+  await expect(drawer).not.toHaveAttribute("open", "");
+  await page.goto("/");
+  // find-in-page opens a closed <details> by setting the attribute itself
+  await drawer.evaluate((el: HTMLDetailsElement) => {
+    el.open = true;
+  });
+  await expect(drawer).toHaveAttribute("open", "");
+  await drawer.locator("summary").click();
+  await expect(drawer).not.toHaveAttribute("open", "");
+});
+
 test("no horizontal scroll at 1280, 390 and 360 px", async ({ page }) => {
   for (const width of [1280, 390, 360]) {
     await page.setViewportSize({ width, height: 800 });
