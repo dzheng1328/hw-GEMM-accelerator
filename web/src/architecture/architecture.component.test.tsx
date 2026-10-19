@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeepContext } from "../components/deepContext";
 import { BLOCKS, DEFAULT_BLOCK, STAGES, VIEWBOX, VOP_NOTE } from "../content/architecture";
 import { REPO_URL } from "../content/timeline";
+import { TestSession } from "../live/session/testSession.testlib";
 import { BlockDetail } from "./BlockDetail";
 import { ArchitectureSection } from "./ArchitectureSection";
 import { BlockDiagram } from "./BlockDiagram";
@@ -257,7 +258,7 @@ describe("BlockTable semantics", () => {
 
 describe("ArchitectureSection", () => {
   it("starts on the injection port, with its number in the panel", () => {
-    const { container } = render(<ArchitectureSection />);
+    const { container } = render(<TestSession><ArchitectureSection /></TestSession>);
     const pressed = container.querySelector(".arch-block[aria-pressed='true']")!;
     expect(pressed.getAttribute("data-block")).toBe(DEFAULT_BLOCK);
     const corner = findBlock(BLOCKS, DEFAULT_BLOCK);
@@ -266,7 +267,7 @@ describe("ArchitectureSection", () => {
   });
 
   it("updates the panel when another block is chosen", () => {
-    const { container, getByRole } = render(<ArchitectureSection />);
+    const { container, getByRole } = render(<TestSession><ArchitectureSection /></TestSession>);
     fireEvent.click(getByRole("button", { name: /^Vector unit/ }));
     expect(container.querySelector(".arch-detail-title")!.textContent).toBe("Vector unit");
     expect(container.querySelector(".arch-block[aria-pressed='true']")!.getAttribute("data-block")).toBe("vpu");
@@ -275,7 +276,9 @@ describe("ArchitectureSection", () => {
   it("shares one selection between the stepper and the diagram", () => {
     const { container, getByRole } = render(
       <DeepContext.Provider value={true}>
-        <ArchitectureSection />
+        <TestSession>
+          <ArchitectureSection />
+        </TestSession>
       </DeepContext.Provider>,
     );
     fireEvent.click(getByRole("button", { name: "Next" }));
@@ -286,17 +289,31 @@ describe("ArchitectureSection", () => {
   });
 
   it("keeps the legend, the title and a closed drawer by default, and opens the drawer in Deep mode", () => {
-    const closed = render(<ArchitectureSection />);
+    const closed = render(<TestSession><ArchitectureSection /></TestSession>);
     expect(closed.container.querySelector("section#architecture h2")!.textContent).toBe("The chip");
     expect(closed.container.querySelectorAll(".arch-legend li")).toHaveLength(4);
     expect(closed.container.querySelector("details")!.hasAttribute("open")).toBe(false);
     cleanup();
     const deep = render(
       <DeepContext.Provider value={true}>
-        <ArchitectureSection />
+        <TestSession>
+          <ArchitectureSection />
+        </TestSession>
       </DeepContext.Provider>,
     );
     expect(deep.container.querySelector("details")!.open).toBe(true);
     expect(deep.container.querySelectorAll("details .data-table tbody tr")).toHaveLength(BLOCKS.length);
+  });
+
+  it("shows the strip under the diagram, with dashes in the blocks while no run exists", () => {
+    const { container, getByText } = render(
+      <TestSession>
+        <ArchitectureSection />
+      </TestSession>,
+    );
+    expect(getByText("Run the chip to see this light up.")).toBeTruthy();
+    expect([...container.querySelectorAll(".arch-live")].every((n) => n.textContent === "-")).toBe(true);
+    expect(container.querySelector(".arch-live-row")).toBeNull();
+    expect(container.querySelectorAll(".arch-lit")).toHaveLength(0);
   });
 });
