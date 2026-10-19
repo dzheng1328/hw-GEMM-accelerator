@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TIMELINE } from "../content/timeline";
-import { defaultNodeId, keyTarget, phaseBands, railDate, railNodes, resolveSelected, stepTarget } from "./rail";
+import { centerScrollLeft, defaultNodeId, keyTarget, phaseBands, railDate, railNodes, resolveSelected, stepTarget } from "./rail";
 import type { TimelineNode } from "./types";
 
 const node = (id: string, phase: 1 | 2 | 3 | 4, headline: boolean): TimelineNode => ({
@@ -97,5 +97,22 @@ describe("railDate", () => {
   it("writes a short month and day, in UTC", () => {
     expect(railDate("2026-07-19")).toBe("Jul 19");
     expect(railDate("2026-10-01")).toBe("Oct 1");
+  });
+});
+
+describe("centerScrollLeft", () => {
+  const strip = { left: 100, width: 300, scrollLeft: 0 };
+
+  it("puts a dot that is off to the right in the middle of the strip", () => {
+    // the dot's box starts 700 px from the screen's left edge and is 50 wide: 600 px into the strip's content
+    expect(centerScrollLeft(strip, { left: 700, width: 50 })).toBe(600 - (300 - 50) / 2);
+  });
+
+  it("counts the distance the strip is already scrolled", () => {
+    expect(centerScrollLeft({ ...strip, scrollLeft: 200 }, { left: 300, width: 50 })).toBe(200 + 200 - (300 - 50) / 2);
+  });
+
+  it("never asks for a negative scroll", () => {
+    expect(centerScrollLeft(strip, { left: 110, width: 50 })).toBe(0);
   });
 });

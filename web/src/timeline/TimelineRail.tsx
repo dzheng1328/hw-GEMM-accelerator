@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type CSSProperties, type KeyboardEv
 import { PHASES } from "../content/timeline";
 import { formatDate } from "../format";
 import { usePrefersReducedMotion } from "../replay/hooks";
-import { keyTarget, phaseBands, railDate, type RailKey } from "./rail";
+import { centerScrollLeft, keyTarget, phaseBands, railDate, type RailKey } from "./rail";
 import type { TimelineNode } from "./types";
 
 const KEYS = new Set<string>(["ArrowLeft", "ArrowRight", "Home", "End"]);
@@ -30,8 +30,13 @@ export function TimelineRail({ nodes, selectedId, onSelect, total, onShowAll }: 
     const strip = scrollRef.current;
     const dot = strip?.querySelector<HTMLElement>(`[data-node="${selectedId}"]`);
     if (!strip || !dot || typeof strip.scrollTo !== "function") return;
-    const left = dot.offsetLeft - (strip.clientWidth - dot.offsetWidth) / 2;
-    strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "instant" : "smooth" });
+    const box = strip.getBoundingClientRect();
+    const mark = dot.getBoundingClientRect();
+    const left = centerScrollLeft(
+      { left: box.left, width: strip.clientWidth, scrollLeft: strip.scrollLeft },
+      { left: mark.left, width: mark.width },
+    );
+    strip.scrollTo({ left, behavior: reduced ? "instant" : "smooth" });
   }, [selectedId, nodes.length, reduced]);
 
   // an arrow key changes the selection, and the focus follows it to the new dot

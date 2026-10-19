@@ -1,12 +1,13 @@
 /* The timeline: a rail of milestones over a detail panel. Colors come from the tokens only. */
 .tl {
-  /* the panel never changes height from one milestone to the next: tallest content measured 653 px (desktop) and 940 px (phone) */
-  --tl-panel-min: 42rem;
+  /* the panel never changes height from one milestone to the next: tallest content measured 599 px at 900 px and wider */
+  --tl-panel-min: 38.5rem;
   display: grid;
   gap: var(--space-4);
 }
 
-@media (max-width: 720px) {
+/* one column below 900 px (see .tl-body): the tallest content measured 788 px at 899 px and 940 px at 390 px */
+@media (max-width: 899px) {
   .tl {
     --tl-panel-min: 60rem;
   }
@@ -188,6 +189,22 @@
   border-radius: var(--radius-panel);
 }
 
+/* wide screens: the facts on the left and the decision on the right, so a line of prose stays readable */
+.tl-body {
+  display: grid;
+  /* an explicit minmax(0, ...) column: an implicit one would size to a wide table and push the page sideways */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+@media (min-width: 900px) {
+  .tl-body {
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    column-gap: var(--space-5);
+    align-items: start;
+  }
+}
+
 .tl-meta {
   display: flex;
   flex-wrap: wrap;
@@ -231,6 +248,13 @@
 
 .tl-skim {
   margin-top: var(--space-3);
+}
+
+@media (min-width: 900px) {
+  .tl-skims > :first-child,
+  .tl-skims > .tl-msg {
+    margin-top: 0;
+  }
 }
 
 .tl-label {

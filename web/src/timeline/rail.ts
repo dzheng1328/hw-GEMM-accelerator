@@ -58,3 +58,15 @@ export function defaultNodeId(nodes: TimelineNode[]): string {
 export function railDate(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
 }
+
+/**
+ * Where to scroll a strip so a dot sits in its middle. Both boxes are screen coordinates (getBoundingClientRect), plus the
+ * distance the strip is already scrolled: a dot's offsetLeft is measured from its list item, not from the strip.
+ */
+export function centerScrollLeft(
+  strip: { left: number; width: number; scrollLeft: number },
+  dot: { left: number; width: number },
+): number {
+  return Math.max(0, strip.scrollLeft + (dot.left - strip.left) - (strip.width - dot.width) / 2);
+}
+

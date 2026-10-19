@@ -69,31 +69,35 @@ export function TimelinePanel({ node, status, record, deep, hasPrev, hasNext, on
 
   return (
     <article className="tl-panel" aria-label="Milestone detail">
-      <div aria-live="polite">
-        <p className="tl-meta">
-          <time dateTime={node.date}>{formatDate(node.date)}</time>
-          <span className="tl-phase">{PHASES[node.phase]}</span>
-        </p>
-        <h3 className="tl-title">{node.title}</h3>
-        <p className="tl-summary">{node.summary}</p>
-        {node.metric ? (
-          <p className="tl-metric">
-            {node.metric.label}: {node.metric.before ? `${node.metric.before} → ` : ""}
-            {node.metric.after}
+      <div className="tl-body" aria-live="polite">
+        <div className="tl-facts">
+          <p className="tl-meta">
+            <time dateTime={node.date}>{formatDate(node.date)}</time>
+            <span className="tl-phase">{PHASES[node.phase]}</span>
           </p>
-        ) : null}
-        <p className="tl-prs">
-          {node.prs.map((pr) => (
-            <a key={pr} href={`${REPO_URL}/pull/${pr}`} target="_blank" rel="noopener noreferrer">
-              #{pr}
-            </a>
-          ))}
-        </p>
-        {record ? (
-          skim.map((section) => <SkimBlock key={`${node.id}-${section.label}`} section={section} onReadOn={() => setUserOpen(true)} />)
-        ) : (
-          <Fallback status={status} />
-        )}
+          <h3 className="tl-title">{node.title}</h3>
+          <p className="tl-summary">{node.summary}</p>
+          {node.metric ? (
+            <p className="tl-metric">
+              {node.metric.label}: {node.metric.before ? `${node.metric.before} \u2192 ` : ""}
+              {node.metric.after}
+            </p>
+          ) : null}
+          <p className="tl-prs">
+            {node.prs.map((pr) => (
+              <a key={pr} href={`${REPO_URL}/pull/${pr}`} target="_blank" rel="noopener noreferrer">
+                #{pr}
+              </a>
+            ))}
+          </p>
+        </div>
+        <div className="tl-skims">
+          {record ? (
+            skim.map((section) => <SkimBlock key={`${node.id}-${section.label}`} section={section} onReadOn={() => setUserOpen(true)} />)
+          ) : (
+            <Fallback status={status} />
+          )}
+        </div>
       </div>
       {record ? (
         <details className="tl-record" open={deep || userOpen}>

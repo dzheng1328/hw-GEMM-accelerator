@@ -137,6 +137,31 @@ test("no horizontal page scroll with the full record and a table open", async ({
   expect(await noHorizontalScroll(page)).toBe(true);
 });
 
+test("a milestone chosen by click or key is brought into view in the rail", async ({ page }) => {
+  await openBuilt(page, "/?deep=1");
+  const inView = () =>
+    page.evaluate(() => {
+      const strip = document.querySelector("#built .rail-scroll")!.getBoundingClientRect();
+      const dot = document.querySelector("#built .rail button[aria-pressed='true']")!.getBoundingClientRect();
+      return { dotLeft: Math.round(dot.left), dotRight: Math.round(dot.right), stripLeft: Math.round(strip.left), stripRight: Math.round(strip.right) };
+    });
+  const expectInView = async (what: string) => {
+    await expect
+      .poll(async () => {
+        const r = await inView();
+        return r.dotLeft >= r.stripLeft - 1 && r.dotRight <= r.stripRight + 1;
+      }, { message: `${what}: the selected dot is inside the rail (${JSON.stringify(await inView())})` })
+      .toBe(true);
+  };
+  await dot(page, TIMELINE[0]!.id).click();
+  await page.keyboard.press("End");
+  await expectInView("End");
+  await page.keyboard.press("Home");
+  await expectInView("Home");
+  for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowRight");
+  await expectInView("twelve ArrowRight presses");
+});
+
 test("the rail scrolls on its own and the page does not", async ({ page }) => {
   await openBuilt(page, "/?deep=1");
   await dot(page, TIMELINE[0]!.id).click();
