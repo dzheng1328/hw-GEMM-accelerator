@@ -144,9 +144,32 @@ describe("BlockDetail", () => {
     expect(decision.container.textContent).toContain("2026-09-28");
   });
 
-  it("is a polite live region, so a screen reader hears the new selection", () => {
+  it("keeps the selection's own content in a polite live region, so a screen reader hears a new selection", () => {
     const { container } = render(<BlockDetail block={findBlock(BLOCKS, "noc")} />);
-    expect(container.querySelector(".arch-detail")!.getAttribute("aria-live")).toBe("polite");
+    const region = container.querySelector(".arch-detail > [aria-live='polite']")!;
+    expect(region.querySelector(".arch-detail-title")!.textContent).toBe("Network on chip");
+    expect(region.querySelector(".arch-number")).not.toBeNull();
+  });
+
+  it("shows no run row without a run", () => {
+    const { container } = render(<BlockDetail block={findBlock(BLOCKS, "noc")} />);
+    expect(container.querySelector(".arch-live-row")).toBeNull();
+  });
+
+  it("adds an In this run row outside the live region, so the changing numbers are never announced", () => {
+    const live = { lit: true, text: "1 transfers", detail: "1 flit transfers have crossed mesh links so far." };
+    const { container } = render(<BlockDetail block={findBlock(BLOCKS, "noc")} live={live} />);
+    const row = container.querySelector(".arch-live-row")!;
+    expect(row.querySelector("h4")!.textContent).toBe("In this run");
+    expect(row.textContent).toContain(live.detail);
+    expect(row.closest("[aria-live]")).toBeNull();
+    expect(container.querySelector("[aria-live='polite']")!.contains(row)).toBe(false);
+  });
+
+  it("says the vector unit is not used in this run", () => {
+    const live = { lit: false, text: "not used", detail: "Not used in this run. The story model uses it: 15,108,284 busy cycles on every mesh." };
+    const { container } = render(<BlockDetail block={findBlock(BLOCKS, "vpu")} live={live} />);
+    expect(container.querySelector(".arch-live-row")!.textContent).toContain("Not used in this run");
   });
 });
 

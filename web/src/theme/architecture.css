@@ -190,6 +190,28 @@
   font-weight: 400;
 }
 
+/* the run's own numbers, apart from the fixed facts above them */
+.arch-live-row {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.arch-live-row h4 {
+  margin: 0 0 var(--space-1);
+  color: var(--accent);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.arch-live-row p {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .arch-stepper-nav {
   display: flex;
   gap: var(--space-2);
