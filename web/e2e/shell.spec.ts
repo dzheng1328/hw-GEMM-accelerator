@@ -101,9 +101,9 @@ test("focusing a bar control mid-page does not move the page (a keyboard user ca
 
 test("focusing a control just under the bar scrolls it clear of the bar", async ({ page }) => {
   await page.goto("/", { waitUntil: "networkidle" });
-  const summary = page.locator("#performance summary");
+  const summary = page.locator("#performance .drawer > summary");
   await page.evaluate(() => {
-    const top = document.querySelector("#performance summary")!.getBoundingClientRect().top + window.scrollY;
+    const top = document.querySelector("#performance .drawer > summary")!.getBoundingClientRect().top + window.scrollY;
     window.scrollTo(0, top - 10);
   });
   await summary.focus();
@@ -237,9 +237,9 @@ test("the upload button and the radio buttons use the page's own look, not the b
     const button = getComputedStyle(file, "::file-selector-button");
     return { background: button.backgroundColor, radius: button.borderTopLeftRadius, accent: getComputedStyle(radio).accentColor };
   });
-  expect(look.background).toBe("rgb(17, 25, 34)");
-  expect(look.radius).toBe("8px");
-  expect(look.accent).toBe("rgb(76, 195, 255)");
+  expect(look.background).toBe("rgb(20, 31, 59)");
+  expect(look.radius).toBe("2px");
+  expect(look.accent).toBe("rgb(223, 189, 98)");
 });
 
 test("a keyboard focus ring on a section link is drawn inside the link, where the scrolling strip cannot clip it", async ({ page }) => {

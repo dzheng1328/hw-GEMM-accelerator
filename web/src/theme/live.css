@@ -179,6 +179,8 @@
 }
 
 .live-scene {
+  /* an explicit width: with only a min-height, the aspect ratio would widen the box past a 320 px phone */
+  width: 100%;
   aspect-ratio: 4 / 3;
   min-height: 16rem;
 }

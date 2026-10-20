@@ -34,7 +34,7 @@ export function StrokeRibbon() {
             The per-step data could not be loaded. Reload to try again.
           </p>
         ) : null}
-        {!computed && status !== "error" ? <p className="replay-loading">Loading the recorded run...</p> : null}
+        {!computed && status !== "error" ? <p className="replay-loading">Loading the per-step numbers...</p> : null}
       </div>
       {computed ? (
         <details className="ribbon-table">

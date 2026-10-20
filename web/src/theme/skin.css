@@ -12,6 +12,11 @@ h2,
   font-weight: 700;
 }
 
+/* things that slide in (motion) start off screen; a transform counts as overflow, so clip it rather than let the page pan sideways */
+main {
+  overflow-x: clip;
+}
+
 /* ---- sections: no bands, a hairline that draws in under the heading ---- */
 .band h2 {
   letter-spacing: 0;

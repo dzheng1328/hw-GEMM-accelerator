@@ -80,21 +80,21 @@ test("the theme toggle repaints the page and the choice survives a reload", asyn
   await page.goto("/");
   const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
-  expect(await background()).toBe("rgb(8, 11, 16)");
+  expect(await background()).toBe("rgb(11, 18, 38)");
   await page.getByRole("button", { name: "Switch to light theme" }).click();
-  expect(await background()).toBe("rgb(247, 249, 251)");
+  expect(await background()).toBe("rgb(228, 218, 194)");
   await page.reload();
-  expect(await background()).toBe("rgb(247, 249, 251)");
+  expect(await background()).toBe("rgb(228, 218, 194)");
   await expect(page.getByRole("button", { name: "Switch to dark theme" })).toBeVisible();
   await page.getByRole("button", { name: "Switch to dark theme" }).click();
   await page.reload();
-  expect(await background()).toBe("rgb(8, 11, 16)");
+  expect(await background()).toBe("rgb(11, 18, 38)");
 });
 
 test("the page opens dark even when the operating system prefers light", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/");
-  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(8, 11, 16)");
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(11, 18, 38)");
 });
 
 test("the footer sits at the very end of the page and the icons and preview image are served", async ({ page, request }) => {

@@ -19,6 +19,12 @@ describe("StrokeRibbon", () => {
     expect(container.querySelector(".ribbon-frame")).not.toBeNull();
   });
 
+  it("says what it is loading, in words the replay's own loading line does not use (a page-level text lookup finds one)", () => {
+    const { container } = render(<StrokeRibbon />);
+    expect(container.textContent).toContain("Loading the per-step numbers...");
+    expect(container.textContent).not.toContain("Loading the recorded run...");
+  });
+
   it("makes the plot's frame a named, focusable region, because on a phone the plot scrolls sideways inside it", () => {
     const { container } = render(<StrokeRibbon />);
     const frame = container.querySelector(".ribbon-frame")!;
