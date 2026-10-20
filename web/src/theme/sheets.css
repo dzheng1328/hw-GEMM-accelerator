@@ -10,6 +10,7 @@
   --text: var(--paper-text);
   --muted: var(--paper-muted);
   --border: var(--paper-border);
+  --rule: var(--paper-border);
   --accent: var(--paper-accent);
   --ring: var(--paper-ring);
   --scene-tile: var(--paper-tile);

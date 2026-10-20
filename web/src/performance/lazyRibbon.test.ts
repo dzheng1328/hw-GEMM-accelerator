@@ -10,7 +10,7 @@ describe("the stroke ribbon in the performance section", () => {
     expect(source).toMatch(/lazy\(\(\) =>\s*import\("\.\/StrokeRibbon"\)/);
   });
 
-  it("holds the ribbon's room while its chunk loads, so nothing below it moves", () => {
-    expect(source).toMatch(/<Suspense fallback=\{[^}]*ribbon-frame/);
+  it("holds the ribbon's room while its chunk loads, with the same chrome the figure is built from", () => {
+    expect(source).toMatch(/<Suspense fallback=\{<RibbonFallback \/>\}/);
   });
 });

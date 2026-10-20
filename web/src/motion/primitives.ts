@@ -25,6 +25,17 @@ const done = (el: HTMLElement | SVGElement) => () => {
 
 const onScroll = (el: Element, start = "top 88%") => ({ trigger: el, start, once: true });
 
+/**
+ * An element already past its start line when GSAP arrives was painted in its final state, so setting its from-state
+ * now would hide it and sweep it back in: a flash. Such an element is left alone and marked done.
+ */
+function alreadyShown(el: HTMLElement | SVGElement, start: string): boolean {
+  const line = Number(/(\d+)%/.exec(start)?.[1] ?? 88) / 100;
+  if (el.getBoundingClientRect().top >= window.innerHeight * line) return false;
+  el.dataset.motion = "done";
+  return true;
+}
+
 /** The print drifts slowly against the scroll. The layer is taller than the screen, so no edge ever shows. */
 export function printParallax(g: Gsap, layer: HTMLElement): MotionHandle {
   const tween = g.to(layer, {
@@ -37,6 +48,7 @@ export function printParallax(g: Gsap, layer: HTMLElement): MotionHandle {
 
 /** Slides in from the side as it enters the screen. */
 export function sweepIn(g: Gsap, el: HTMLElement, opts: { from?: "left" | "right" } = {}): MotionHandle {
+  if (alreadyShown(el, "top 88%")) return handle(g, el, []);
   const distance = opts.from === "left" ? -48 : 48;
   const tween = g.fromTo(
     el,
@@ -48,6 +60,7 @@ export function sweepIn(g: Gsap, el: HTMLElement, opts: { from?: "left" | "right
 
 /** A hairline that draws from the left. */
 export function drawRule(g: Gsap, el: HTMLElement): MotionHandle {
+  if (alreadyShown(el, "top 92%")) return handle(g, el, []);
   const tween = g.fromTo(
     el,
     { scaleX: 0 },
@@ -58,6 +71,7 @@ export function drawRule(g: Gsap, el: HTMLElement): MotionHandle {
 
 /** A washi sheet slides in across the page. */
 export function sheetSlide(g: Gsap, el: HTMLElement): MotionHandle {
+  if (alreadyShown(el, "top 85%")) return handle(g, el, []);
   const tween = g.fromTo(
     el,
     { x: 80, opacity: 0 },
@@ -68,6 +82,7 @@ export function sheetSlide(g: Gsap, el: HTMLElement): MotionHandle {
 
 /** The strokes are drawn left to right, like unrolling a scroll. */
 export function strokeWipe(g: Gsap, el: SVGGElement): MotionHandle {
+  if (alreadyShown(el, "top 80%")) return handle(g, el, []);
   const tween = g.fromTo(
     el,
     { clipPath: "inset(0 100% 0 0)" },

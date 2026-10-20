@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type Ref } from "react";
 import { PROOF, type ProofKey } from "../content/proof";
 import summary from "../data/generated/summary.json";
 import { formatInt, formatPercent, formatRatio } from "../format";
@@ -48,10 +48,7 @@ const TILES: Tile[] = [
   },
 ];
 
-function ProofTile({ tile, lead }: { tile: Tile; lead: boolean }) {
-  const ref = useRef<HTMLAnchorElement>(null);
-  // the secondary tiles sweep in from the right; the lead figure counts up instead and is never hidden
-  useMotion(ref, (g, el) => (lead ? null : sweepIn(g, el, { from: "right" })));
+function TileBody({ tile, ref }: { tile: Tile; ref?: Ref<HTMLAnchorElement> }) {
   const { id } = PROOF[tile.proof];
   return (
     <a ref={ref} className="tile" href={`#${id}`} onClick={onProofClick(id)}>
@@ -64,12 +61,18 @@ function ProofTile({ tile, lead }: { tile: Tile; lead: boolean }) {
   );
 }
 
+/** The secondary tiles sweep in from the right. */
+function SweepTile({ tile }: { tile: Tile }) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  useMotion(ref, (g, el) => sweepIn(g, el, { from: "right" }));
+  return <TileBody tile={tile} ref={ref} />;
+}
+
 export function HeroStrip() {
   return (
     <div className="hero">
-      {TILES.map((tile, i) => (
-        <ProofTile key={tile.label} tile={tile} lead={i === 0} />
-      ))}
+      {/* the lead figure counts up instead (CountFigure) and is never hidden, so it has no sweep */}
+      {TILES.map((tile, i) => (i === 0 ? <TileBody key={tile.label} tile={tile} /> : <SweepTile key={tile.label} tile={tile} />))}
     </div>
   );
 }

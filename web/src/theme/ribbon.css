@@ -116,6 +116,23 @@
   font-size: var(--text-sm);
 }
 
+/* stands in for the closed row until the table exists, so the figure keeps its height */
+.ribbon-table-room {
+  margin-top: var(--space-3);
+  min-height: 2.75rem;
+}
+
+/* the table is wider than a phone's sheet: it scrolls inside its own box instead of being clipped by the page */
+.ribbon-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.ribbon-table-scroll:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
 .ribbon-table summary {
   min-height: 2.75rem;
   display: flex;

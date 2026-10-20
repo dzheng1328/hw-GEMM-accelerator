@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
+/** The lazy chunk first shows a fallback with the same head; wait for the real figure (the plot frame is a region) before scrolling to it. */
+async function showRibbon(page: Page) {
+  await page.locator('.ribbon-frame[role="region"]').waitFor({ state: "attached", timeout: 15_000 });
+  await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
+}
+
 /** Walks down the page once so every lazy section has loaded, then waits for the heights to stop changing. */
 async function settle(page: Page): Promise<void> {
   let last = -1;
@@ -40,7 +46,7 @@ test.describe("with motion allowed", () => {
 
   test("the stroke ribbon draws itself and ends fully shown", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
+    await showRibbon(page);
     await expect(page.locator(".ribbon-svg g[data-motion]").first()).toHaveAttribute("data-motion", "done", { timeout: 20_000 });
     await expect(page.locator(".ribbon-svg rect.seg")).toHaveCount(256 * 4);
     const clip = await page.locator(".ribbon-svg g[data-motion]").first().evaluate((el) => getComputedStyle(el).clipPath);
@@ -71,7 +77,7 @@ test.describe("with reduced motion", () => {
 
   test("nothing is animated or hidden: no motion marker appears and the ribbon is whole at once", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
+    await showRibbon(page);
     await expect(page.locator(".ribbon-svg rect.seg")).toHaveCount(256 * 4, { timeout: 20_000 });
     expect(await page.locator("[data-motion]").count()).toBe(0);
     expect(await page.locator(".ribbon").evaluate((el) => getComputedStyle(el).opacity)).toBe("1");

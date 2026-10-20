@@ -22,7 +22,7 @@ describe("the paper scope", () => {
 
   it("resets every semantic color the panels read to its paper value", () => {
     const body = /:is\([^)]*\)\s*\{([^}]*)\}/.exec(css)![1]!;
-    for (const token of ["bg", "surface", "band", "text", "muted", "border", "accent", "ring", "scene-tile", "cat-weights", "cat-attention", "cat-vpu", "cat-other", "port-operand", "port-go", "port-stall", "port-wait", "port-other", "kind-control", "kind-movement", "kind-compute", "kind-memory"]) {
+    for (const token of ["bg", "surface", "band", "text", "muted", "border", "rule", "accent", "ring", "scene-tile", "cat-weights", "cat-attention", "cat-vpu", "cat-other", "port-operand", "port-go", "port-stall", "port-wait", "port-other", "kind-control", "kind-movement", "kind-compute", "kind-memory"]) {
       expect(body, token).toMatch(new RegExp(`--${token}:\\s*var\\(--paper-`));
     }
   });

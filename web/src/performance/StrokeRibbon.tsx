@@ -5,6 +5,7 @@ import { sheetSlide, strokeWipe } from "../motion/primitives";
 import { useMotion } from "../motion/useMotion";
 import { useInView, useLazyData } from "../replay/hooks";
 import { loadLmSteps } from "../replay/loadReplayData";
+import { RibbonHead, RibbonSource, RibbonTableRoom } from "./RibbonChrome";
 import { gridValues, KIND_LABELS, KINDS, noteX, ribbonData, total, VIEW, type RibbonData } from "./ribbonGeometry";
 
 /**
@@ -20,25 +21,26 @@ export function StrokeRibbon() {
 
   const computed = useMemo(() => (data && data.length > 0 ? ribbonData(data) : null), [data]);
 
+  // data that arrived empty is as unusable as data that failed to load; it must not read as "still loading"
+  const failed = status === "error" || (status === "ready" && !computed);
+
   return (
     <Sheet as="figure" className="ribbon" ref={sheet}>
-      <figcaption className="ribbon-head">
-        <h3>Where the cycles go, one stroke per step</h3>
-        <p>256 steps, each split by the work it took. The strokes get taller as the story grows.</p>
-      </figcaption>
+      <RibbonHead />
       {/* the frame reserves the plot's height before the data arrives, so nothing below it moves */}
       <div className="ribbon-frame" role="region" aria-label="Cycles per step chart. On a small screen it scrolls sideways." tabIndex={0}>
         {computed ? <Plot c={computed} /> : null}
-        {status === "error" ? (
+        {failed ? (
           <p className="replay-error" role="alert">
             The per-step data could not be loaded. Reload to try again.
           </p>
         ) : null}
-        {!computed && status !== "error" ? <p className="replay-loading">Loading the per-step numbers...</p> : null}
+        {!computed && !failed ? <p className="replay-loading">Loading the per-step numbers...</p> : null}
       </div>
       {computed ? (
         <details className="ribbon-table">
           <summary>See the numbers</summary>
+          <div className="ribbon-table-scroll" role="region" aria-label="Cycles per step, as numbers. On a small screen it scrolls sideways." tabIndex={0}>
           <table>
             <thead>
               <tr>
@@ -63,9 +65,12 @@ export function StrokeRibbon() {
               ))}
             </tbody>
           </table>
+          </div>
         </details>
-      ) : null}
-      <p className="ribbon-src">docs/perf/lm_trace.json - 2x2, temperature 1.0</p>
+      ) : (
+        <RibbonTableRoom />
+      )}
+      <RibbonSource />
     </Sheet>
   );
 }

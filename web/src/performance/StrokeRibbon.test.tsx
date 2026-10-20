@@ -6,17 +6,47 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import steps from "../data/generated/lm-steps.json";
 import { formatInt } from "../format";
 
-vi.mock("../replay/loadReplayData", () => ({ loadLmSteps: () => Promise.resolve(steps.steps) }));
+const load = vi.hoisted(() => ({ rows: null as unknown[] | null }));
+vi.mock("../replay/loadReplayData", () => ({ loadLmSteps: () => Promise.resolve(load.rows ?? steps.steps) }));
 
 import { StrokeRibbon } from "./StrokeRibbon";
+import { RibbonFallback } from "./RibbonChrome";
 import { total } from "./ribbonGeometry";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  load.rows = null;
+});
 
 describe("StrokeRibbon", () => {
   it("reserves its height before the data arrives, so nothing below it moves", () => {
     const { container } = render(<StrokeRibbon />);
     expect(container.querySelector(".ribbon-frame")).not.toBeNull();
+  });
+
+  it("is built from the same parts as its Suspense fallback, so the chunk landing moves nothing below it", () => {
+    const parts = (root: ParentNode) => [".ribbon-head", ".ribbon-frame", ".ribbon-table-room", ".ribbon-src"].map((s) => root.querySelector(s)?.outerHTML.replace(/ (role|aria-label|tabindex)="[^"]*"/g, "").replace(/>.*</s, "><"));
+    const fallback = render(<RibbonFallback />).container;
+    const loading = render(<StrokeRibbon />).container;
+    expect(parts(fallback).every(Boolean)).toBe(true);
+    expect(parts(loading)).toEqual(parts(fallback));
+  });
+
+  it("says that empty data is a failure instead of loading forever", async () => {
+    load.rows = [];
+    const { container } = render(<StrokeRibbon />);
+    await waitFor(() => expect(container.querySelector('[role="alert"]')).not.toBeNull());
+    expect(container.textContent).not.toContain("Loading the per-step numbers...");
+  });
+
+  it("scrolls the table sideways inside its own named region, because it is wider than a phone's sheet", async () => {
+    const { container } = render(<StrokeRibbon />);
+    await waitFor(() => expect(container.querySelector("details table")).not.toBeNull());
+    const scroller = container.querySelector(".ribbon-table-scroll")!;
+    expect(scroller.getAttribute("role")).toBe("region");
+    expect(scroller.getAttribute("aria-label")).toMatch(/numbers/i);
+    expect(scroller.getAttribute("tabindex")).toBe("0");
+    expect(scroller.querySelector("table")).not.toBeNull();
   });
 
   it("says what it is loading, in words the replay's own loading line does not use (a page-level text lookup finds one)", () => {

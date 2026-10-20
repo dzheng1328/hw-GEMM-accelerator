@@ -30,8 +30,13 @@ function fakeGsap() {
 const ALLOWED = new Set(["x", "y", "xPercent", "yPercent", "scale", "scaleX", "scaleY", "rotate", "opacity", "clipPath", "v", "duration", "delay", "ease", "stagger", "scrollTrigger", "immediateRender", "onUpdate", "onComplete", "clearProps"]);
 const LAYOUT = ["width", "height", "top", "left", "right", "bottom", "margin", "padding", "display", "position", "fontSize"];
 
-const div = () => document.createElement("div");
-const svgG = () => document.createElementNS("http://www.w3.org/2000/svg", "g");
+/** below the fold, where an entrance animation is wanted (jsdom has no layout, so every rect is at 0 unless set) */
+function at<T extends Element>(el: T, top: number): T {
+  el.getBoundingClientRect = () => ({ top, bottom: top + 100, left: 0, right: 100, width: 100, height: 100, x: 0, y: top, toJSON: () => ({}) });
+  return el;
+}
+const div = () => at(document.createElement("div"), 5000);
+const svgG = () => at(document.createElementNS("http://www.w3.org/2000/svg", "g"), 5000);
 
 function withLive(): HTMLElement {
   const el = div();
@@ -133,4 +138,20 @@ describe("the motion primitives", () => {
     expect(calls[0]!.from!.clipPath).toBe("inset(0 100% 0 0)");
     expect(calls[0]!.to.clipPath).toBe("inset(0 0% 0 0)");
   });
+
+  const entrances: [string, (g: Gsap, el: HTMLElement) => unknown][] = [
+    ["sweepIn", (g, el) => sweepIn(g, el)],
+    ["drawRule", (g, el) => drawRule(g, el)],
+    ["sheetSlide", (g, el) => sheetSlide(g, el)],
+    ["strokeWipe", (g, el) => strokeWipe(g, el as unknown as SVGGElement)],
+  ];
+  for (const [name, run] of entrances) {
+    it(`${name} leaves an element that is already on screen alone, so it never hides and re-appears`, () => {
+      const el = at(div(), 100);
+      const { gsap, calls } = fakeGsap();
+      run(gsap, el);
+      expect(calls.filter((c) => c.fn !== "set")).toEqual([]);
+      expect(el.dataset.motion).toBe("done");
+    });
+  }
 });

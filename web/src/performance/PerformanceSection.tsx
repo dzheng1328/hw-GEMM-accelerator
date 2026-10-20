@@ -12,6 +12,7 @@ import { MeshBarChart } from "./MeshBarChart";
 import { MeshDiagram } from "./MeshDiagram";
 import { MeshSelector } from "./MeshSelector";
 import { PortBars } from "./PortBars";
+import { RibbonFallback } from "./RibbonChrome";
 
 // below the fold, with its own data: its code stays out of the entry chunk
 const StrokeRibbon = lazy(() => import("./StrokeRibbon").then((m) => ({ default: m.StrokeRibbon })));
@@ -132,7 +133,7 @@ export function PerformanceSection() {
           </p>
         }
       >
-        <Suspense fallback={<div className="sheet ribbon"><div className="ribbon-frame" /></div>}>
+        <Suspense fallback={<RibbonFallback />}>
           <StrokeRibbon />
         </Suspense>
       </ErrorBoundary>
