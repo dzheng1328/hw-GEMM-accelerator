@@ -77,8 +77,9 @@ export function LiveSection() {
             {MESH_KEYS.map((key) => `${formatInt(manifest.meshes[key]?.cycles ?? 0)} cycles on ${key}`).join(", ")}.
           </p>
         )}
-        {/* the arrival auto-run also reports here, and it must not speak to someone reading another section */}
-        <p className="live-status" role="status" aria-live={onScreen ? "polite" : "off"}>
+        {/* the arrival auto-run also reports here, and it must not speak to someone reading another section: the line is a status
+            (a live region) only while the section is on screen. No aria-live attribute: App.test keeps the page's one announcer apart. */}
+        <p className="live-status" role={onScreen ? "status" : undefined}>
           {phase.name === "running" ? STAGE_TEXT[phase.stage] : ""}
         </p>
         {phase.name === "error" ? (

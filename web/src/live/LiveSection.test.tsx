@@ -392,12 +392,12 @@ describe("LiveSection robustness", () => {
     const status = () => container.querySelector(".live-status")!;
     const see = (isIntersecting: boolean) =>
       act(() => callbacks.forEach((callback) => callback([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver)));
-    expect(status().getAttribute("aria-live")).toBe("off");
+    expect(status().getAttribute("role")).toBeNull();
     see(true);
-    expect(status().getAttribute("aria-live")).toBe("polite");
-    see(false);
-    expect(status().getAttribute("aria-live")).toBe("off");
     expect(status().getAttribute("role")).toBe("status");
+    see(false);
+    expect(status().getAttribute("role")).toBeNull();
+    expect(status().hasAttribute("aria-live")).toBe(false);
   });
 
   it("keeps keyboard focus on the Run button while a run is in progress", async () => {
