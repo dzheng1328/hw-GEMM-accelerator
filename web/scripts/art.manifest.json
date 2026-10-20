@@ -1,0 +1,25 @@
+{
+  "assets": [
+    {
+      "role": "night-print",
+      "objectId": 45294,
+      "trim": { "left": 0.063, "right": 0.082, "top": 0.109, "bottom": 0.057 },
+      "widths": [2560, 1280],
+      "maxBytes": { "2560": 460800, "1280": 163840 }
+    },
+    {
+      "role": "day-scroll",
+      "objectId": 53228,
+      "trim": { "left": 0.255, "right": 0.245, "top": 0.45, "bottom": 0.3 },
+      "widths": [2560, 1280],
+      "maxBytes": { "2560": 460800, "1280": 163840 }
+    },
+    {
+      "role": "washi-paper",
+      "objectId": 53228,
+      "paperCrop": true,
+      "widths": [1280],
+      "maxBytes": { "1280": 122880 }
+    }
+  ]
+}
