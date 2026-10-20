@@ -165,9 +165,29 @@
   font-size: var(--text-xs);
 }
 
+/* forced colors paints every fill one color, so the four kinds differ by system color and, for the third, by a half-opaque
+   text color (browsers resolve LinkText, VisitedText and ActiveText to one blue, so three system colors are not enough);
+   the stack order and the labelled swatches say the rest, and the stroke keeps the gaps between them */
 @media (forced-colors: active) {
   .ribbon-svg :is(.seg, .swatch) {
-    fill: CanvasText;
+    forced-color-adjust: none;
     stroke: Canvas;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="weights"] {
+    fill: CanvasText;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="attention"] {
+    fill: LinkText;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="vpu"] {
+    fill: CanvasText;
+    fill-opacity: 0.5;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="other"] {
+    fill: GrayText;
   }
 }

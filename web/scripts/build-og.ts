@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import sharp from "sharp";
 
 const web = join(dirname(fileURLToPath(import.meta.url)), "..");
 const summary = JSON.parse(readFileSync(join(web, "src", "data", "generated", "summary.json"), "utf8"));
@@ -41,7 +42,9 @@ try {
   const og = await browser.newPage({ viewport: { width: 1200, height: 630 } });
   await og.setContent(card);
   await og.evaluate(() => document.fonts.ready.then(() => true));
-  writeFileSync(join(web, "public", "og.png"), await og.screenshot({ type: "png" }));
+  // the print behind the text is photographic, so a truecolor PNG is about 900 kB; a 256-colour palette without dithering is a quarter of that and the text stays crisp
+  const shot = await og.screenshot({ type: "png" });
+  writeFileSync(join(web, "public", "og.png"), await sharp(shot).png({ palette: true, colours: 256, quality: 90, dither: 0, effort: 10 }).toBuffer());
 
   const touch = await browser.newPage({ viewport: { width: 180, height: 180 } });
   const svg = readFileSync(join(web, "public", "favicon.svg"), "utf8");

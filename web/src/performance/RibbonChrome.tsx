@@ -9,7 +9,7 @@ export function RibbonHead() {
   return (
     <figcaption className="ribbon-head">
       <h3>Where the cycles go, one stroke per step</h3>
-      <p>256 steps, each split by the work it took. The strokes get taller as the story grows.</p>
+      <p>Each stroke is one step, split by the work it took. The strokes get taller as the story grows.</p>
     </figcaption>
   );
 }

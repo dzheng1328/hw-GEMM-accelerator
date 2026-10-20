@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-/** The lazy chunk first shows a fallback with the same head; wait for the real figure (the plot frame is a region) before scrolling to it. */
+/** The lazy chunk first shows a fallback with the same head; wait for the real figure (its frame holds the loading line or the plot) before scrolling to it. */
 async function showRibbon(page: Page) {
-  await page.locator('.ribbon-frame[role="region"]').waitFor({ state: "attached", timeout: 15_000 });
+  await page.locator(".ribbon-frame :is(.replay-loading, .ribbon-svg)").first().waitFor({ state: "attached", timeout: 15_000 });
   await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
 }
 

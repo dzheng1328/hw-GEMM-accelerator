@@ -142,6 +142,13 @@ describe("summary", () => {
     expect(s.attentionRatio).toBeCloseTo(series(256)[255]!.attention / 10772, 5);
     expect(s.weightsConstant).toBe(true);
   });
+  it("numbers the last step from the data, not from 256", () => {
+    expect(summary(series(256)).lastStep).toBe(255);
+    expect(summary(series(40)).lastStep).toBe(39);
+  });
+  it("has no attention ratio when the first step has no attention", () => {
+    expect(summary([step(1, 0, 1, 1), step(1, 5, 1, 1)]).attentionRatio).toBeNull();
+  });
   it("notices that weights are not constant when they are not", () => {
     expect(summary([step(1, 1, 1, 1), step(2, 1, 1, 1)]).weightsConstant).toBe(false);
   });

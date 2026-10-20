@@ -2,7 +2,7 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import steps from "../data/generated/lm-steps.json";
 import { formatInt } from "../format";
 
@@ -39,14 +39,10 @@ describe("StrokeRibbon", () => {
     expect(container.textContent).not.toContain("Loading the per-step numbers...");
   });
 
-  it("scrolls the table sideways inside its own named region, because it is wider than a phone's sheet", async () => {
+  it("scrolls the table sideways inside its own box, because it is wider than a phone's sheet", async () => {
     const { container } = render(<StrokeRibbon />);
     await waitFor(() => expect(container.querySelector("details table")).not.toBeNull());
-    const scroller = container.querySelector(".ribbon-table-scroll")!;
-    expect(scroller.getAttribute("role")).toBe("region");
-    expect(scroller.getAttribute("aria-label")).toMatch(/numbers/i);
-    expect(scroller.getAttribute("tabindex")).toBe("0");
-    expect(scroller.querySelector("table")).not.toBeNull();
+    expect(container.querySelector(".ribbon-table-scroll table")).not.toBeNull();
   });
 
   it("says what it is loading, in words the replay's own loading line does not use (a page-level text lookup finds one)", () => {
@@ -55,12 +51,36 @@ describe("StrokeRibbon", () => {
     expect(container.textContent).not.toContain("Loading the recorded run...");
   });
 
-  it("makes the plot's frame a named, focusable region, because on a phone the plot scrolls sideways inside it", () => {
-    const { container } = render(<StrokeRibbon />);
-    const frame = container.querySelector(".ribbon-frame")!;
-    expect(frame.getAttribute("role")).toBe("region");
-    expect(frame.getAttribute("aria-label")).toMatch(/chart/i);
-    expect(frame.getAttribute("tabindex")).toBe("0");
+  describe("the plot's frame and the table's box", () => {
+    const widths = { scrollWidth: 0, clientWidth: 0 };
+    beforeEach(() => {
+      vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
+      vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(() => widths.scrollWidth);
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(() => widths.clientWidth);
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    it("are not tab stops while they fit, because there is nothing to scroll to", () => {
+      widths.scrollWidth = 600;
+      widths.clientWidth = 600;
+      const { container } = render(<StrokeRibbon />);
+      const frame = container.querySelector(".ribbon-frame")!;
+      expect(frame.getAttribute("tabindex")).toBeNull();
+      expect(frame.getAttribute("role")).toBeNull();
+    });
+
+    it("are named, focusable regions while they scroll sideways, as on a phone", () => {
+      widths.scrollWidth = 720;
+      widths.clientWidth = 330;
+      const { container } = render(<StrokeRibbon />);
+      const frame = container.querySelector(".ribbon-frame")!;
+      expect(frame.getAttribute("role")).toBe("region");
+      expect(frame.getAttribute("aria-label")).toMatch(/chart/i);
+      expect(frame.getAttribute("tabindex")).toBe("0");
+    });
   });
 
   it("draws 256 strokes of four segments from the committed data", async () => {
@@ -77,6 +97,14 @@ describe("StrokeRibbon", () => {
     expect(container.textContent).toContain(formatInt(last));
     const ratio = Math.round(steps.steps[255]!.attention / steps.steps[0]!.attention);
     expect(container.textContent).toContain(`${ratio}x`);
+  });
+
+  it("labels the axis end with the last step of the data it was given", async () => {
+    load.rows = steps.steps.slice(0, 40);
+    const { container } = render(<StrokeRibbon />);
+    await waitFor(() => expect(container.querySelector("svg")).not.toBeNull());
+    expect(container.textContent).toContain("step 39");
+    expect(container.textContent).not.toContain("step 255");
   });
 
   it("is a named image with a text summary, not counters in a label", async () => {

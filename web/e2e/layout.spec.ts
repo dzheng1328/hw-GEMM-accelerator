@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-/** The lazy chunk first shows a fallback with the same head; wait for the real figure (the plot frame is a region) before scrolling to it. */
+/** The lazy chunk first shows a fallback with the same head; wait for the real figure (its frame holds the loading line or the plot) before scrolling to it. */
 async function showRibbon(page: Page) {
-  await page.locator('.ribbon-frame[role="region"]').waitFor({ state: "attached", timeout: 15_000 });
+  await page.locator(".ribbon-frame :is(.replay-loading, .ribbon-svg)").first().waitFor({ state: "attached", timeout: 15_000 });
   await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
 }
 
@@ -61,3 +61,17 @@ for (const width of [320, 390, 1280]) {
     });
   });
 }
+
+test.describe("the plot's frame as a tab stop", () => {
+  for (const [width, scrolls] of [[390, true], [1280, false]] as const) {
+    test(`at ${width}px the frame ${scrolls ? "is" : "is not"} a focusable region`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto("/");
+      await showRibbon(page);
+      await expect(page.locator(".ribbon-svg")).toBeAttached({ timeout: 15_000 });
+      const frame = page.locator(".ribbon-frame");
+      if (scrolls) await expect(frame).toHaveAttribute("tabindex", "0");
+      else await expect(frame).not.toHaveAttribute("tabindex", /.*/);
+    });
+  }
+});

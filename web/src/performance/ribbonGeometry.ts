@@ -125,13 +125,24 @@ export function endLabels(steps: readonly RibbonStep[], layout: Layout, gap = 46
   });
 }
 
-export function summary(steps: readonly RibbonStep[]): { firstTotal: number; lastTotal: number; attentionRatio: number; weightsConstant: boolean } {
+export interface Summary {
+  firstTotal: number;
+  lastTotal: number;
+  /** the number of the last step */
+  lastStep: number;
+  /** how many times larger attention is on the last step; null when the first step has none, so there is nothing to divide by */
+  attentionRatio: number | null;
+  weightsConstant: boolean;
+}
+
+export function summary(steps: readonly RibbonStep[]): Summary {
   const first = steps[0]!;
   const last = steps[steps.length - 1]!;
   return {
     firstTotal: total(first),
     lastTotal: total(last),
-    attentionRatio: last.attention / first.attention,
+    lastStep: steps.length - 1,
+    attentionRatio: first.attention > 0 ? last.attention / first.attention : null,
     weightsConstant: steps.every((s) => s.weights === first.weights),
   };
 }

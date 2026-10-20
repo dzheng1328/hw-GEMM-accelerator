@@ -167,3 +167,10 @@ a.tile:hover .tile-proof {
 .figure--counting .figure-final {
   color: transparent;
 }
+
+/* forced colors paints transparent text in the text color, so the count would print over the final number: show the number only */
+@media (forced-colors: active) {
+  .figure-live {
+    display: none;
+  }
+}

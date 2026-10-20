@@ -41,3 +41,13 @@ for (const theme of ["dark", "light"]) {
     expect(ratio, "contrast of the divider against the sheet").toBeGreaterThanOrEqual(1.5);
   });
 }
+
+test("under forced colors the four kinds of work in the ribbon are four different colors", async ({ page }) => {
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.goto("/");
+  await page.locator(".ribbon-frame :is(.replay-loading, .ribbon-svg)").first().waitFor({ timeout: 15_000 });
+  await page.locator(".ribbon").scrollIntoViewIfNeeded();
+  await expect(page.locator(".ribbon-svg rect.swatch")).toHaveCount(4, { timeout: 15_000 });
+  const fills = await page.locator(".ribbon-svg rect.swatch").evaluateAll((els) => els.map((el) => `${getComputedStyle(el).fill} @${getComputedStyle(el).fillOpacity}`));
+  expect(new Set(fills).size, fills.join(" | ")).toBe(4);
+});

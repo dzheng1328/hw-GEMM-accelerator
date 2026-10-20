@@ -5,8 +5,13 @@ import { sheetSlide, strokeWipe } from "../motion/primitives";
 import { useMotion } from "../motion/useMotion";
 import { useInView, useLazyData } from "../replay/hooks";
 import { loadLmSteps } from "../replay/loadReplayData";
+import { useOverflows } from "./useOverflows";
 import { RibbonHead, RibbonSource, RibbonTableRoom } from "./RibbonChrome";
 import { gridValues, KIND_LABELS, KINDS, noteX, ribbonData, total, VIEW, type RibbonData } from "./ribbonGeometry";
+
+// a box is a named, focusable region only while it really scrolls sideways (a phone), never as a tab stop that goes nowhere
+const SCROLL_FRAME = { role: "region", "aria-label": "Cycles per step chart. On a small screen it scrolls sideways.", tabIndex: 0 } as const;
+const SCROLL_TABLE = { role: "region", "aria-label": "Cycles per step, as numbers. On a small screen it scrolls sideways.", tabIndex: 0 } as const;
 
 /**
  * Cycles per step across the whole story run, one stroke per step, drawn on a washi sheet. The plot holds only data;
@@ -18,6 +23,10 @@ export function StrokeRibbon() {
   const near = useInView(sheet, "100% 0px");
   const { status, data } = useLazyData(loadLmSteps, near);
   useMotion(sheet, (g, el) => sheetSlide(g, el as HTMLElement));
+  const frame = useRef<HTMLDivElement>(null);
+  const framed = useOverflows(frame);
+  const tableBox = useRef<HTMLDivElement>(null);
+  const tableScrolls = useOverflows(tableBox);
 
   const computed = useMemo(() => (data && data.length > 0 ? ribbonData(data) : null), [data]);
 
@@ -28,7 +37,7 @@ export function StrokeRibbon() {
     <Sheet as="figure" className="ribbon" ref={sheet}>
       <RibbonHead />
       {/* the frame reserves the plot's height before the data arrives, so nothing below it moves */}
-      <div className="ribbon-frame" role="region" aria-label="Cycles per step chart. On a small screen it scrolls sideways." tabIndex={0}>
+      <div className="ribbon-frame" ref={frame} {...(framed ? SCROLL_FRAME : {})}>
         {computed ? <Plot c={computed} /> : null}
         {failed ? (
           <p className="replay-error" role="alert">
@@ -40,7 +49,7 @@ export function StrokeRibbon() {
       {computed ? (
         <details className="ribbon-table">
           <summary>See the numbers</summary>
-          <div className="ribbon-table-scroll" role="region" aria-label="Cycles per step, as numbers. On a small screen it scrolls sideways." tabIndex={0}>
+          <div className="ribbon-table-scroll" ref={tableBox} {...(tableScrolls ? SCROLL_TABLE : {})}>
           <table>
             <thead>
               <tr>
@@ -112,7 +121,7 @@ function Plot({ c }: { c: RibbonData }) {
         step 0
       </text>
       <text x={layout.x1} y={underY} textAnchor="end" className="tick">
-        step 255
+        {`step ${facts.lastStep}`}
       </text>
 
       <text x={layout.x0} y={underY + 74} className="figure-text" data-pair="first">
@@ -131,7 +140,7 @@ function Plot({ c }: { c: RibbonData }) {
         {facts.weightsConstant ? "Weights cost the same every step." : "Weights change from step to step."}
       </text>
       <text x={noteX(facts.firstTotal, layout)} y={underY + 66} className="note" data-pair="note">
-        {`Attention grows ${Math.round(facts.attentionRatio)}x as the`}
+        {facts.attentionRatio === null ? "Attention grows as the" : `Attention grows ${Math.round(facts.attentionRatio)}x as the`}
       </text>
       <text x={noteX(facts.firstTotal, layout)} y={underY + 84} className="note" data-pair="note">
         story gets longer.
