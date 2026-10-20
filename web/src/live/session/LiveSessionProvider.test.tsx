@@ -156,6 +156,30 @@ describe("run()", () => {
     expect(run).toHaveBeenCalledOnce();
   });
 
+  it("says the chip is loading while a pressed Run waits for the example images, even with the arrival auto-run off", async () => {
+    const { session } = setup({ props: { autoRun: false } });
+    expect(session().autoPending).toBe(false);
+    act(() => session().run());
+    expect(session().autoPending).toBe(true);
+    await waitFor(() => expect(phase()).toBe("done"));
+    expect(session().autoPending).toBe(false);
+  });
+
+  it("forgets a Run that was waiting when the example images fail to load, so a later upload does not start it", async () => {
+    const { run, session } = setup({ props: { autoRun: false, loadExamples: async () => Promise.reject(new Error("offline")) } });
+    act(() => session().run());
+    await waitFor(() => expect(session().examples.status).toBe("error"));
+    expect(session().autoPending).toBe(false);
+    await act(async () => session().upload(new File([new Uint8Array(10)], "cat.png")));
+    await waitFor(() => expect(session().pixels).toBeDefined());
+    expect(run).not.toHaveBeenCalled();
+    expect(phase()).toBe("idle");
+    // a Run the visitor presses after that still works
+    act(() => session().run());
+    await waitFor(() => expect(phase()).toBe("done"));
+    expect(run).toHaveBeenCalledOnce();
+  });
+
   it("ignores a second press while a run is in progress", async () => {
     const { run, session } = setup({ props: { autoRun: false }, run: () => new Promise<LiveRun>(() => {}) });
     act(() => session().run());

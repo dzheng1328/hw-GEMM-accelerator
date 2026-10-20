@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatInt } from "../../format";
 import type { Scheduler } from "../../replay/useClock";
 import { usePlayback, type Playback } from "../playback/usePlayback";
@@ -76,13 +76,21 @@ export function RunPlaybackProvider({ run, golden, reduced, scheduler, className
     setSpeed(1);
   }, [run, setSpeed]);
 
-  // a layout effect, so a run appears already at the start (or, with reduced motion, at its end) and never flashes the wrong state
+  // a layout effect, so a run appears already at the start (or, with reduced motion, at its end) and never flashes the wrong state.
+  // Only a new run (re)starts playback: switching reduced motion off later must leave a finished run where it is.
+  const reducedNow = useRef(reduced);
   useLayoutEffect(() => {
-    // no run: rest at the start. Reduced motion shows the end of a run paused; it can also be switched on during a run.
+    reducedNow.current = reduced;
+  }, [reduced]);
+  useLayoutEffect(() => {
     if (!run) seek(0);
-    else if (reduced) seek(total);
+    else if (reducedNow.current) seek(total);
     else play();
-  }, [run, reduced, play, seek, total]);
+  }, [run, play, seek, total]);
+  // reduced motion can also be switched on during a run: show its end, paused
+  useLayoutEffect(() => {
+    if (run && reduced) seek(total);
+  }, [run, reduced, seek, total]);
 
   const entry = run ? meshEntry(run.mesh) : null;
   const trace = useMemo(() => {

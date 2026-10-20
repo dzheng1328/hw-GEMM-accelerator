@@ -10,6 +10,7 @@ import { manifest } from "../live/sim/manifest";
 import { CounterTable } from "./CounterTable";
 import { performance } from "./data";
 import { findMesh } from "./derive";
+import { MeshBarChart } from "./MeshBarChart";
 import { PerformanceSection } from "./PerformanceSection";
 
 afterEach(cleanup);
@@ -49,6 +50,29 @@ describe("PerformanceSection", () => {
     const selected = [...container.querySelectorAll(".bar-selected")].map((b) => b.getAttribute("data-mesh"));
     expect(selected).toEqual(["1x1", "1x1"]);
     expect(session().state.mesh).toBe("1x1");
+  });
+
+  it("does not redraw the bar charts when the live session changes in a way that is not about the mesh", async () => {
+    // memo() only helps if the section hands the charts the same props every time; count the charts' own renders
+    const memoed = MeshBarChart as unknown as { type: (props: unknown) => unknown };
+    const original = memoed.type;
+    let renders = 0;
+    memoed.type = function counted(props: unknown) {
+      renders++;
+      return original(props);
+    };
+    try {
+      const { session } = renderSection();
+      expect(renders).toBe(2);
+      renders = 0;
+      act(() => session().wantAssets());
+      await waitFor(() => expect(session().examples.status).toBe("ready"));
+      expect(renders).toBe(0);
+      act(() => session().setMesh("4x4"));
+      expect(renders).toBe(2);
+    } finally {
+      memoed.type = original;
+    }
   });
 
   it("follows the shared mesh when another part of the page changes it", () => {

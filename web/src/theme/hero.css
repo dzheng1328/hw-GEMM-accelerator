@@ -89,6 +89,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
+  min-height: 2.75rem;
   padding: 0.45rem 0.9rem;
   cursor: pointer;
 }

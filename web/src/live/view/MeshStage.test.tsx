@@ -174,4 +174,15 @@ describe("MeshStage", () => {
     expect(container.querySelector(".live-scene")!.getAttribute("data-ready")).toBeNull();
     quiet.mockRestore();
   });
+
+  it("keeps the board and says so when the GPU takes the 3D context away", async () => {
+    const { session, container } = setup("inline");
+    act(() => session().wantAssets());
+    await screen.findByTestId("scene");
+    expect(typeof seen[seen.length - 1]!.onContextLost).toBe("function");
+    act(() => seen[seen.length - 1]!.onContextLost!());
+    await waitFor(() => expect(container.querySelector(".live-fallback")?.textContent).toContain("could not be shown"));
+    expect(screen.queryByTestId("scene")).toBeNull();
+    expect(container.querySelectorAll(".board-tile")).toHaveLength(4);
+  });
 });

@@ -23,6 +23,8 @@ export interface MeshSceneProps {
   settle?: boolean;
   /** called once, after the first frame has been drawn */
   onReady?: () => void;
+  /** called when the GPU takes the drawing context away (a tab in the background, a driver reset); the scene does not come back by itself */
+  onContextLost?: () => void;
 }
 
 /** The board is centred half a pitch left of the origin, because the controller block sits beside node 0. */
@@ -183,7 +185,7 @@ function Scene({ w, h, trace, windowRef, playing, cycle, active, onReady }: Omit
   );
 }
 
-export default function MeshScene({ w, h, trace, windowRef, playing, cycle, active = true, settle = false, onReady }: MeshSceneProps) {
+export default function MeshScene({ w, h, trace, windowRef, playing, cycle, active = true, settle = false, onReady, onContextLost }: MeshSceneProps) {
   const camera = useMemo(() => cameraFor(w, h), [w, h]);
   return (
     <Canvas
@@ -192,6 +194,7 @@ export default function MeshScene({ w, h, trace, windowRef, playing, cycle, acti
       frameloop={!active ? "never" : playing ? "always" : "demand"}
       onCreated={({ gl }) => {
         gl.domElement.dataset.sceneReady = "true";
+        gl.domElement.addEventListener("webglcontextlost", () => onContextLost?.(), { once: true });
       }}
     >
       <ambientLight intensity={0.7} />

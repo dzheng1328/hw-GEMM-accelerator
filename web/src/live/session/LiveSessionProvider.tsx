@@ -84,6 +84,8 @@ export function LiveSessionProvider({
   const uploadSeq = useRef(0);
   /** a run was asked for before the example images arrived; it starts when they do */
   const queuedRef = useRef(false);
+  /** the same fact for the screen; never cleared, because it only counts while the images are still missing (see `awaitingImages`) */
+  const [askedForRun, setAskedForRun] = useState(false);
   const firedRef = useRef(false);
 
   /** Runs the selected image on the selected mesh. A result is tagged with the token of its own `start`. */
@@ -119,14 +121,18 @@ export function LiveSessionProvider({
       return;
     }
     queuedRef.current = true;
+    setAskedForRun(true);
     setWanted(true);
   }, [canRun, latest, start]);
 
+  const examplesFailed = examples.status === "error";
   useEffect(() => {
+    // a Run that was waiting for images that will never come is forgotten, or the next upload would start it unasked
+    if (examplesFailed) queuedRef.current = false;
     if (!queuedRef.current || !pixels) return;
     queuedRef.current = false;
     if (latest.current.phase.name !== "running") void start();
-  }, [pixels, start, latest]);
+  }, [pixels, examplesFailed, start, latest]);
 
   const setMesh = useCallback(
     (mesh: Parameters<LiveSession["setMesh"]>[0]) => {
@@ -174,7 +180,9 @@ export function LiveSessionProvider({
       run();
     });
   }, [eligible, idle, latest, run]);
-  const autoPending = eligible && !state.hasRun && examples.status !== "error";
+  /** a Run was pressed before the example images arrived: there is nothing to show until they do (pixels exist from then on) */
+  const awaitingImages = askedForRun && !pixels && !examplesFailed;
+  const autoPending = (eligible && !state.hasRun && !examplesFailed) || awaitingImages;
 
   const value = useMemo<LiveSession>(
     () => ({

@@ -23,7 +23,7 @@ export interface LiveSession {
   canRun: boolean;
   hasWebgl: boolean;
   reduced: boolean;
-  /** the first run will start by itself once the chip has loaded */
+  /** a run will start by itself once the chip has loaded: the arrival auto-run, or a Run pressed before the example images arrived */
   autoPending: boolean;
   setMesh(mesh: MeshKey): void;
   selectExample(index: number): void;

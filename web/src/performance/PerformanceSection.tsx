@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useLiveSession } from "../live/session/context";
 import { MESH_KEYS, type MeshKey } from "../live/sim/types";
 import { Section } from "../components/Section";
@@ -14,8 +14,12 @@ import { PortBars } from "./PortBars";
 
 const isBuilt = (mesh: string): mesh is MeshKey => (MESH_KEYS as readonly string[]).includes(mesh);
 
+const { cifar, lm, floorFlitsPerImage } = performance;
+// built once: the charts are memo()ed, which only helps if they are handed the same arrays every time
+const SPEEDUP_BARS = speedupBars(cifar.meshes);
+const CYCLES_BARS = cyclesBars(cifar.meshes, floorFlitsPerImage);
+
 export function PerformanceSection() {
-  const { cifar, lm, floorFlitsPerImage } = performance;
   const session = useLiveSession();
   const shared = session.state.mesh;
   /** counts changes of the shared mesh, so a view or a run line tied to one moment cannot come back when the mesh returns to an old value */
@@ -26,15 +30,21 @@ export function PerformanceSection() {
   const selected = local && local.n === change.n ? local.mesh : shared;
   /** the run a choice here started, so the line below the selector can talk about it; it belongs to that one change of the shared mesh */
   const [startedFor, setStartedFor] = useState<{ mesh: MeshKey; n: number } | null>(null);
-  const select = (next: string) => {
-    if (!isBuilt(next)) {
-      setLocal({ mesh: next, n: change.n });
-      return;
-    }
-    setLocal(null);
-    setStartedFor(next !== shared && session.state.hasRun ? { mesh: next, n: change.n + 1 } : null);
-    session.setMesh(next);
-  };
+  const { hasRun } = session.state;
+  const { setMesh } = session;
+  // stable between renders that do not change the mesh (the chart's memo() depends on it)
+  const select = useCallback(
+    (next: string) => {
+      if (!isBuilt(next)) {
+        setLocal({ mesh: next, n: change.n });
+        return;
+      }
+      setLocal(null);
+      setStartedFor(next !== shared && hasRun ? { mesh: next, n: change.n + 1 } : null);
+      setMesh(next);
+    },
+    [change.n, hasRun, setMesh, shared],
+  );
   const phase = session.state.phase;
   const showRun =
     startedFor !== null && startedFor.n === change.n && startedFor.mesh === shared && selected === shared && (phase.name === "running" || phase.name === "done");
@@ -85,7 +95,7 @@ export function PerformanceSection() {
       <div className="chart-grid">
         <MeshBarChart
           title="Speedup over 1x1"
-          bars={speedupBars(cifar.meshes)}
+          bars={SPEEDUP_BARS}
           selected={selected}
           max={16}
           format={formatRatio}
@@ -95,7 +105,7 @@ export function PerformanceSection() {
         />
         <MeshBarChart
           title="Cycles per CIFAR-10 image"
-          bars={cyclesBars(cifar.meshes, floorFlitsPerImage)}
+          bars={CYCLES_BARS}
           selected={selected}
           max={350000}
           format={formatInt}
