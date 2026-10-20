@@ -15,6 +15,8 @@ export default defineConfig({
   },
   use: {
     baseURL: "http://localhost:4173",
+    // every spec runs without the motion layer unless it opts in (test.use({ reducedMotion: "no-preference" }))
+    reducedMotion: "reduce",
     launchOptions: { args: ["--enable-unsafe-swiftshader"] },
   },
   projects: [
