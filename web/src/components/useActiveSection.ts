@@ -12,11 +12,19 @@ export type ObserverFactory = (callback: IntersectionObserverCallback, init: Int
 export interface ActiveEnv {
   createObserver: ObserverFactory;
   isAtBottom(): boolean;
+  /** calls back whenever the page changes size; returns the function that stops it */
+  watchSize(callback: () => void): () => void;
 }
 
 export const defaultEnv: ActiveEnv = {
   createObserver: (callback, init) => new IntersectionObserver(callback, init),
   isAtBottom: () => window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2,
+  watchSize: (callback) => {
+    if (typeof ResizeObserver === "undefined") return () => {};
+    const observer = new ResizeObserver(callback);
+    observer.observe(document.documentElement);
+    return () => observer.disconnect();
+  },
 };
 
 /** The topmost id that crosses the line; null when none does (over the hero). */
@@ -26,7 +34,7 @@ export function pickActive(ids: readonly string[], crossing: ReadonlySet<string>
 
 /**
  * The id of the section being read. It observes sizes, so it stays right when Deep mode opens drawers or lazy content
- * changes a section's height. At the very bottom of the page the last section is active.
+ * changes a section's height. At the very bottom of the page, reached by scrolling or by the page resizing, the last section is active.
  */
 export function useActiveSection(ids: readonly string[], env: ActiveEnv = defaultEnv): string | null {
   const [active, setActive] = useState<string | null>(null);
@@ -61,10 +69,13 @@ export function useActiveSection(ids: readonly string[], env: ActiveEnv = defaul
       }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
+    // the page also reaches or leaves its bottom without scrolling: lazy content arrives, a drawer opens
+    const stopWatching = env.watchSize(onScroll);
     onScroll();
 
     return () => {
       observer.disconnect();
+      stopWatching();
       window.removeEventListener("scroll", onScroll);
     };
   }, [ids, env]);
