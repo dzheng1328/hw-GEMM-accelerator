@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { useLiveSession } from "../live/session/context";
+import { ErrorBoundary } from "../live/view/ErrorBoundary";
 import { MESH_KEYS, type MeshKey } from "../live/sim/types";
 import { Section } from "../components/Section";
 import { formatInt, formatPercent, formatRatio } from "../format";
@@ -11,6 +12,10 @@ import { MeshBarChart } from "./MeshBarChart";
 import { MeshDiagram } from "./MeshDiagram";
 import { MeshSelector } from "./MeshSelector";
 import { PortBars } from "./PortBars";
+import { RibbonFallback } from "./RibbonChrome";
+
+// below the fold, with its own data: its code stays out of the entry chunk
+const StrokeRibbon = lazy(() => import("./StrokeRibbon").then((m) => ({ default: m.StrokeRibbon })));
 
 const isBuilt = (mesh: string): mesh is MeshKey => (MESH_KEYS as readonly string[]).includes(mesh);
 
@@ -120,6 +125,18 @@ export function PerformanceSection() {
         ]}
       />
       <p className="finding">{lmFinding(findMesh(lm.meshes, "2x2"), findMesh(lm.meshes, "4x4"), lm.vpuCycles)}</p>
+      {/* a chunk that fails to load (a redeploy removed the old file, the network dropped) must not unmount the page */}
+      <ErrorBoundary
+        fallback={
+          <p className="replay-error" role="status">
+            The chart could not load. Reload to try again.
+          </p>
+        }
+      >
+        <Suspense fallback={<RibbonFallback />}>
+          <StrokeRibbon />
+        </Suspense>
+      </ErrorBoundary>
       <CifarCard />
     </Section>
   );

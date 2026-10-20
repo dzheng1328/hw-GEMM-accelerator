@@ -3,9 +3,10 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { PROOF_IDS } from "./content/proof";
-import { SECTIONS, kicker } from "./content/sections";
+import { CREDITS } from "./content/art";
+import { SECTIONS } from "./content/sections";
 
-vi.mock("./replay/loadReplayData", () => ({ loadReplayData: () => new Promise(() => {}) }));
+vi.mock("./replay/loadReplayData", () => ({ loadReplayData: () => new Promise(() => {}), loadLmSteps: () => new Promise(() => {}) }));
 vi.mock("./live/view/loadExamples", () => ({ loadExamples: () => new Promise(() => {}) }));
 vi.mock("./live/view/loadScene", () => ({ loadScene: () => new Promise(() => {}) }));
 vi.mock("./live/view/webgl", () => ({ webglAvailable: () => true }));
@@ -96,12 +97,13 @@ describe("App links out", () => {
     expect(hrefs(container, "header")).toContain("https://github.com/dzheng1328/hw-GEMM-accelerator");
   });
 
-  it("ends with a footer linking the source, the license, the author profiles and an email, web links opening safely", () => {
+  it("ends with a footer linking the image credits, the source, the license, the author profiles and an email, web links opening safely", () => {
     const { container } = render(<App />);
     const footer = container.querySelector("footer.site-footer");
     expect(footer, "footer").not.toBeNull();
     expect(footer?.previousElementSibling?.tagName).toBe("MAIN");
     expect(hrefs(container, "footer")).toEqual([
+      ...CREDITS.map((credit) => credit.objectUrl),
       "https://github.com/dzheng1328/hw-GEMM-accelerator",
       "https://github.com/dzheng1328/hw-GEMM-accelerator/blob/main/LICENSE",
       "https://github.com/dzheng1328",
@@ -119,17 +121,18 @@ describe("App shell", () => {
   it("starts with a skip link, then the top bar, then main, then the footer", () => {
     const { container } = render(<App />);
     const top = [...container.children].map((el) => el.tagName + (el.id ? `#${el.id}` : "") + (el.className ? `.${String(el.className).split(" ")[0]}` : ""));
-    expect(top).toEqual(["A.skip-link", "HEADER.topbar", "MAIN#main", "FOOTER.site-footer"]);
+    expect(top).toEqual(["DIV.print-layer", "A.skip-link", "HEADER.topbar", "MAIN#main", "FOOTER.site-footer"]);
     expect(container.querySelector("a.skip-link")!.getAttribute("href")).toBe("#main");
   });
 
-  it("renders the sections in the sections list, with matching titles and kickers", () => {
+  it("renders the sections in the sections list, with matching titles and no numbered eyebrow", () => {
     const { container } = render(<App />);
     for (const meta of SECTIONS) {
       const section = container.querySelector(`main > section#${meta.id}`);
       expect(section, meta.id).not.toBeNull();
       expect(section!.querySelector("h2")!.textContent, meta.id).toBe(meta.title);
-      expect(section!.querySelector(".kicker")!.textContent, meta.id).toBe(kicker(meta));
+      expect(section!.querySelector(".kicker"), meta.id).toBeNull();
+      expect(section!.querySelector(".band-rule"), meta.id).not.toBeNull();
     }
   });
 

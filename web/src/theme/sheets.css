@@ -1,0 +1,68 @@
+/* A washi sheet is its own colour scope: it resets every semantic color to the paper set, in both themes, so a chart or a
+   table reads the same on the night print and on the day scroll. Dense panels use the scope by class; new content uses
+   <Sheet>. Loaded last so it wins over the per-section panel rules. The real washi crop is tinted with the paper color:
+   the crop is a mid tan, and sheets.test.ts keeps every paper color at 4.5:1 on its darkest pixel under this tint. */
+:is(.sheet, .replay-stage, .chart-figure, .mesh-panel, .tl-panel, .drawer, .arch-detail, .rung-card) {
+  --sheet-tint: rgb(236 227 205 / 0.85);
+  --bg: var(--paper-bg);
+  --band: var(--paper-bg);
+  --surface: var(--paper-surface);
+  --text: var(--paper-text);
+  --muted: var(--paper-muted);
+  --border: var(--paper-border);
+  --rule: var(--paper-border);
+  --accent: var(--paper-accent);
+  --ring: var(--paper-ring);
+  --scene-tile: var(--paper-tile);
+  --cat-weights: var(--paper-cat-weights);
+  --cat-attention: var(--paper-cat-attention);
+  --cat-vpu: var(--paper-cat-vpu);
+  --cat-other: var(--paper-cat-other);
+  --port-operand: var(--paper-cat-weights);
+  --port-go: var(--paper-go);
+  --port-stall: var(--paper-stall);
+  --port-wait: var(--paper-cat-vpu);
+  --port-other: var(--paper-cat-other);
+  --kind-control: var(--paper-cat-attention);
+  --kind-movement: var(--paper-cat-weights);
+  --kind-compute: var(--paper-cat-vpu);
+  --kind-memory: var(--paper-go);
+  color: var(--paper-text);
+  background-color: var(--paper-bg);
+  background-image: linear-gradient(var(--sheet-tint), var(--sheet-tint)), url("/art/washi-paper-1280.webp");
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--paper-border);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 10px 30px rgba(0, 0, 0, 0.32);
+}
+
+.sheet {
+  position: relative;
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+.sheet-scroll {
+  max-height: min(70svh, 40rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.sheet-scroll:focus-visible {
+  outline: 2px solid var(--paper-ring);
+  outline-offset: 2px;
+}
+
+.replay-stage,
+.mesh-panel {
+  padding: var(--space-4);
+}
+
+@media (forced-colors: active) {
+  :is(.sheet, .replay-stage, .chart-figure, .mesh-panel, .tl-panel, .drawer, .arch-detail, .rung-card) {
+    color: CanvasText;
+    background: Canvas;
+    border: 1px solid CanvasText;
+  }
+}

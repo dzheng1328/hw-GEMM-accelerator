@@ -1,0 +1,193 @@
+.ribbon {
+  margin: var(--space-5) 0 0;
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.ribbon-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1.15;
+}
+
+.ribbon-head p {
+  margin: var(--space-1) 0 var(--space-3);
+  max-width: 60ch;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* reserved before the data arrives, so nothing below moves (the plot is 1000 by 450 in its own units) */
+.ribbon-frame {
+  aspect-ratio: 1000 / 450;
+  width: 100%;
+}
+
+.ribbon-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.ribbon-frame:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* on a phone the plot keeps a readable width (its text would shrink to 4 px) and scrolls sideways inside its frame */
+@media (max-width: 720px) {
+  .ribbon-frame {
+    aspect-ratio: auto;
+    min-height: 21rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .ribbon-svg {
+    min-width: 720px;
+  }
+}
+
+.ribbon-svg text {
+  fill: var(--text);
+  font-family: var(--font-text);
+}
+
+.ribbon-svg .tick {
+  fill: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ribbon-svg .grid {
+  stroke: var(--text);
+  stroke-width: 0.6;
+  opacity: 0.2;
+}
+
+.ribbon-svg .lead {
+  stroke: var(--text);
+  stroke-width: 0.8;
+  fill: none;
+  opacity: 0.55;
+}
+
+.ribbon-svg .figure-text {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 46px;
+}
+
+.ribbon-svg .caption {
+  font-size: 13px;
+}
+
+.ribbon-svg .note {
+  font-size: 13px;
+}
+
+.ribbon-svg .note.strong,
+.ribbon-svg .label {
+  font-weight: 700;
+}
+
+.ribbon-svg .label {
+  font-size: 15px;
+}
+
+.ribbon-svg :is(.seg, .swatch)[data-kind="weights"] {
+  fill: var(--cat-weights);
+}
+
+.ribbon-svg :is(.seg, .swatch)[data-kind="attention"] {
+  fill: var(--cat-attention);
+}
+
+.ribbon-svg :is(.seg, .swatch)[data-kind="vpu"] {
+  fill: var(--cat-vpu);
+}
+
+.ribbon-svg :is(.seg, .swatch)[data-kind="other"] {
+  fill: var(--cat-other);
+}
+
+.ribbon-table {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+/* stands in for the closed row until the table exists, so the figure keeps its height */
+.ribbon-table-room {
+  margin-top: var(--space-3);
+  min-height: 2.75rem;
+}
+
+/* the table is wider than a phone's sheet: it scrolls inside its own box instead of being clipped by the page */
+.ribbon-table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.ribbon-table-scroll:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ribbon-table summary {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ribbon-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.ribbon-table th,
+.ribbon-table td {
+  padding: 0.25rem 0.5rem;
+  text-align: right;
+  border-top: 1px solid var(--border);
+}
+
+.ribbon-table th:first-child {
+  text-align: left;
+}
+
+.ribbon-src {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* forced colors paints every fill one color, so the four kinds differ by system color and, for the third, by a half-opaque
+   text color (browsers resolve LinkText, VisitedText and ActiveText to one blue, so three system colors are not enough);
+   the stack order and the labelled swatches say the rest, and the stroke keeps the gaps between them */
+@media (forced-colors: active) {
+  .ribbon-svg :is(.seg, .swatch) {
+    forced-color-adjust: none;
+    stroke: Canvas;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="weights"] {
+    fill: CanvasText;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="attention"] {
+    fill: LinkText;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="vpu"] {
+    fill: CanvasText;
+    fill-opacity: 0.5;
+  }
+
+  .ribbon-svg :is(.seg, .swatch)[data-kind="other"] {
+    fill: GrayText;
+  }
+}

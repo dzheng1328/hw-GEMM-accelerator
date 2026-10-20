@@ -1,0 +1,112 @@
+{
+  "_generated": {
+    "script": "web/scripts/fetch-art.ts",
+    "regenerate": "npm run build:art (in web/)",
+    "note": "generated, do not edit by hand"
+  },
+  "licence": "Public domain, The Metropolitan Museum of Art Open Access (CC0)",
+  "credits": [
+    {
+      "objectId": 45294,
+      "title": "Twilight Moon at Ryōgoku Bridge",
+      "artist": "Utagawa Hiroshige",
+      "date": "",
+      "creditLine": "Rogers Fund, 1922",
+      "objectUrl": "https://www.metmuseum.org/art/collection/search/45294",
+      "isPublicDomain": true,
+      "sha256": "3b92eb890c4c4be6a641aebf602c3d7930c045ce8e040ee5b32d116fd88ea32e"
+    },
+    {
+      "objectId": 53228,
+      "title": "Splashed-Ink Landscape",
+      "artist": "Bokushō Shūshō",
+      "date": "early 16th century",
+      "creditLine": "Mary Griggs Burke Collection, Gift of the Mary and Jackson Burke Foundation, 2015",
+      "objectUrl": "https://www.metmuseum.org/art/collection/search/53228",
+      "isPublicDomain": true,
+      "sha256": "d96f92d6ae1344339f0422c8970af503a8b0fbf4a98aa8a64afb3569771be8cf"
+    }
+  ],
+  "assets": [
+    {
+      "role": "night-print",
+      "objectId": 45294,
+      "files": [
+        {
+          "width": 2560,
+          "height": 1600,
+          "path": "/art/night-print-2560.webp",
+          "bytes": 441368
+        },
+        {
+          "width": 1280,
+          "height": 800,
+          "path": "/art/night-print-1280.webp",
+          "bytes": 159812
+        }
+      ],
+      "blur": "data:image/webp;base64,UklGRo4AAABXRUJQVlA4IIIAAADQAwCdASoYAA8APu1iqU2ppaOiMAgBMB2JQBOmUABJSD46OZtbyeAA4dW/RndEE78xVdHtrxL3bLQJTs9VksoYXDd2JsHzNz9leMYI285EJlapg4LbOOmYRn/Gow60F0EvYm9jUJK8v8fBRBCQjQqZkRpypg4myPclo88r6KwE4AAA",
+      "brightest": [
+        253,
+        241,
+        210
+      ],
+      "darkest": [
+        63,
+        76,
+        77
+      ]
+    },
+    {
+      "role": "day-scroll",
+      "objectId": 53228,
+      "files": [
+        {
+          "width": 1499,
+          "height": 1000,
+          "path": "/art/day-scroll-2560.webp",
+          "bytes": 102554
+        },
+        {
+          "width": 1280,
+          "height": 854,
+          "path": "/art/day-scroll-1280.webp",
+          "bytes": 71654
+        }
+      ],
+      "blur": "data:image/webp;base64,UklGRlQAAABXRUJQVlA4IEgAAABQAwCdASoYABAAPu1iqU2ppaQiMAgBMB2JQBOgBDBmKSmYgAD8SiE1/FYr0Lvo6VtLDCYJ1KbcVCSY1XFUM+oeVFEZsRTSwAA=",
+      "brightest": [
+        190,
+        158,
+        124
+      ],
+      "darkest": [
+        95,
+        79,
+        63
+      ]
+    },
+    {
+      "role": "washi-paper",
+      "objectId": 53228,
+      "files": [
+        {
+          "width": 750,
+          "height": 750,
+          "path": "/art/washi-paper-1280.webp",
+          "bytes": 27596
+        }
+      ],
+      "brightest": [
+        193,
+        161,
+        125
+      ],
+      "darkest": [
+        172,
+        143,
+        111
+      ]
+    }
+  ]
+}

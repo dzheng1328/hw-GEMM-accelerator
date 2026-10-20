@@ -109,11 +109,10 @@
   pointer-events: none;
 }
 
-/* working right now: an accent edge and a glow */
+/* working right now: an accent edge */
 .arch-lit .arch-bg {
   stroke: var(--accent);
   stroke-width: 2;
-  filter: drop-shadow(0 0 5px var(--glow));
 }
 
 .arch-selected.arch-lit .arch-bg {
@@ -157,7 +156,7 @@
   padding: var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
 }
 
 .arch-detail-title {
@@ -186,8 +185,6 @@
   margin: 0 0 var(--space-1);
   color: var(--muted);
   font-size: 0.8rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .arch-facts dd {
@@ -241,8 +238,6 @@
   margin: 0 0 var(--space-1);
   color: var(--accent);
   font-size: 0.8rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .arch-live-row p {
@@ -264,7 +259,7 @@
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
 }
 
@@ -352,7 +347,7 @@
   padding: var(--space-3);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
 }
 
 .rung-card h4 {
@@ -482,7 +477,5 @@
     content: attr(data-label);
     color: var(--muted);
     font-size: 0.7rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
 }

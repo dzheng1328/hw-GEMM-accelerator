@@ -23,7 +23,7 @@ body {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   padding: 0.5rem 0.9rem;
   cursor: pointer;
 }
@@ -33,55 +33,9 @@ body {
   color: var(--accent);
 }
 
-.hero {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
-  gap: var(--space-3);
-}
-
-.tile {
-  display: grid;
-  grid-row: span 3;
-  grid-template-rows: subgrid;
-  row-gap: 0;
-  align-content: start;
-  container-type: inline-size;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: var(--space-4);
-  min-width: 0;
-}
-
-.tile-value {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: min(2.25rem, 15cqi);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.tile-label {
-  margin: var(--space-1) 0 0;
-  color: var(--muted);
-  font-size: 0.8rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.tile-claim {
-  margin: var(--space-2) 0 0;
-  font-size: 0.9rem;
-}
-
 a.tile {
   color: inherit;
   text-decoration: none;
-}
-
-a.tile:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 18px var(--glow);
 }
 
 a.tile:focus-visible {
@@ -106,8 +60,6 @@ a.tile:hover .tile-proof {
 
 .drawer {
   margin-top: var(--space-3);
-  background: var(--surface);
-  border: 1px solid var(--border);
 }
 
 .drawer summary {

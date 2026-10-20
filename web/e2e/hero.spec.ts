@@ -186,3 +186,14 @@ test.describe("without WebGL", () => {
     await expect(status(page)).toHaveText(DONE, { timeout: 90_000 });
   });
 });
+
+test("the lead figure spans the hero and the other three tiles share one row under it, with no empty column beside it", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  const boxes = await page.locator(".hero .tile").evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ l: r.left, r: r.right, t: r.top, b: r.bottom })));
+  expect(boxes).toHaveLength(4);
+  const [lead, ...rest] = boxes as [(typeof boxes)[0], ...typeof boxes];
+  expect(Math.abs(lead.r - Math.max(...rest.map((b) => b.r))), "the lead tile runs the width of the row").toBeLessThanOrEqual(1);
+  expect(new Set(rest.map((b) => Math.round(b.t))).size, "the three tiles start at the same height").toBe(1);
+  expect(rest[0]!.t, "and sit under the lead tile").toBeGreaterThanOrEqual(lead.b);
+});

@@ -138,7 +138,6 @@
   background: var(--accent);
   outline: 2px solid var(--accent);
   outline-offset: 3px;
-  box-shadow: 0 0 16px var(--glow);
 }
 
 .rail-date {
@@ -185,7 +184,7 @@
   font-size: var(--text-sm);
   background: var(--surface);
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
 }
 
@@ -284,15 +283,11 @@
   margin: 0 0 var(--space-1);
   color: var(--accent);
   font-size: var(--text-xs);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .tl-note {
   color: var(--muted);
   font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 /* a skim block is cut off at a fixed height, with a fade, so every milestone fills the panel the same */

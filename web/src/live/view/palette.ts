@@ -13,11 +13,11 @@ export function readPalette(): Palette {
   const style = getComputedStyle(document.documentElement);
   const get = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   return {
-    board: get("--surface", "#121922"),
-    tile: get("--scene-tile", "#4a5d73"),
-    accent: get("--accent", "#4cc3ff"),
-    controller: get("--kind-control", "#ff9f43"),
-    flit: FLIT_LEGEND.map((l) => get(l.token, "#4cc3ff")),
+    board: get("--surface", "#141f3b"),
+    tile: get("--scene-tile", "#5a6b91"),
+    accent: get("--accent", "#dfbd62"),
+    controller: get("--kind-control", "#e8a05a"),
+    flit: FLIT_LEGEND.map((l) => get(l.token, "#8fb3e8")),
   };
 }
 

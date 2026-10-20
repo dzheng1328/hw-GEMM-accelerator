@@ -10,19 +10,35 @@ async function getJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
+let stepsLoading: Promise<StepRecord[]> | null = null;
+
+/** The per-step records are read by the replay and by the ribbon: one fetch and one parse serve both. A failure is not remembered. */
+function loadSteps(): Promise<StepRecord[]> {
+  const loading = (stepsLoading ??= getJson<{ steps: StepRecord[] }>(stepsUrl).then((file) => file.steps));
+  loading.catch(() => {
+    if (stepsLoading === loading) stepsLoading = null;
+  });
+  return loading;
+}
+
 /** Fetches the four generated files the replay needs. Each is a hashed asset, not part of the JS bundle. */
 export async function loadReplayData(): Promise<ReplayData> {
   const [steps, stories, vocab, attention] = await Promise.all([
-    getJson<{ steps: StepRecord[] }>(stepsUrl),
+    loadSteps(),
     getJson<{ promptIds: number[]; stories: StoryRecord[] }>(storiesUrl),
     getJson<VocabFile>(vocabUrl),
     getJson<{ probs: AttentionProbs }>(attentionUrl),
   ]);
   return {
-    steps: steps.steps,
+    steps,
     stories: stories.stories,
     promptLength: stories.promptIds.length,
     vocab,
     probs: attention.probs,
   };
+}
+
+/** Only the per-step cycle split (about 32 kB), for the chart in the performance section. */
+export function loadLmSteps(): Promise<StepRecord[]> {
+  return loadSteps();
 }

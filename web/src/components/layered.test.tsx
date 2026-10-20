@@ -142,21 +142,21 @@ describe("layered sections", () => {
 });
 
 describe("Section bands", () => {
-  it("wraps a known section in a band with an inner column and its kicker", () => {
+  it("wraps a known section in a band with an inner column, a heading and a rule, and no eyebrow", () => {
     const { container } = render(<Section id="replay" title="Watch it think" headline="h" />);
     const section = container.querySelector("section#replay")!;
     expect(section.classList.contains("band")).toBe(true);
-    expect(section.classList.contains("band-alt")).toBe(false);
-    expect(section.querySelector(":scope > .band-inner > .kicker")!.textContent).toBe("01 / WATCH");
+    expect(section.querySelector(".kicker")).toBeNull();
+    expect(section.querySelector(":scope > .band-inner > .band-rule")?.getAttribute("aria-hidden")).toBe("true");
     expect(section.querySelector(".band-inner > h2")!.textContent).toBe("Watch it think");
   });
 
-  it("marks the second section as the raised band", () => {
+  it("no longer alternates band colors", () => {
     const { container } = render(<Section id="live" title="Run it live" headline="h" />);
-    expect(container.querySelector("section#live")!.classList.contains("band-alt")).toBe(true);
+    expect(container.querySelector("section#live")!.classList.contains("band-alt")).toBe(false);
   });
 
-  it("renders no kicker for an id that is not in the sections list", () => {
+  it("renders the same band for an id that is not in the sections list", () => {
     const { container } = render(<Section id="other" title="Other" headline="h" />);
     expect(container.querySelector(".kicker")).toBeNull();
     expect(container.querySelector("section#other")!.classList.contains("band")).toBe(true);

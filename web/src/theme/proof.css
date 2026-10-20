@@ -7,7 +7,6 @@ main [data-proof] {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
   border-radius: var(--radius-panel);
-  box-shadow: 0 0 28px var(--glow);
 }
 
 /* an SVG shape takes a stroke, not an outline */
@@ -16,7 +15,6 @@ rect.proof-flash {
   box-shadow: none;
   stroke: var(--accent);
   stroke-width: 3;
-  filter: drop-shadow(0 0 6px var(--accent));
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -28,14 +26,9 @@ rect.proof-flash {
 @keyframes proof-pulse {
   0% {
     outline-color: transparent;
-    box-shadow: 0 0 0 transparent;
   }
-  20% {
-    outline-color: var(--accent);
-    box-shadow: 0 0 40px var(--glow);
-  }
+  20%,
   100% {
     outline-color: var(--accent);
-    box-shadow: 0 0 28px var(--glow);
   }
 }

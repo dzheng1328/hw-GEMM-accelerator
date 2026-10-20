@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { ArchitectureSection } from "./architecture/ArchitectureSection";
 import { DeepContext } from "./components/deepContext";
 import { HeroBand } from "./components/HeroBand";
+import { PrintLayer } from "./components/PrintLayer";
 import { holdPosition } from "./components/holdPosition";
 import { SiteFooter } from "./components/SiteFooter";
 import { TopBar } from "./components/TopBar";
@@ -35,6 +36,7 @@ export default function App() {
   return (
     <DeepContext.Provider value={deep}>
       <LiveSessionProvider>
+        <PrintLayer />
         <a className="skip-link" href="#main">
           Skip to content
         </a>

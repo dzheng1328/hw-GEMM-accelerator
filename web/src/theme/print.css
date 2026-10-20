@@ -1,0 +1,53 @@
+/* The scrim: a flat veil in the page colour over the print. Its strength is fixed by print.test.ts from the measured
+   brightest (night) and darkest (day) pixels, so text straight on the print always reads. Never above 0.9. */
+:root {
+  --scrim-rgb: 11 18 38;
+  --scrim-alpha: 0.8;
+}
+
+:root[data-theme="light"] {
+  --scrim-rgb: 228 218 194;
+  --scrim-alpha: 0.76;
+}
+
+/* A fixed layer behind the page. It is taller than the screen so the parallax never shows an edge. */
+.print-layer {
+  position: fixed;
+  inset: -8vh 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--bg);
+  background-image: url("/art/night-print-1280.webp"), var(--print-blur-night, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.print-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(var(--scrim-rgb) / var(--scrim-alpha));
+}
+
+@media (min-width: 721px) {
+  .print-layer {
+    background-image: url("/art/night-print-2560.webp"), var(--print-blur-night, none);
+  }
+}
+
+:root[data-theme="light"] .print-layer {
+  background-image: url("/art/day-scroll-1280.webp"), var(--print-blur-day, none);
+}
+
+@media (min-width: 721px) {
+  :root[data-theme="light"] .print-layer {
+    background-image: url("/art/day-scroll-2560.webp"), var(--print-blur-day, none);
+  }
+}
+
+@media (forced-colors: active) {
+  .print-layer {
+    display: none;
+  }
+}

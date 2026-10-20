@@ -32,7 +32,7 @@
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   padding: 0.45rem 0.9rem;
   cursor: pointer;
 }
@@ -149,7 +149,7 @@
   margin: 0;
   padding: var(--space-3);
   border: 1px solid var(--port-stall);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   color: var(--port-stall);
 }
 
@@ -179,6 +179,8 @@
 }
 
 .live-scene {
+  /* an explicit width: with only a min-height, the aspect ratio would widen the box past a 320 px phone */
+  width: 100%;
   aspect-ratio: 4 / 3;
   min-height: 16rem;
 }
@@ -187,7 +189,7 @@
   margin: 0;
   padding: var(--space-4);
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   color: var(--muted);
 }
 
@@ -297,7 +299,7 @@
   margin: 0;
   padding: var(--space-3);
   border: 1px solid var(--port-go);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   font-size: 0.9rem;
 }
 
@@ -389,7 +391,7 @@ input[type="radio"] {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   cursor: pointer;
 }
 

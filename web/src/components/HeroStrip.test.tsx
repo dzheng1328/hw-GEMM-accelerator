@@ -34,8 +34,16 @@ describe("HeroStrip", () => {
   it("makes each tile a link to its proof, in order", () => {
     const { container } = render(<HeroStrip />);
     const tiles = [...container.querySelectorAll("a.tile")];
-    expect(tiles.map((tile) => tile.getAttribute("href"))).toEqual(["#proof-stories", "#proof-cycles", "#proof-cifar", "#proof-scaling"]);
+    expect(tiles.map((tile) => tile.getAttribute("href"))).toEqual(["#proof-cycles", "#proof-stories", "#proof-cifar", "#proof-scaling"]);
     for (const tile of tiles) expect(tile.querySelector(".tile-proof")?.textContent).toBe("See the proof");
+  });
+
+  it("leads with the cycle count as one big figure, and counts only that one", () => {
+    const { container } = render(<HeroStrip />);
+    const first = container.querySelector("a.tile")!;
+    expect(first.getAttribute("href")).toBe("#proof-cycles");
+    expect(first.querySelector(".figure-final")?.textContent).toBe(formatInt(summary.lm.meshes["2x2_t256"]!.cycles));
+    expect(container.querySelectorAll(".figure")).toHaveLength(1);
   });
 
   it("scrolls to the target when a tile is clicked", () => {

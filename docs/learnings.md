@@ -24,6 +24,38 @@ actually resolved.
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-20 -- The new display faces have no tabular figures, so a counting number needs a holder
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** a count-up in Shippori Mincho B1 would make the box around it change width on every frame, because the digits are not the same width (advance widths from 572 to 652 units) and the font has no `tnum` feature. Zen Kaku Gothic New has the same gap.
+**Cause:** the Japanese-designed faces ship proportional figures only; checked with fonttools (`GSUB` features are `frac`, `liga`, `vert`, `vrt2` and `ccmp`).
+**Fix:** `CountFigure` keeps the real final text in the layout (and for screen readers) and draws the count over it in an `aria-hidden` layer in the same grid cell, so the box keeps the final width.
+**Takeaway:** never let a changing number set the width of its box; check a font for `tnum` before choosing it for figures.
+
+### 2026-10-20 -- "Every e2e runs with reduced motion" was not true, and a global default is the wrong fix
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** the project notes said every e2e spec runs with reduced motion, so a new motion layer would not touch them. Only some specs emulate it. A first attempt to make it true, `reducedMotion: "reduce"` in `playwright.config.ts`, broke 30 specs.
+**Cause:** the hero's auto-run and the replay's autoplay are skipped for reduced motion, so the specs that watch them need motion allowed. The claim had come from the specs that do emulate it, not from the config.
+**Fix:** the default stays as it was (motion allowed). The motion layer runs in the existing specs and they pass with it; the new `motion.spec.ts` states its motion mode explicitly in both directions.
+**Takeaway:** check what a global setting changes before making it the default, and run the whole e2e suite, not the new specs, before believing a default is safe.
+
+### 2026-10-20 -- Two files whose names differ only by case collide on macOS
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** `strokeRibbon.ts` (the chart's geometry) next to `StrokeRibbon.tsx` (the component): the component test rendered `undefined` because `import "./StrokeRibbon"` resolved to the `.ts` file.
+**Cause:** the default macOS filesystem is case-insensitive, and module resolution tries `.ts` before `.tsx`.
+**Fix:** the geometry module is `ribbonGeometry.ts`.
+**Takeaway:** never name two modules in one directory by case alone; the failure is a confusing "element type is invalid" in a test.
+
+### 2026-10-20 -- A min-height with an aspect ratio widens a box past a 320 px phone
+
+**Phase:** Phase 4 (portfolio app)
+**Problem:** the Live section's 3D stage made the whole page scroll sideways at 320 px wide (the page was 357 px).
+**Cause:** `.live-scene` had `aspect-ratio: 4 / 3` and `min-height: 16rem`; with no definite width the ratio turned the minimum height into a minimum width of 341 px.
+**Fix:** an explicit `width: 100%`, the same fix the hero stage already had.
+**Takeaway:** an aspect-ratio box with a min-height needs an explicit width; the new `layout.spec.ts` checks 320, 390 and 1280 px.
+
 ### 2026-10-16 -- A test that reads files outside web/ needs a CI trigger on them
 
 **Phase:** Phase 4 (portfolio app)
