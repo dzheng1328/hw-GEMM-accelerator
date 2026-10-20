@@ -62,13 +62,19 @@ main {
   border-radius: var(--radius-panel);
 }
 
-/* ---- the hero: one lead figure, a ruled list for the rest ---- */
+/* ---- the hero: one lead figure across the top, the other three in a ruled row under it ---- */
 .hero-display .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   column-gap: var(--space-6);
   align-items: start;
   margin: 0;
+}
+
+@media (min-width: 900px) {
+  .hero-display .hero {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .hero .tile {
@@ -84,9 +90,14 @@ main {
 }
 
 .hero .tile:first-child {
-  grid-row: 1 / span 3;
+  grid-column: 1 / -1;
+  margin-bottom: var(--space-4);
   padding-top: var(--space-4);
   border-top-color: var(--accent);
+}
+
+.hero .tile:first-child .tile-claim {
+  max-width: 60ch;
 }
 
 .tile-value {
@@ -120,16 +131,6 @@ a.tile:hover {
 
 a.tile:hover .tile-proof {
   text-decoration: underline;
-}
-
-@media (max-width: 720px) {
-  .hero-display .hero {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .hero .tile:first-child {
-    grid-row: auto;
-  }
 }
 
 /* the 3D stage is a window in the print, not a card */

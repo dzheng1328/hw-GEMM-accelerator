@@ -31,7 +31,7 @@
 
 .hero-band {
   position: relative;
-  padding: 56px 0 48px;
+  padding: 56px 0 24px;
   overflow: hidden;
 }
 
@@ -63,7 +63,7 @@
 
 @media (min-width: 720px) {
   .hero-band {
-    padding: 88px 0 72px;
+    padding: 88px 0 40px;
   }
 }
 
