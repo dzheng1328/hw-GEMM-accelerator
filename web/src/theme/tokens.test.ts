@@ -76,6 +76,13 @@ describe("theme tokens", () => {
     }
   }
 
+  it("no longer defines the glow or the backdrop grid (the dev-tool look)", () => {
+    for (const block of [blocks.dark, blocks.light]) {
+      expect(block).not.toContain("--glow");
+      expect(block).not.toContain("--grid");
+    }
+  });
+
   it("keeps a hairline rule color in both themes (the open and ruled surface language)", () => {
     for (const block of [blocks.dark, blocks.light]) expect(block).toMatch(/--rule:\s*rgba\(/);
   });

@@ -10,7 +10,7 @@
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   padding: 0.45rem 0.9rem;
   cursor: pointer;
 }
@@ -110,14 +110,12 @@
   padding: var(--space-3) var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
 }
 
 .mesh-stats dt {
   color: var(--muted);
   font-size: 0.8rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .mesh-stats dd {
@@ -146,7 +144,7 @@
   padding: var(--space-3);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   min-width: 0;
 }
 
@@ -154,8 +152,6 @@
   margin: 0 0 var(--space-2);
   font-size: 0.85rem;
   color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .bar-chart {
@@ -222,7 +218,7 @@
   height: 16px;
   overflow: hidden;
   background: var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
 }
 
 .port-bar > span {
@@ -272,7 +268,7 @@
   padding: var(--space-3);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   min-width: 0;
 }
 

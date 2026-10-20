@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SECTIONS, SECTION_IDS, isAlternate, kicker, sectionMeta } from "./sections";
+import { SECTIONS, SECTION_IDS, sectionMeta } from "./sections";
 
 describe("sections list", () => {
   it("lists the six sections in page order with the agreed navigation labels", () => {
@@ -8,20 +8,13 @@ describe("sections list", () => {
     expect(SECTION_IDS).toEqual(SECTIONS.map((s) => s.id));
   });
 
-  it("numbers the sections 01 to 06 and builds the kicker from the number and label", () => {
-    expect(SECTIONS.map((s) => s.number)).toEqual(["01", "02", "03", "04", "05", "06"]);
-    expect(kicker(SECTIONS[0]!)).toBe("01 / WATCH");
-    expect(kicker(SECTIONS[2]!)).toBe("03 / PERFORMANCE");
+  it("carries no section numbers: the sections are not a sequence, so there is no numbered eyebrow", () => {
+    for (const section of SECTIONS) expect(Object.keys(section).sort()).toEqual(["id", "label", "title"]);
   });
 
   it("looks a section up by id, and returns nothing for an unknown id", () => {
     expect(sectionMeta("live")?.title).toBe("Run it live");
     expect(sectionMeta("nope")).toBeUndefined();
-  });
-
-  it("alternates the band background: the 2nd, 4th and 6th sections are the raised ones", () => {
-    expect(SECTIONS.map((s) => isAlternate(s.id))).toEqual([false, true, false, true, false, true]);
-    expect(isAlternate("nope")).toBe(false);
   });
 
   it("has unique ids and unique labels", () => {

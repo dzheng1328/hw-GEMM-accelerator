@@ -36,7 +36,7 @@ describe("index.html head", () => {
   });
 
   it("has one theme colour (the inline theme script and the toggle update it) and no color-scheme meta", () => {
-    expect(html).toMatch(/<meta name="theme-color" content="#080b10"\s*\/>/);
+    expect(html).toMatch(/<meta name="theme-color" content="#0b1226"\s*\/>/);
     expect(html.match(/<meta name="theme-color"/g)).toHaveLength(1);
     expect(html).not.toContain('name="color-scheme"');
   });

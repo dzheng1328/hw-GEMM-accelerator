@@ -12,8 +12,6 @@
   --accent: #dfbd62;
   --ring: #f2d98e;
   --rule: rgba(241, 232, 211, 0.34);
-  --glow: rgba(223, 189, 98, 0.22);
-  --grid: rgba(223, 189, 98, 0.06);
   --cat-weights: #8fb3e8;
   --cat-attention: #e8a05a;
   --cat-vpu: #b9a0d8;
@@ -78,8 +76,6 @@
   --accent: #1b3a8a;
   --ring: #1b3a8a;
   --rule: rgba(29, 26, 22, 0.4);
-  --glow: rgba(27, 58, 138, 0.18);
-  --grid: rgba(27, 58, 138, 0.07);
   --cat-weights: #1b3a8a;
   --cat-attention: #97400f;
   --cat-vpu: #6a4a9c;

@@ -1,12 +1,10 @@
 /* One panel look: the surface, the hairline border and this radius. Loaded last so it wins over the section sheets. */
-.tile,
 .drawer,
 .chart-figure,
 .mesh-stats > div,
 .stat-grid > div,
 .arch-detail,
-.rung-card,
-.lane {
+.rung-card {
   border-radius: var(--radius-panel);
 }
 

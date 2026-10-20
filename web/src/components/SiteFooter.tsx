@@ -1,3 +1,4 @@
+import { CREDITS, LICENCE } from "../content/art";
 import { REPO_URL } from "../content/timeline";
 
 export const AUTHOR_URL = "https://github.com/dzheng1328";
@@ -12,6 +13,19 @@ export function SiteFooter() {
           Built by Dave Zheng. The numbers come from the repository&apos;s recorded simulation results (<code>docs/perf</code>)
           and its decision log (<code>docs/decisions.md</code>), and tests check the page against both.
         </p>
+        <p className="credits-title">Images</p>
+        <ul className="credits">
+          {CREDITS.map((credit) => (
+            <li key={credit.objectId}>
+              <a href={credit.objectUrl} target="_blank" rel="noopener noreferrer">
+                {credit.title}
+              </a>
+              , {credit.artist}
+              {credit.date ? `, ${credit.date}` : ""}. {credit.creditLine}.
+            </li>
+          ))}
+        </ul>
+        <p>{LICENCE}.</p>
         <p>
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
             Source on GitHub

@@ -1,0 +1,147 @@
+/* The surface language: open and ruled on the print, a sheet only for dense data (sheets.css). */
+
+body {
+  font-family: var(--font-text);
+}
+
+h1,
+h2,
+.tile-value,
+.counter-value {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+/* ---- sections: no bands, a hairline that draws in under the heading ---- */
+.band h2 {
+  letter-spacing: 0;
+}
+
+.band-rule {
+  display: block;
+  height: 0;
+  margin: var(--space-2) 0 var(--space-4);
+  border-top: 1px solid var(--rule);
+  transform-origin: left center;
+}
+
+.credits-title {
+  margin-bottom: var(--space-1);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.credits {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.1rem;
+}
+
+/* ---- the top bar and the footer read over the print: a solid scrim ---- */
+.topbar {
+  background: var(--bg);
+}
+
+.site-footer {
+  background: var(--bg);
+  border-top: 1px solid var(--rule);
+}
+
+/* ---- controls: a hairline, an accent label, square corners ---- */
+.deep-toggle,
+.theme-toggle,
+.hero-mesh button,
+.hero-run,
+.controls button,
+.live-controls button,
+.mesh-selector button {
+  border-radius: var(--radius-panel);
+}
+
+/* ---- the hero: one lead figure, a ruled list for the rest ---- */
+.hero-display .hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  column-gap: var(--space-6);
+  align-items: start;
+  margin: 0;
+}
+
+.hero .tile {
+  display: block;
+  grid-row: auto;
+  container-type: inline-size;
+  min-width: 0;
+  padding: var(--space-3) 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+}
+
+.hero .tile:first-child {
+  grid-row: 1 / span 3;
+  padding-top: var(--space-4);
+  border-top-color: var(--accent);
+}
+
+.tile-value {
+  margin: 0;
+  font-size: min(2rem, 12cqi);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.hero .tile:first-child .tile-value {
+  color: var(--accent);
+  font-size: min(var(--text-figure), 12.5cqi);
+  line-height: 1;
+}
+
+.tile-label {
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.tile-claim {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+a.tile:hover {
+  border-top-color: var(--accent);
+}
+
+a.tile:hover .tile-proof {
+  text-decoration: underline;
+}
+
+@media (max-width: 720px) {
+  .hero-display .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hero .tile:first-child {
+    grid-row: auto;
+  }
+}
+
+/* the 3D stage is a window in the print, not a card */
+.hero-stage-view,
+.live-scene {
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-panel);
+  box-shadow: none;
+}
+
+/* ---- the eight stories: a ruled list, not eight cards (they sit on the replay sheet) ---- */
+.lane {
+  padding: var(--space-3) 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+  box-shadow: none;
+}
