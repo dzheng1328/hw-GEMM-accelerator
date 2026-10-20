@@ -19,6 +19,17 @@ of the alternatives. Useful for your own memory, and directly answers the
 
 <!-- Entries below, most recent first -->
 
+### 2026-10-20 -- Portfolio look: night print and washi, one token set, a paper colour scope, GSAP as a lazy chunk
+
+**Context:** the portfolio had been judged "vibe-coded": the default dev-tool look (near-black, one cyan accent with a glow, a faint grid), the same rounded card everywhere, numbered eyebrows, and one long scroll. The redesign is five sub-projects; this is the first (the foundation), on the existing scrolling page.
+**Options considered:**
+(1) Restyle in place with new colours and fonts only.
+(2) Build the scene engine first and skin it afterwards.
+(3) A static re-skin first, then motion.
+(4) A re-skin that already includes a reusable motion layer.
+**Decision:** (4). Two themes from real Met Open Access art (a Hiroshige night print, a washi and sumi day scroll) behind a measured scrim; the semantic token names stay and only their values change; dense panels get a paper colour scope (`sheets.css`, `<Sheet>`) and everything else is open and ruled; fonts are Shippori Mincho B1, Zen Kaku Gothic New and IBM Plex Mono for code; motion is GSAP 3.15.0 in its own lazy chunk, with primitives that only move transform, opacity and clip-path.
+**Why:** keeping the token names meant about 2,800 lines of CSS and the 3D scene's palette kept working while the look changed completely. A paper scope means a chart reads the same on both themes and its contrast is tested once. Judging a static re-skin was the wrong order (static mockups read as stagnant), so the motion layer ships with the look and the later scene engine only replaces its scroll driver.
+
 ### 2026-10-19 -- Portfolio timeline: a rail over a decision panel, with the records generated from this file
 
 **Context:** the "How it was built" section was two long vertical lists with no way to see why a milestone went the way it did, although every milestone already cites an entry in this file.
