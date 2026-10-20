@@ -11,6 +11,7 @@ import { MeshBarChart } from "./MeshBarChart";
 import { MeshDiagram } from "./MeshDiagram";
 import { MeshSelector } from "./MeshSelector";
 import { PortBars } from "./PortBars";
+import { StrokeRibbon } from "./StrokeRibbon";
 
 const isBuilt = (mesh: string): mesh is MeshKey => (MESH_KEYS as readonly string[]).includes(mesh);
 
@@ -120,6 +121,7 @@ export function PerformanceSection() {
         ]}
       />
       <p className="finding">{lmFinding(findMesh(lm.meshes, "2x2"), findMesh(lm.meshes, "4x4"), lm.vpuCycles)}</p>
+      <StrokeRibbon />
       <CifarCard />
     </Section>
   );

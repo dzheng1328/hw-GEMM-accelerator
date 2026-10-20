@@ -15,6 +15,7 @@ import "./theme/architecture.css";
 import "./theme/panels.css";
 import "./theme/proof.css";
 import "./theme/skin.css";
+import "./theme/ribbon.css";
 import "./theme/sheets.css";
 import App from "./App";
 

@@ -26,3 +26,8 @@ export async function loadReplayData(): Promise<ReplayData> {
     probs: attention.probs,
   };
 }
+
+/** Only the per-step cycle split (about 32 kB), for the chart in the performance section. The browser's cache serves it again if the replay already fetched it. */
+export async function loadLmSteps(): Promise<StepRecord[]> {
+  return (await getJson<{ steps: StepRecord[] }>(stepsUrl)).steps;
+}

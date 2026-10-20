@@ -6,7 +6,7 @@ import { PROOF_IDS } from "./content/proof";
 import { CREDITS } from "./content/art";
 import { SECTIONS } from "./content/sections";
 
-vi.mock("./replay/loadReplayData", () => ({ loadReplayData: () => new Promise(() => {}) }));
+vi.mock("./replay/loadReplayData", () => ({ loadReplayData: () => new Promise(() => {}), loadLmSteps: () => new Promise(() => {}) }));
 vi.mock("./live/view/loadExamples", () => ({ loadExamples: () => new Promise(() => {}) }));
 vi.mock("./live/view/loadScene", () => ({ loadScene: () => new Promise(() => {}) }));
 vi.mock("./live/view/webgl", () => ({ webglAvailable: () => true }));
