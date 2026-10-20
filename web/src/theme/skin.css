@@ -145,3 +145,20 @@ a.tile:hover .tile-proof {
   border-radius: 0;
   box-shadow: none;
 }
+
+/* ---- a number that counts up: the count is drawn over the real text in the same grid cell, so the box keeps the final width ---- */
+.figure {
+  display: inline-grid;
+}
+
+.figure > * {
+  grid-area: 1 / 1;
+}
+
+.figure-live {
+  text-align: left;
+}
+
+.figure--counting .figure-final {
+  color: transparent;
+}

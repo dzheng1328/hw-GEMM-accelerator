@@ -188,8 +188,8 @@ test("the fonts load as woff2, two are preloaded, and the text uses them", async
   expect(fonts.length).toBeGreaterThanOrEqual(2);
   for (const font of fonts) expect(font.type, font.url).toContain("font/woff2");
   expect(await page.evaluate(() => document.fonts.check('600 16px "IBM Plex Mono"'))).toBe(true);
-  expect(await page.evaluate(() => getComputedStyle(document.querySelector(".tile-value")!).fontFamily)).toContain("IBM Plex Mono");
-  expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain("IBM Plex Sans");
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector(".tile-value")!).fontFamily)).toContain("Shippori Mincho B1");
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain("Zen Kaku Gothic New");
   expect(await page.locator('link[rel="preload"][as="font"]').count()).toBe(2);
 });
 

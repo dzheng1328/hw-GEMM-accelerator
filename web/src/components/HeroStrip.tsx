@@ -1,10 +1,16 @@
+import { useRef } from "react";
 import { PROOF, type ProofKey } from "../content/proof";
 import summary from "../data/generated/summary.json";
 import { formatInt, formatPercent, formatRatio } from "../format";
+import { sweepIn } from "../motion/primitives";
+import { useMotion } from "../motion/useMotion";
+import { CountFigure } from "./CountFigure";
 import { onProofClick } from "./proofJump";
 
 interface Tile {
   value: string;
+  /** set on the lead tile: the number that counts up */
+  count?: number;
   label: string;
   claim: string;
   /** the evidence the tile links to */
@@ -15,17 +21,18 @@ const { lm, cifar } = summary;
 
 const TILES: Tile[] = [
   {
+    value: formatInt(lm.meshes["2x2_t256"]!.cycles),
+    count: lm.meshes["2x2_t256"]!.cycles,
+    label: "Cycles, 2x2 mesh, temperature 1.0",
+    claim: "The whole run from one start pulse, counted by the RTL's own performance counters.",
+    proof: "cycles",
+  },
+  {
     value: `${lm.stories} × ${lm.steps}`,
     label: "Stories on chip, tokens each",
     claim:
       "Bit-exact against the integer reference at every level of the verification ladder. The run writes its outputs only if every check passes.",
     proof: "stories",
-  },
-  {
-    value: formatInt(lm.meshes["2x2_t256"]!.cycles),
-    label: "Cycles, 2x2 mesh, temperature 1.0",
-    claim: "The whole run from one start pulse, counted by the RTL's own performance counters.",
-    proof: "cycles",
   },
   {
     value: formatPercent(cifar.int8Accuracy),
@@ -41,21 +48,28 @@ const TILES: Tile[] = [
   },
 ];
 
+function ProofTile({ tile, lead }: { tile: Tile; lead: boolean }) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  // the secondary tiles sweep in from the right; the lead figure counts up instead and is never hidden
+  useMotion(ref, (g, el) => (lead ? null : sweepIn(g, el, { from: "right" })));
+  const { id } = PROOF[tile.proof];
+  return (
+    <a ref={ref} className="tile" href={`#${id}`} onClick={onProofClick(id)}>
+      <p className="tile-value">{tile.count !== undefined ? <CountFigure value={tile.count} text={tile.value} /> : tile.value}</p>
+      <p className="tile-label">{tile.label}</p>
+      <p className="tile-claim">
+        {tile.claim} <span className="tile-proof">See the proof</span>
+      </p>
+    </a>
+  );
+}
+
 export function HeroStrip() {
   return (
     <div className="hero">
-      {TILES.map((tile) => {
-        const { id } = PROOF[tile.proof];
-        return (
-          <a className="tile" key={tile.label} href={`#${id}`} onClick={onProofClick(id)}>
-            <p className="tile-value">{tile.value}</p>
-            <p className="tile-label">{tile.label}</p>
-            <p className="tile-claim">
-              {tile.claim} <span className="tile-proof">See the proof</span>
-            </p>
-          </a>
-        );
-      })}
+      {TILES.map((tile, i) => (
+        <ProofTile key={tile.label} tile={tile} lead={i === 0} />
+      ))}
     </div>
   );
 }
