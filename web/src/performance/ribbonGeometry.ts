@@ -59,10 +59,26 @@ export function strokes(steps: readonly RibbonStep[], layout: Layout): Stroke[] 
   });
 }
 
+/** The smallest step of 1, 2 or 5 times a power of ten that gives at most five gridlines above zero. */
+function gridStep(max: number): number {
+  for (let power = 1; ; power *= 10) {
+    for (const mult of [1, 2, 5]) {
+      if (max / (mult * power) <= 5) return mult * power;
+    }
+  }
+}
+
 export function gridValues(max: number): number[] {
+  const step = gridStep(max);
   const out: number[] = [];
-  for (let v = 0; v <= max; v += 100000) out.push(v);
+  for (let v = 0; v <= max; v += step) out.push(v);
   return out;
+}
+
+/** Where the note between the two big figures starts: 270, or further right when a long first total would run into it. */
+export function noteX(firstTotal: number, layout: Layout): number {
+  const figureWidth = formatInt(firstTotal).length * 24;
+  return Math.max(270, layout.x0 + figureWidth + 24);
 }
 
 /** Pushes labels apart to at least `gap`, top to bottom, then pulls the whole stack up if it runs past `hi`. */

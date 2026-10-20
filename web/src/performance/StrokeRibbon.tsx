@@ -5,7 +5,7 @@ import { sheetSlide, strokeWipe } from "../motion/primitives";
 import { useMotion } from "../motion/useMotion";
 import { useInView, useLazyData } from "../replay/hooks";
 import { loadLmSteps } from "../replay/loadReplayData";
-import { gridValues, KIND_LABELS, KINDS, ribbonData, total, VIEW, type RibbonData } from "./ribbonGeometry";
+import { gridValues, KIND_LABELS, KINDS, noteX, ribbonData, total, VIEW, type RibbonData } from "./ribbonGeometry";
 
 /**
  * Cycles per step across the whole story run, one stroke per step, drawn on a washi sheet. The plot holds only data;
@@ -122,13 +122,13 @@ function Plot({ c }: { c: RibbonData }) {
       <text x={layout.x1} y={underY + 96} textAnchor="end" className="caption" data-pair="last">
         cycles for the last step
       </text>
-      <text x={270} y={underY + 48} className="note strong" data-pair="note">
+      <text x={noteX(facts.firstTotal, layout)} y={underY + 48} className="note strong" data-pair="note">
         {facts.weightsConstant ? "Weights cost the same every step." : "Weights change from step to step."}
       </text>
-      <text x={270} y={underY + 66} className="note" data-pair="note">
+      <text x={noteX(facts.firstTotal, layout)} y={underY + 66} className="note" data-pair="note">
         {`Attention grows ${Math.round(facts.attentionRatio)}x as the`}
       </text>
-      <text x={270} y={underY + 84} className="note" data-pair="note">
+      <text x={noteX(facts.firstTotal, layout)} y={underY + 84} className="note" data-pair="note">
         story gets longer.
       </text>
 

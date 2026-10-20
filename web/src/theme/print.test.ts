@@ -9,7 +9,6 @@ const printCss = readFileSync(join(import.meta.dirname, "print.css"), "utf8");
 const tokens = themeBlocks(readFileSync(join(import.meta.dirname, "tokens.css"), "utf8"));
 const printBlocks = themeBlocks(printCss);
 
-const text = (block: string) => /--text:\s*(#[0-9a-fA-F]{6})/.exec(block)![1]!;
 const scrim = (block: string) => {
   const rgb = /--scrim-rgb:\s*(\d+)\s+(\d+)\s+(\d+)/.exec(block);
   const alpha = /--scrim-alpha:\s*([0-9.]+)/.exec(block);
@@ -19,18 +18,23 @@ const scrim = (block: string) => {
 const night = attributions.assets.find((a) => a.role === "night-print")!;
 const day = attributions.assets.find((a) => a.role === "day-scroll")!;
 
-describe("the print scrim", () => {
-  it("keeps cream text at 4.5:1 over the brightest part of the night print", () => {
-    const s = scrim(printBlocks.dark);
-    const worst = mixHex(s.color, rgbToHex(night.brightest), s.alpha);
-    expect(contrast(text(tokens.dark), worst)).toBeGreaterThanOrEqual(4.5);
-  });
+const token = (block: string, name: string) => new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`).exec(block)![1]!;
 
-  it("keeps sumi text at 4.5:1 over the darkest part of the day scroll", () => {
-    const s = scrim(printBlocks.light);
-    const worst = mixHex(s.color, rgbToHex(day.darkest), s.alpha);
-    expect(contrast(text(tokens.light), worst)).toBeGreaterThanOrEqual(4.5);
-  });
+describe("the print scrim", () => {
+  // text sits straight on the print outside any sheet: body text, muted lines (claims, headlines, credits) and accent (the lead figure, links)
+  for (const name of ["text", "muted", "accent"]) {
+    it(`keeps night ${name} at 4.5:1 over the brightest part of the night print`, () => {
+      const s = scrim(printBlocks.dark);
+      const worst = mixHex(s.color, rgbToHex(night.brightest), s.alpha);
+      expect(contrast(token(tokens.dark, name), worst)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it(`keeps day ${name} at 4.5:1 over the darkest part of the day scroll`, () => {
+      const s = scrim(printBlocks.light);
+      const worst = mixHex(s.color, rgbToHex(day.darkest), s.alpha);
+      expect(contrast(token(tokens.light, name), worst)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
 
   it("never hides the print: alpha stays at 0.9 or less in both themes", () => {
     expect(scrim(printBlocks.dark).alpha).toBeLessThanOrEqual(0.9);

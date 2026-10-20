@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { endLabels, gridValues, KINDS, layoutFor, ribbonData, sampleRows, spread, strokes, summary, total, type RibbonStep } from "./ribbonGeometry";
+import { endLabels, gridValues, KINDS, layoutFor, noteX, ribbonData, sampleRows, spread, strokes, summary, total, type RibbonStep } from "./ribbonGeometry";
 
 const step = (weights: number, attention: number, vpu: number, other: number): RibbonStep => ({ weights, attention, vpu, other });
 // a series shaped like the real run: weights and other constant, attention and vpu growing
@@ -59,9 +59,29 @@ describe("strokes", () => {
 });
 
 describe("gridValues", () => {
-  it("lists 0 and every 100 000 up to the scale", () => {
+  it("lists 0 and a nice step (1, 2 or 5 times a power of ten) up to the scale, giving at most six lines", () => {
     expect(gridValues(440000)).toEqual([0, 100000, 200000, 300000, 400000]);
-    expect(gridValues(90000)).toEqual([0]);
+    expect(gridValues(90000)).toEqual([0, 20000, 40000, 60000, 80000]);
+  });
+
+  it("scales with a run ten times larger instead of drawing thirty crowded lines", () => {
+    const lines = gridValues(4_400_000);
+    expect(lines.length).toBeLessThanOrEqual(6);
+    expect(lines.length).toBeGreaterThanOrEqual(3);
+    expect(lines[1]).toBe(1_000_000);
+  });
+});
+
+describe("noteX", () => {
+  const layout = layoutFor(series(256));
+  it("stays at 270 for the real run, whose first total is short", () => {
+    expect(noteX(67220, layout)).toBe(270);
+  });
+  it("moves right of a long first total, so the note never runs into the figure", () => {
+    const x = noteX(245_000_000, layout);
+    expect(x).toBeGreaterThan(270);
+    // 11 characters of a 46 px serif are at least 260 units wide
+    expect(x).toBeGreaterThanOrEqual(layout.x0 + 11 * 24);
   });
 });
 

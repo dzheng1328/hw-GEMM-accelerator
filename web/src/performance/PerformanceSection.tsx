@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useState } from "react";
 import { useLiveSession } from "../live/session/context";
+import { ErrorBoundary } from "../live/view/ErrorBoundary";
 import { MESH_KEYS, type MeshKey } from "../live/sim/types";
 import { Section } from "../components/Section";
 import { formatInt, formatPercent, formatRatio } from "../format";
@@ -123,9 +124,18 @@ export function PerformanceSection() {
         ]}
       />
       <p className="finding">{lmFinding(findMesh(lm.meshes, "2x2"), findMesh(lm.meshes, "4x4"), lm.vpuCycles)}</p>
-      <Suspense fallback={<div className="sheet ribbon"><div className="ribbon-frame" /></div>}>
-        <StrokeRibbon />
-      </Suspense>
+      {/* a chunk that fails to load (a redeploy removed the old file, the network dropped) must not unmount the page */}
+      <ErrorBoundary
+        fallback={
+          <p className="replay-error" role="status">
+            The chart could not load. Reload to try again.
+          </p>
+        }
+      >
+        <Suspense fallback={<div className="sheet ribbon"><div className="ribbon-frame" /></div>}>
+          <StrokeRibbon />
+        </Suspense>
+      </ErrorBoundary>
       <CifarCard />
     </Section>
   );

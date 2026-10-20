@@ -2,12 +2,12 @@
    brightest (night) and darkest (day) pixels, so text straight on the print always reads. Never above 0.9. */
 :root {
   --scrim-rgb: 11 18 38;
-  --scrim-alpha: 0.68;
+  --scrim-alpha: 0.8;
 }
 
 :root[data-theme="light"] {
   --scrim-rgb: 228 218 194;
-  --scrim-alpha: 0.66;
+  --scrim-alpha: 0.76;
 }
 
 /* A fixed layer behind the page. It is taller than the screen so the parallax never shows an edge. */
