@@ -40,13 +40,18 @@ describe("HeroStrip", () => {
 
   it("scrolls to the target when a tile is clicked", () => {
     document.body.insertAdjacentHTML("beforeend", '<main id="main"><div id="proof-cifar" tabindex="-1" data-proof></div></main>');
+    // jsdom has no scrollIntoView; stub it for this test only, so no later test sees a leftover
     const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView as never;
-    const { container } = render(<HeroStrip />);
-    fireEvent.click(container.querySelector('a.tile[href="#proof-cifar"]')!);
-    expect(scrollIntoView).toHaveBeenCalledOnce();
-    expect(window.location.hash).toBe("#proof-cifar");
-    document.getElementById("main")!.remove();
-    window.history.replaceState(null, "", "/");
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: scrollIntoView });
+    try {
+      const { container } = render(<HeroStrip />);
+      fireEvent.click(container.querySelector('a.tile[href="#proof-cifar"]')!);
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(window.location.hash).toBe("#proof-cifar");
+    } finally {
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+      document.getElementById("main")?.remove();
+      window.history.replaceState(null, "", "/");
+    }
   });
 });

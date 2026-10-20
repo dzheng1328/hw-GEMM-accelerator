@@ -11,3 +11,11 @@ describe("the hero controls", () => {
     expect(block![1]).toMatch(/min-height:\s*(44px|2\.75rem)/);
   });
 });
+
+describe("the Run button", () => {
+  it("is border-box like the pills, so the 44 px minimum is its height and not its content's", () => {
+    const rules = [...css.matchAll(/\.hero-run \{([^}]*)\}/g)].map((m) => m[1]).join("\n");
+    expect(rules).not.toContain("content-box");
+    expect(rules).toContain("min-width: calc(12ch + 1.8rem + 2px)");
+  });
+});

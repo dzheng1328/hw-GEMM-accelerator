@@ -147,6 +147,13 @@
   border-radius: 2px;
 }
 
+/* the swatch is the color it names: high contrast mode would paint it the page color and leave a legend of blanks */
+@media (forced-colors: active) {
+  .swatch {
+    forced-color-adjust: none;
+  }
+}
+
 .legend .num {
   margin-left: auto;
   white-space: nowrap;
