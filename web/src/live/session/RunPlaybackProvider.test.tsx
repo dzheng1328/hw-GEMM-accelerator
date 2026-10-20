@@ -64,6 +64,20 @@ describe("RunPlaybackProvider", () => {
     expect(text()).toBe(`fc|${run.cycles}|false|true|cat|trace`);
   });
 
+  it("keeps the end of a finished run when reduced motion is switched off, and still jumps to the end when it is switched on", () => {
+    const scheduler = fakeScheduler();
+    const run = makeRun();
+    const { rerender } = render(provider(run, { reduced: true, scheduler }));
+    expect(text()).toBe(`fc|${run.cycles}|false|true|cat|trace`);
+    rerender(provider(run, { reduced: false, scheduler }));
+    expect(text()).toBe(`fc|${run.cycles}|false|true|cat|trace`);
+    cleanup();
+    const playing = render(provider(run, { reduced: false, scheduler }));
+    expect(text()).toContain("|true|false|");
+    playing.rerender(provider(run, { reduced: true, scheduler }));
+    expect(text()).toBe(`fc|${run.cycles}|false|true|cat|trace`);
+  });
+
   it("resets to cycle 0 when the run goes away and plays the next run from the start", () => {
     const scheduler = fakeScheduler();
     const first = makeRun();

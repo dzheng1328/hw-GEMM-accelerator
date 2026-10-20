@@ -68,8 +68,9 @@
   stroke-dasharray: 5 3;
 }
 
+/* the selected block's edge is in the text color and a lit block's in the accent, so many lit blocks never hide which one is selected */
 .arch-selected .arch-bg {
-  stroke: var(--accent);
+  stroke: var(--text);
   stroke-width: 3;
   stroke-dasharray: none;
 }
@@ -108,7 +109,7 @@
   pointer-events: none;
 }
 
-/* working right now: an accent edge and a glow; the selected block keeps its thicker edge */
+/* working right now: an accent edge and a glow */
 .arch-lit .arch-bg {
   stroke: var(--accent);
   stroke-width: 2;
@@ -116,7 +117,22 @@
 }
 
 .arch-selected.arch-lit .arch-bg {
+  stroke: var(--text);
   stroke-width: 3;
+}
+
+/* Windows high contrast turns the page white and leaves these SVG blocks their dark fills: the selected edge goes in a system
+   color, thicker than the lit one, so the two stay apart there too */
+@media (forced-colors: active) {
+  .arch-selected .arch-bg,
+  .arch-selected.arch-lit .arch-bg {
+    stroke: Highlight;
+    stroke-width: 4;
+  }
+
+  .arch-lit .arch-bg {
+    stroke: LinkText;
+  }
 }
 
 .arch-legend {

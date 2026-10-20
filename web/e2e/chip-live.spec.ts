@@ -51,7 +51,7 @@ test("selecting a block shows its run numbers in the panel, and the vector unit 
   await block(page, "dma_gather").click();
   await expect(page.locator("#architecture .arch-live-row")).toContainText("The DMA gather was busy in");
   await block(page, "vpu").click();
-  await expect(page.locator("#architecture .arch-live-row")).toContainText("Not used in this run");
+  await expect(page.locator("#architecture .arch-live-row")).toContainText("no vector commands");
   await expect(page.locator("#architecture .arch-live-row").locator("xpath=ancestor-or-self::*[@aria-live]")).toHaveCount(0);
 });
 

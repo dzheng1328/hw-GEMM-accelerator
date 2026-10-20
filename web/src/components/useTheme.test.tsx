@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { THEME_COLOR, THEME_KEY } from "../theme/theme";
 import { useTheme } from "./useTheme";
 
@@ -31,5 +31,20 @@ describe("useTheme", () => {
     act(() => result.current[1]());
     expect(result.current[0]).toBe("dark");
     expect(window.localStorage.getItem(THEME_KEY)).toBe("dark");
+  });
+
+  it("still toggles when the browser refuses to store the choice", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+    });
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current[1]());
+    expect(result.current[0]).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(document.querySelector('meta[name="theme-color"]')!.getAttribute("content")).toBe(THEME_COLOR.light);
+    act(() => result.current[1]());
+    expect(result.current[0]).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    vi.restoreAllMocks();
   });
 });

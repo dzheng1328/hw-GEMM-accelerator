@@ -11,6 +11,8 @@ function setup() {
   const disconnect = vi.fn();
   let bottom = false;
   const inits: IntersectionObserverInit[] = [];
+  let resized: () => void = () => {};
+  const stopWatching = vi.fn();
   const env: ActiveEnv = {
     createObserver: (cb, init) => {
       callback = cb;
@@ -18,6 +20,10 @@ function setup() {
       return { observe: (el) => observed.push((el as HTMLElement).id), disconnect };
     },
     isAtBottom: () => bottom,
+    watchSize: (cb) => {
+      resized = cb;
+      return stopWatching;
+    },
   };
   const fire = (changes: Record<string, boolean>) =>
     act(() =>
@@ -32,7 +38,12 @@ function setup() {
       window.dispatchEvent(new Event("scroll"));
     });
   };
-  return { env, fire, scrollTo, observed, disconnect, inits };
+  /** the page grew or shrank without any scrolling, as lazy content arriving does */
+  const resize = (atBottom: boolean) => {
+    bottom = atBottom;
+    act(() => resized());
+  };
+  return { env, fire, scrollTo, resize, observed, disconnect, inits, stopWatching };
 }
 
 beforeEach(() => {
@@ -78,6 +89,22 @@ describe("useActiveSection", () => {
     expect(result.current).toBe("c");
     scrollTo(false);
     expect(result.current).toBe("b");
+  });
+
+  it("notices the bottom of the page being reached or left by the page resizing, with no scroll event", () => {
+    const { env, fire, resize } = setup();
+    const { result } = renderHook(() => useActiveSection(IDS, env));
+    fire({ b: true });
+    resize(true);
+    expect(result.current).toBe("c");
+    resize(false);
+    expect(result.current).toBe("b");
+  });
+
+  it("stops watching the page size on unmount", () => {
+    const { env, stopWatching } = setup();
+    renderHook(() => useActiveSection(IDS, env)).unmount();
+    expect(stopWatching).toHaveBeenCalledTimes(1);
   });
 
   it("stays right when a section grows or shrinks (the observer reports new intersections for the same ids)", () => {

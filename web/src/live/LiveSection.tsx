@@ -10,10 +10,12 @@ import { MESH_KEYS } from "./sim/types";
 import { ImagePicker } from "./view/ImagePicker";
 import { LiveStage } from "./view/LiveStage";
 import { MeshChoice } from "./view/MeshChoice";
+import { useOnScreen } from "./view/useOnScreen";
 
 export function LiveSection() {
   const rootRef = useRef<HTMLDivElement>(null);
   const near = useInView(rootRef, "100% 0px");
+  const onScreen = useOnScreen(rootRef);
   const session = useLiveSession();
   const { wantAssets, examples, pixels, canRun, state } = session;
   const { mesh, source, phase, notice } = state;
@@ -75,7 +77,9 @@ export function LiveSection() {
             {MESH_KEYS.map((key) => `${formatInt(manifest.meshes[key]?.cycles ?? 0)} cycles on ${key}`).join(", ")}.
           </p>
         )}
-        <p className="live-status" role="status">
+        {/* the arrival auto-run also reports here, and it must not speak to someone reading another section: the line is a status
+            (a live region) only while the section is on screen. No aria-live attribute: App.test keeps the page's one announcer apart. */}
+        <p className="live-status" role={onScreen ? "status" : undefined}>
           {phase.name === "running" ? STAGE_TEXT[phase.stage] : ""}
         </p>
         {phase.name === "error" ? (

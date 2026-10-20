@@ -378,6 +378,28 @@ describe("LiveSection robustness", () => {
     expect((runButton() as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("announces the run's progress only while the section is on screen, so the arrival auto-run does not speak from elsewhere", async () => {
+    const callbacks: IntersectionObserverCallback[] = [];
+    class FakeObserver {
+      constructor(callback: IntersectionObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    const { container } = setup({ run: () => new Promise<LiveRun>(() => {}) });
+    const status = () => container.querySelector(".live-status")!;
+    const see = (isIntersecting: boolean) =>
+      act(() => callbacks.forEach((callback) => callback([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver)));
+    expect(status().getAttribute("role")).toBeNull();
+    see(true);
+    expect(status().getAttribute("role")).toBe("status");
+    see(false);
+    expect(status().getAttribute("role")).toBeNull();
+    expect(status().hasAttribute("aria-live")).toBe(false);
+  });
+
   it("keeps keyboard focus on the Run button while a run is in progress", async () => {
     const { container } = setup({ run: () => new Promise<LiveRun>(() => {}) });
     await ready();

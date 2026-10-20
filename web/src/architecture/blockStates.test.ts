@@ -83,7 +83,7 @@ describe("blockStates", () => {
     const states = blockStates(input({ sequencer: 9, dma: 9, writeback: 9, memory: 9, inject: 9, results: 9, links: 9, busy: 9 }));
     expect(states.vpu!.lit).toBe(false);
     expect(states.vpu!.text).toBe("not used");
-    expect(states.vpu!.detail).toContain("Not used in this run");
+    expect(states.vpu!.detail).toContain("no vector commands");
     expect(states.vpu!.detail).toContain(performance.lm.vpuCycles.toLocaleString("en-US"));
   });
 
@@ -107,7 +107,7 @@ describe("blockStates", () => {
     expect(states.dma_gather!.detail).toBe("The DMA gather was busy in 250 of the 1,000 cycles so far (25.0%).");
     expect(states.cmd_seq!.detail).toContain("The command processor was busy in 500 of the 1,000 cycles so far (50.0%).");
     expect(states.cmd_seq!.detail).toContain("The program address is 120 of 480.");
-    expect(states.perf!.detail).toBe("The counters have counted 1,000 of 5,000 cycles.");
+    expect(states.perf!.detail).toBe("The replay is at cycle 1,000 of 5,000, the cycles the performance counters count.");
   });
 
   it("starts clean at cycle 0: zero shares, no division by zero", () => {
@@ -119,5 +119,14 @@ describe("blockStates", () => {
 
   it("says the PE array shares the tile's busy signal", () => {
     expect(blockStates(input({ busy: 4 })).pe_array!.detail).toContain("does not separate the PE array");
+  });
+
+  it("says which signal each counter reads, and does not claim more than the trace records", () => {
+    const states = blockStates(input({ memory: 300, dma: 250, writeback: 50, results: 500 }));
+    expect(states.memory!.detail).toContain("The DMA gather or the write-back was active in 300 of the 1,000 cycles so far (30.0%)");
+    expect(states.memory!.detail).toContain("no per-memory read or write signal");
+    expect(states.requant!.detail).toContain("500 RESULT flits");
+    expect(states.requant!.detail).toContain("not inside the requantizer");
+    expect(states.vpu!.detail).toContain("The compiled program for this run has no vector commands");
   });
 });

@@ -59,6 +59,7 @@ export function MeshStage({ variant }: { variant: StageVariant }) {
                 active={onScreen}
                 settle={variant === "hero" && !reduced}
                 onReady={onReady}
+                onContextLost={onCrash}
               />
             </ErrorBoundary>
           </div>

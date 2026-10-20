@@ -23,14 +23,11 @@
   border-bottom: 1px solid var(--border);
 }
 
-@supports (color: color-mix(in srgb, red, blue)) {
+/* see-through only where the blur that keeps the text under it legible also exists: Safari 16.2 to 17.x has color-mix() but only the prefixed blur */
+@supports (color: color-mix(in srgb, red, blue)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .topbar {
     background: color-mix(in srgb, var(--bg) 82%, transparent);
-  }
-}
-
-@supports (backdrop-filter: blur(1px)) {
-  .topbar {
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
     backdrop-filter: blur(12px) saturate(140%);
   }
 }
@@ -118,8 +115,10 @@
 .topbar-link {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
   min-height: 44px;
+  min-width: 44px;
   padding: 0 var(--space-2);
   color: var(--text);
   font-size: var(--text-sm);

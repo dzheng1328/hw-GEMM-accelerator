@@ -86,6 +86,23 @@ describe("useBlockLive", () => {
     expect(live!.perf!.text).toBe("cycle 0");
   });
 
+  it("lights a block for the cycle it works in at slow speeds, and for a longer window at the normal one", () => {
+    const run = makeRun();
+    const rb = run.recordBytes;
+    // the tiles are busy only in the first 10 cycles
+    for (let c = 10; c < run.cycles; c++) new DataView(run.trace.buffer).setUint16(c * rb, 0, true);
+    render(provider(run, fakeScheduler(), true));
+    act(() => playback!.playback.seek(50));
+    expect(live!.gemm_tile!.lit).toBe(true); // 40 cycles after the last busy one, inside the 64-cycle window
+    act(() => playback!.playback.setSpeed(0.05));
+    expect(live!.gemm_tile!.lit).toBe(false); // single transfers: only the cycle it works in
+    act(() => playback!.playback.seek(5));
+    expect(live!.gemm_tile!.lit).toBe(true);
+    act(() => playback!.playback.setSpeed(0.01));
+    act(() => playback!.playback.seek(50));
+    expect(live!.gemm_tile!.lit).toBe(false);
+  });
+
   it("shows nothing from a run once it is gone", () => {
     const scheduler = fakeScheduler();
     const { rerender } = render(provider(makeRun(), scheduler));

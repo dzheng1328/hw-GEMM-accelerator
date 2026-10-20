@@ -43,6 +43,12 @@ export interface BlockStateInput {
   nodes: number;
 }
 
+/** The memories have no signal of their own in the trace: their cycles are the DMA's and the write-back's. */
+const memoryState = (state: BlockLive): BlockLive => ({
+  ...state,
+  detail: `${state.detail.replace(/\.$/, "")}, the cycles that move data into and out of the memories. The trace has no per-memory read or write signal.`,
+});
+
 const share = (n: number, of: number): string => formatPercent(of > 0 ? n / of : 0, 1);
 
 /** Which blocks are working at a cycle of a run, and what each has counted so far. One entry per block of the diagram. */
@@ -83,21 +89,25 @@ export function blockStates({ now, before, cycle, total, playing, pc, programEnd
     vpu: {
       lit: false,
       text: "not used",
-      detail: `Not used in this run. The story model uses it: ${formatInt(performance.lm.vpuCycles)} busy cycles on every mesh.`,
+      detail: `The compiled program for this run has no vector commands, so the vector unit stays idle. The story model uses it: ${formatInt(performance.lm.vpuCycles)} busy cycles on every mesh.`,
     },
     dma_gather: busy((c) => c.dma, "The DMA gather was busy"),
-    memory: busy((c) => c.memory, "The memories were being read or written"),
+    memory: memoryState(busy((c) => c.memory, "The DMA gather or the write-back was active")),
     flit_pack: counted((c) => c.inject, "flits", (n) => `${n} flits were packed and injected so far.`),
     writeback: busy((c) => c.writeback, "Write-back had results outstanding"),
     corner: counted((c) => c.inject + c.results, "flits", (n) => `${n} flits have crossed this port so far, going in and coming out.`),
     noc: counted((c) => c.links, "transfers", (n) => `${n} flit transfers have crossed mesh links so far.`),
     gemm_tile: tiles(""),
-    requant: counted((c) => c.results, "results", (n) => `${n} RESULT flits have come back from the tiles so far.`),
+    requant: counted(
+      (c) => c.results,
+      "results",
+      (n) => `${n} RESULT flits have come back from the tiles so far, counted where they arrive at the command processor's port, not inside the requantizer.`,
+    ),
     pe_array: tiles(" This is the tile's busy signal; the recorded trace does not separate the PE array."),
     perf: {
       lit: playing,
       text: `cycle ${formatInt(cycle)}`,
-      detail: `The counters have counted ${elapsed} of ${formatInt(total)} cycles.`,
+      detail: `The replay is at cycle ${elapsed} of ${formatInt(total)}, the cycles the performance counters count.`,
     },
   };
 }

@@ -65,14 +65,15 @@ test("the highlight stays right after Deep mode grows the sections", async ({ pa
   await expect(link(page, "built")).toHaveAttribute("aria-current", "location");
 });
 
-test("a jump right after load still lands where it should while the replay data arrives above it", async ({ page }) => {
+test("a jump made as the replay data is on its way still lands where it should when the data arrives above it", async ({ page }) => {
   // hold the recorded run back, so its arrival reliably comes after the jump
   await page.route("**/assets/lm-*", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1200));
     await route.continue();
   });
   await page.goto("/");
-  // the live hero pushes the replay below the fold, so bring it near first: that is what starts its data load
+  // the live hero pushes the replay below the fold and the data only loads once it is near, so bring it near first: this is no
+  // longer a jump straight after load (the replay is more than a screen above #performance), but a jump with the data still in flight
   await page.locator("#replay").scrollIntoViewIfNeeded();
   await link(page, "performance").click();
   const headingTop = () => page.locator("#performance h2").evaluate((el) => el.getBoundingClientRect().top);

@@ -89,6 +89,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
+  min-height: 2.75rem;
   padding: 0.45rem 0.9rem;
   cursor: pointer;
 }
@@ -101,9 +102,9 @@
 
 .hero-run {
   font-weight: 600;
-  /* wide enough for its longest label ("Run the chip"), so the controls wrap the same way whichever label it shows */
-  box-sizing: content-box;
-  min-width: 12ch;
+  /* wide enough for its longest label ("Run the chip"), so the controls wrap the same way whichever label it shows:
+     12ch of text plus the padding (0.9rem a side) and the border (1px a side), since the box is border-box like the pills */
+  min-width: calc(12ch + 1.8rem + 2px);
   text-align: center;
 }
 
