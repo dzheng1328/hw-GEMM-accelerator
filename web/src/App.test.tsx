@@ -119,7 +119,7 @@ describe("App shell", () => {
   it("starts with a skip link, then the top bar, then main, then the footer", () => {
     const { container } = render(<App />);
     const top = [...container.children].map((el) => el.tagName + (el.id ? `#${el.id}` : "") + (el.className ? `.${String(el.className).split(" ")[0]}` : ""));
-    expect(top).toEqual(["A.skip-link", "HEADER.topbar", "MAIN#main", "FOOTER.site-footer"]);
+    expect(top).toEqual(["DIV.print-layer", "A.skip-link", "HEADER.topbar", "MAIN#main", "FOOTER.site-footer"]);
     expect(container.querySelector("a.skip-link")!.getAttribute("href")).toBe("#main");
   });
 
