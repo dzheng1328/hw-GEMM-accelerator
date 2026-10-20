@@ -40,7 +40,7 @@ test.describe("with motion allowed", () => {
 
   test("the stroke ribbon draws itself and ends fully shown", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".ribbon").scrollIntoViewIfNeeded();
+    await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
     await expect(page.locator(".ribbon-svg g[data-motion]").first()).toHaveAttribute("data-motion", "done", { timeout: 20_000 });
     await expect(page.locator(".ribbon-svg rect.seg")).toHaveCount(256 * 4);
     const clip = await page.locator(".ribbon-svg g[data-motion]").first().evaluate((el) => getComputedStyle(el).clipPath);
@@ -71,7 +71,7 @@ test.describe("with reduced motion", () => {
 
   test("nothing is animated or hidden: no motion marker appears and the ribbon is whole at once", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".ribbon").scrollIntoViewIfNeeded();
+    await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
     await expect(page.locator(".ribbon-svg rect.seg")).toHaveCount(256 * 4, { timeout: 20_000 });
     expect(await page.locator("[data-motion]").count()).toBe(0);
     expect(await page.locator(".ribbon").evaluate((el) => getComputedStyle(el).opacity)).toBe("1");

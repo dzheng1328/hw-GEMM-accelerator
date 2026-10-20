@@ -60,12 +60,13 @@ for (const spec of manifest.assets) {
   }
 
   const stats = await crop().resize({ width: 256 }).removeAlpha().raw().toBuffer();
-  const blur = await crop().resize({ width: 24 }).webp({ quality: 40 }).toBuffer();
+  // a blur preview is for a full-bleed print that loads late; the small paper crop under the sheets needs none
+  const blur = spec.paperCrop ? null : await crop().resize({ width: 24 }).webp({ quality: 40 }).toBuffer();
   assets.push({
     role: spec.role,
     objectId: spec.objectId,
     files,
-    blur: `data:image/webp;base64,${blur.toString("base64")}`,
+    ...(blur ? { blur: `data:image/webp;base64,${blur.toString("base64")}` } : {}),
     brightest: percentileColor(new Uint8Array(stats), 0.99),
     darkest: percentileColor(new Uint8Array(stats), 0.01),
   });

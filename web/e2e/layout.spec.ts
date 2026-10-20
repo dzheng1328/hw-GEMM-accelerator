@@ -12,14 +12,14 @@ for (const width of [320, 390, 1280]) {
     test("the hero and the ribbon never make the page scroll sideways", async ({ page }) => {
       await page.goto("/");
       await noSidewaysScroll(page);
-      await page.locator(".ribbon").scrollIntoViewIfNeeded();
+      await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
       await expect(page.locator(".ribbon-svg rect.seg").first()).toBeAttached({ timeout: 15_000 });
       await noSidewaysScroll(page);
     });
 
     test("no two texts in the ribbon overlap, except a figure and its own caption", async ({ page }) => {
       await page.goto("/");
-      await page.locator(".ribbon").scrollIntoViewIfNeeded();
+      await page.locator(".ribbon-head").scrollIntoViewIfNeeded();
       await expect(page.locator(".ribbon-svg text").first()).toBeAttached({ timeout: 15_000 });
       const boxes = await page.evaluate(() =>
         [...document.querySelectorAll(".ribbon-svg text")].map((t) => {

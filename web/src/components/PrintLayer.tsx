@@ -1,11 +1,11 @@
 import { useRef, type CSSProperties } from "react";
-import { asset } from "../content/art";
+import { blurOf } from "../content/art";
 import { printParallax } from "../motion/primitives";
 import { useMotion } from "../motion/useMotion";
 
 const style = {
-  "--print-blur-night": `url("${asset("night-print").blur}")`,
-  "--print-blur-day": `url("${asset("day-scroll").blur}")`,
+  "--print-blur-night": `url("${blurOf("night-print")}")`,
+  "--print-blur-day": `url("${blurOf("day-scroll")}")`,
 } as CSSProperties;
 
 /** The real print behind the page. Which image shows, and the scrim over it, are in print.css. */

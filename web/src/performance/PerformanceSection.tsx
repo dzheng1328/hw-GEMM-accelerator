@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { useLiveSession } from "../live/session/context";
 import { MESH_KEYS, type MeshKey } from "../live/sim/types";
 import { Section } from "../components/Section";
@@ -11,7 +11,9 @@ import { MeshBarChart } from "./MeshBarChart";
 import { MeshDiagram } from "./MeshDiagram";
 import { MeshSelector } from "./MeshSelector";
 import { PortBars } from "./PortBars";
-import { StrokeRibbon } from "./StrokeRibbon";
+
+// below the fold, with its own data: its code stays out of the entry chunk
+const StrokeRibbon = lazy(() => import("./StrokeRibbon").then((m) => ({ default: m.StrokeRibbon })));
 
 const isBuilt = (mesh: string): mesh is MeshKey => (MESH_KEYS as readonly string[]).includes(mesh);
 
@@ -121,7 +123,9 @@ export function PerformanceSection() {
         ]}
       />
       <p className="finding">{lmFinding(findMesh(lm.meshes, "2x2"), findMesh(lm.meshes, "4x4"), lm.vpuCycles)}</p>
-      <StrokeRibbon />
+      <Suspense fallback={<div className="sheet ribbon"><div className="ribbon-frame" /></div>}>
+        <StrokeRibbon />
+      </Suspense>
       <CifarCard />
     </Section>
   );

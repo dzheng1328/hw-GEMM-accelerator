@@ -52,10 +52,15 @@ describe("the committed art", () => {
     expect(big.width / big.height).toBeLessThan(1.65);
   });
 
-  it("carries a tiny blur preview and measured brightest and darkest colours for every asset", () => {
+  it("carries a tiny blur preview for each full-bleed print, and measured brightest and darkest colours for every asset", () => {
     for (const asset of attributions.assets) {
-      expect(asset.blur).toMatch(/^data:image\/webp;base64,/);
-      expect(asset.blur.length).toBeLessThan(3000);
+      const blur = (asset as { blur?: string }).blur;
+      if (asset.role === "washi-paper") {
+        expect(blur, "the paper crop needs no preview").toBeUndefined();
+      } else {
+        expect(blur).toMatch(/^data:image\/webp;base64,/);
+        expect(blur!.length).toBeLessThan(3000);
+      }
       expect(asset.brightest).toHaveLength(3);
       expect(asset.darkest).toHaveLength(3);
     }
