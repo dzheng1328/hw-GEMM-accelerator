@@ -2,7 +2,7 @@ export type Theme = "dark" | "light";
 
 /** index.html carries a copy of this key and of the two colors in its inline script; inlineTheme.test.ts keeps them equal. */
 export const THEME_KEY = "hwgemm-theme";
-export const THEME_COLOR: Record<Theme, string> = { dark: "#080b10", light: "#f7f9fb" };
+export const THEME_COLOR: Record<Theme, string> = { dark: "#0b1226", light: "#e4dac2" };
 
 export function parseTheme(value: unknown): Theme {
   return value === "light" ? "light" : "dark";
