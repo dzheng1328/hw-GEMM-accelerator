@@ -1,0 +1,28 @@
+# synth/synth_sky130_accel.ys -- map the full accelerator (rtl/accel.v: command processor, DMA
+# gather, 2x2 mesh of gemm_tiles, write-back, vector unit) onto sky130_fd_sc_hd standard cells.
+# Run from the repo root after ./synth/fetch_sky130.sh:
+#
+#   yosys synth/synth_sky130_accel.ys
+#
+# Logic only: the six sim_mem memories and the tiles' two SRAM banks each are blackboxes
+# (synth/sim_mem_blackbox.v, synth/sram_blackbox.v) and report 0 area. abc -D 10000 targets 10 ns.
+read_liberty -lib synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+read_verilog synth/sram_blackbox.v
+read_verilog synth/sim_mem_blackbox.v
+read_verilog -sv rtl/pe.v rtl/systolic_array.v rtl/skew_feeder.v rtl/tile.v
+read_verilog -sv rtl/operand_mem.v rtl/gemm_sequencer.v rtl/gemm_tile.v
+read_verilog -sv rtl/router.v rtl/flit_buf.v rtl/node_perf.v rtl/requant.v rtl/noc_node.v rtl/noc_mesh.v
+read_verilog -sv rtl/dma_gather.v rtl/flit_pack.v rtl/cmd_seq.v rtl/writeback.v rtl/cmd_perf.v
+read_verilog -sv rtl/vpu.v rtl/vpu_add.v rtl/vpu_transpose.v rtl/vpu_embed.v rtl/vpu_rmsnorm.v rtl/vpu_silu.v
+read_verilog -sv rtl/vpu_rope.v rtl/vpu_kvwrite.v rtl/vpu_softmax.v rtl/vpu_sample.v rtl/vpu_rsqrt.v
+read_verilog -sv rtl/vpu_exp.v rtl/vpu_exparg.v rtl/vpu_lanes.v rtl/vpu_rng.v rtl/vpu_perf.v
+read_verilog -sv rtl/accel.v
+hierarchy -check -top accel
+synth -top accel -noshare
+dfflibmap -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+abc -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib -D 10000
+clean
+tee -o synth/reports/accel_sky130.log stat -top accel -liberty synth/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+# Fails the run on a structural combinational loop. `synth` with resource sharing (the default) made
+# one in cmd_seq (through `fault` and `vop_start`) that the RTL itself does not have, so sharing is off.
+check -assert
